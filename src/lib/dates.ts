@@ -3,6 +3,9 @@ export const DEMO_TODAY = "2026-10-06";
 
 export const REVIEW_LOOKBACK_DAYS = 14;
 
+/** First day shown on the day chips and the audit trail. */
+export const AUDIT_START = "2026-10-02";
+
 export function addDays(iso: string, days: number): string {
   const date = new Date(`${iso}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -25,11 +28,12 @@ export function defaultPendingDays(today: string): string[] {
   return [addDays(today, -1)];
 }
 
-/** Recent reviewable days, oldest first. Sundays are closed and omitted. */
+/** Recent reviewable days, oldest first. Sundays are closed and omitted. Nothing before AUDIT_START is included. */
 export function reviewWindow(today: string, lookback = REVIEW_LOOKBACK_DAYS): string[] {
   const days: string[] = [];
   for (let offset = lookback; offset >= 1; offset -= 1) {
     const day = addDays(today, -offset);
+    if (day < AUDIT_START) continue;
     if (weekday(day) === 0) continue;
     days.push(day);
   }

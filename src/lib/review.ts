@@ -107,20 +107,17 @@ export function markDone(current: Signoff | undefined, now: string): Signoff | n
   return { attested: true, doneAt: now };
 }
 
-export type AuditStatus = "approved" | "partial" | "open";
+export type AuditStatus = "approved" | "open";
 
+/** Approved when every shop in view is marked done. A day with any shop still open is not approved. */
 export function auditStatus(day: string, shopIds: ShopId[], signoffs: Record<string, Signoff>): AuditStatus {
   if (shopIds.length === 0) return "open";
-  const done = shopIds.filter((shopId) => signoffs[signoffKey(day, shopId)]?.doneAt).length;
-  if (done === 0) return "open";
-  if (done === shopIds.length) return "approved";
-  return "partial";
+  const done = shopIds.every((shopId) => Boolean(signoffs[signoffKey(day, shopId)]?.doneAt));
+  return done ? "approved" : "open";
 }
 
 export function auditLabel(status: AuditStatus): string {
-  if (status === "approved") return "Approved";
-  if (status === "partial") return "Partly approved";
-  return "Not approved";
+  return status === "approved" ? "Approved" : "Not approved";
 }
 
 export function utilization(soHours: number, clockedHours: number): number | null {
@@ -184,6 +181,21 @@ export function techTotals(reports: DayReport[], decisions: Record<string, Decis
 
 export function soHoursAfter(total: TechTotal): number {
   return total.baselineSoHours + total.addedMinutes / 60;
+}
+
+/** Baseline and corrected utilization for one trail day, limited to the shops currently in view. */
+export function dayUtilization(
+  reports: DayReport[],
+  day: string,
+  shopIds: ShopId[],
+  decisions: Record<string, Decision>,
+): { original: number | null; corrected: number | null } {
+  const scoped = reports.filter((report) => report.day === day && shopIds.includes(report.shopId));
+  const sum = sumTotals(techTotals(scoped, decisions));
+  return {
+    original: utilization(sum.baselineSoHours, sum.clockedHours),
+    corrected: utilization(sum.baselineSoHours + sum.addedMinutes / 60, sum.clockedHours),
+  };
 }
 
 export function sumTotals(totals: TechTotal[]): { clockedHours: number; baselineSoHours: number; addedMinutes: number } {

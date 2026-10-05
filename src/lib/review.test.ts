@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CURATED_FRIDAY } from "@/lib/curated-friday";
-import { DEMO_TODAY, defaultPendingDays, reviewWindow } from "@/lib/dates";
+import { AUDIT_START, DEMO_TODAY, defaultPendingDays, reviewWindow } from "@/lib/dates";
 import { SEED } from "@/lib/seed";
 import { parsePersistedState } from "@/lib/storage";
 import { appliedWindow, formatPercent } from "@/lib/time";
 import {
   attest,
+  auditLabel,
   auditStatus,
   buildPlan,
+  dayUtilization,
   buildSubmission,
   filterReports,
   markDone,
@@ -19,7 +21,7 @@ import {
   techTotals,
   utilization,
 } from "@/lib/review";
-import { SHOPS, type Decision } from "@/lib/types";
+import { SHOPS, type DayReport, type Decision } from "@/lib/types";
 
 const friday = "2026-10-02";
 const saturday = "2026-10-03";
@@ -44,12 +46,14 @@ describe("review days", () => {
     assert.deepEqual(defaultPendingDays("2026-10-07"), ["2026-10-06"]);
   });
 
-  it("keeps Saturday and drops Sunday", () => {
-    const days = reviewWindow(DEMO_TODAY);
-    assert.ok(days.includes(friday));
-    assert.ok(days.includes(saturday));
-    assert.ok(days.includes("2026-10-05"));
-    assert.equal(days.some((day) => new Date(`${day}T12:00:00Z`).getUTCDay() === 0), false);
+  it("starts the trail on Friday October 2 and drops Sunday", () => {
+    assert.deepEqual(reviewWindow(DEMO_TODAY), [friday, saturday, "2026-10-05"]);
+    const later = reviewWindow("2026-10-20", 30);
+    assert.equal(later[0], AUDIT_START);
+    assert.equal(later.includes("2026-10-01"), false);
+    assert.equal(later.includes("2026-09-22"), false);
+    assert.ok(later.includes("2026-10-19"));
+    assert.equal(later.some((day) => new Date(`${day}T12:00:00Z`).getUTCDay() === 0), false);
   });
 });
 
@@ -207,17 +211,67 @@ describe("submit plan", () => {
     assert.deepEqual(attest(done ?? undefined, false), { attested: false, doneAt: null });
   });
 
-  it("keeps a signed-off day distinct from one that was skipped", () => {
+  it("approves a day only when every shop in view is marked done", () => {
     const open = auditStatus(friday, ["dayton"], {});
     const approved = auditStatus(friday, ["dayton"], {
       [`${friday}|dayton`]: { attested: true, doneAt: "2026-10-05T15:00:00.000Z" },
     });
-    const partial = auditStatus(friday, ["dayton", "covington"], {
+    const oneShopOpen = auditStatus(friday, ["dayton", "covington"], {
       [`${friday}|dayton`]: { attested: true, doneAt: "2026-10-05T15:00:00.000Z" },
     });
     assert.equal(open, "open");
+    assert.equal(auditLabel(open), "Not approved");
     assert.equal(approved, "approved");
-    assert.equal(partial, "partial");
+    assert.equal(auditLabel(approved), "Approved");
+    assert.equal(oneShopOpen, "open");
+    assert.equal(auditLabel(oneShopOpen), "Not approved");
+    assert.equal(auditStatus(friday, [], {}), "open");
+  });
+
+  it("reports original and corrected utilization for the shops in view", () => {
+    const report: DayReport = {
+      day: friday,
+      shopId: "mobile",
+      technicians: [{ id: "chris-clark", shopId: "mobile", name: "Chris Clark", clockedHours: 9, soHours: 8.5 }],
+      findings: [
+        {
+          id: "travel-gap",
+          day: friday,
+          shopId: "mobile",
+          techId: "chris-clark",
+          kind: "gap",
+          start: "07:26",
+          end: "07:36",
+          minutes: 10,
+          detail: "Clocked. No service order on this stretch.",
+          recommendation: {
+            orderId: "M-90534",
+            work: "Onsite Travel",
+            start: "07:26",
+            end: "07:36",
+            minutes: 10,
+            summary: "Start the next line at 7:26 AM.",
+          },
+        },
+      ],
+      orders: [{ id: "M-90534", shopId: "mobile", title: "Onsite Travel", status: "priorities" }],
+    };
+    const baseline = dayUtilization([report], friday, ["mobile"], {});
+    assert.equal(formatPercent(baseline.original ?? 0), "94.4%");
+    assert.equal(formatPercent(baseline.corrected ?? 0), "94.4%");
+    const accepted = dayUtilization([report], friday, ["mobile"], { "travel-gap": accept });
+    assert.equal(formatPercent(accepted.corrected ?? 0), "96.3%");
+    const rejected = dayUtilization([report], friday, ["mobile"], { "travel-gap": reject });
+    assert.equal(formatPercent(rejected.corrected ?? 0), "94.4%");
+    const empty = dayUtilization([report], friday, ["dayton"], {});
+    assert.equal(empty.original, null);
+    assert.equal(empty.corrected, null);
+    const unclocked: DayReport = {
+      ...report,
+      technicians: [{ id: "chris-clark", shopId: "mobile", name: "Chris Clark", clockedHours: 0, soHours: 0 }],
+      findings: [],
+    };
+    assert.deepEqual(dayUtilization([unclocked], friday, ["mobile"], {}), { original: null, corrected: null });
   });
 
   it("drops a done flag that was saved without attestation", () => {
