@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# server apply queue written at runtime
+/data/fullbay-edit-queue.json

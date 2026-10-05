@@ -21,6 +21,7 @@ export function DayBar({
   days,
   signoffs,
   signoffError,
+  applyBlock,
   onShop,
   onToggleDay,
   onAttest,
@@ -30,6 +31,7 @@ export function DayBar({
   days: string[];
   signoffs: Record<string, Signoff>;
   signoffError: string | null;
+  applyBlock?: (day: string, shopId: ShopId) => string | null;
   onShop: (shopId: ShopFilter) => void;
   onToggleDay: (day: string, checked: boolean) => void;
   onAttest: (day: string, shopId: ShopId, attested: boolean) => void;
@@ -140,7 +142,7 @@ export function DayBar({
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-medium">Sign-off</h2>
         <p className="text-sm text-muted-foreground">
-          Check that you approve the utilization numbers, then mark the day done. The day cannot be marked done without that check. Uncheck to reopen it. Done days stay on the trail.
+          Check that you approve the utilization numbers, then mark the day done. Accepted edits for that shop and day must be confirmed applied in Fullbay first. Rejected edits do not block sign-off. The day cannot be marked done without the utilization check. Uncheck to reopen it. Done days stay on the trail.
         </p>
         {signoffError ? (
           <p role="alert" className="text-sm text-destructive">
@@ -152,6 +154,7 @@ export function DayBar({
             shops.map((id) => {
               const signoff = signoffs[signoffKey(day, id)];
               const inputId = `approve-${day}-${id}`;
+              const blocked = applyBlock?.(day, id) ?? null;
               return (
                 <div key={`${day}-${id}`} className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-start gap-3">
@@ -171,9 +174,12 @@ export function DayBar({
                   {signoff?.doneAt ? (
                     <p className="text-sm text-green-800">Done {formatTimestamp(signoff.doneAt)}</p>
                   ) : (
-                    <Button type="button" disabled={!signoff?.attested} onClick={() => onMarkDone(day, id)}>
-                      Mark day done
-                    </Button>
+                    <div className="flex max-w-md flex-col items-start gap-2">
+                      <Button type="button" disabled={!signoff?.attested || blocked !== null} onClick={() => onMarkDone(day, id)}>
+                        Mark day done
+                      </Button>
+                      {blocked ? <p className="text-sm text-destructive">{blocked}</p> : null}
+                    </div>
                   )}
                 </div>
               );
