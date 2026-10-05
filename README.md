@@ -20,11 +20,9 @@ npm run lint
 
 ## What is loaded
 
-The demo clock is Tuesday, October 6, 2026. A Tuesday review covers the previous day, so Monday, October 5 starts selected. Friday, October 2 stays on the 14-day trail.
+The demo clock is Tuesday, October 6, 2026. A Tuesday review covers the previous day, so Monday, October 5 starts selected. Friday, October 2 and Saturday, October 3 stay on the 14-day trail and can be selected.
 
-Friday, October 2, 2026 is the curated Dayton shop report: Nick Sontag, Brayden Mapp, and Colby Purvis are already at goal with no gaps. Zach Spencer, Cole Lozan, and Tanveer Dhaliwal have the findings from that report. Saturday, October 3 is in the day list with no findings yet.
-
-Monday, October 5, 2026 comes from a Fullbay Office timesheet scrape (`data/fullbay-timesheets/timesheets-2026-10-05.json`, status All, all shops, all employees). Each shop in that file becomes a day report: Dayton, Covington, Greenville, Springfield, Mobile, and Columbus. Clocked hours are the punch rows. Service-order hours are the segments whose complaint names an SO. Shop foremen Thomas Flora, James Benedict, Isaac Stockslager, and Kevin Neal are omitted, as is anyone with no service-order time that day. Suggested edits are a nearest-order heuristic from those punches, not a manager note. The scrape does not say whether an order is invoiced, so Monday orders are marked open on priorities. Open punches keep the elapsed hours already on the row and say that end is not a clock-out. Nothing here writes back to Fullbay.
+Friday, Saturday, and Monday are Fullbay Office timesheet scrapes under `data/fullbay-timesheets/` (status All, all shops, all employees): `timesheets-2026-10-02.json`, `timesheets-2026-10-03.json`, and `timesheets-2026-10-05.json`. Clocked hours are the punch rows, not the service-order rows nested inside them, so the timesheet footer is not the shop's clocked total. Service-order hours are the segments whose complaint names an SO. Shop foremen Thomas Flora, James Benedict, Isaac Stockslager, and Kevin Neal are omitted, as is anyone with no service-order time that day. Suggested edits are a nearest-order heuristic from those punches, not a manager note. The scrapes do not say whether an order is invoiced, so orders are marked open on priorities. Open punches keep the elapsed hours already on the row and say that end is not a clock-out. Nothing here writes back to Fullbay.
 
 The shop filter is All shops plus every shop that has a loaded day.
 

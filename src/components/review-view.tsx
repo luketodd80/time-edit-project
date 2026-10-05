@@ -50,8 +50,7 @@ export function ReviewView({
             <h2 className="text-xl font-medium">{formatDay(day)}</h2>
             {dayReports.length === 0 ? (
               <p className="rounded-xl bg-muted/50 p-4 text-sm leading-6">
-                No findings for this day. It stays on the audit trail until it is signed off.
-                {day === "2026-10-03" ? " Saturday is here so a Monday review can cover Friday and Saturday together." : ""}
+                No findings for this selection. The day stays on the audit trail until it is signed off.
               </p>
             ) : (
               dayReports.map((report) => <ShopDay key={report.shopId} report={report} decisions={decisions} onDecision={onDecision} />)
@@ -102,11 +101,9 @@ function ShopDay({
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
           Only time inside a clocked window counts. Off-the-clock stretches are in the table so the day reads straight through, and they are not gaps. Times are Eastern. Yellow is missed time. Orange is billable work with no service order.
         </p>
-        {report.day === "2026-10-05" ? (
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-            These rows come from the Fullbay timesheet scrape. Suggested edits are a nearest-order heuristic, not a manager note. The scrape does not say whether an order is invoiced, so each order is marked open on priorities.
-          </p>
-        ) : null}
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+          These rows come from the Fullbay timesheet scrape. Suggested edits are a nearest-order heuristic, not a manager note. The scrape does not say whether an order is invoiced, so each order is marked open on priorities.
+        </p>
       </div>
 
       {active.map((tech) => (
@@ -116,7 +113,6 @@ function ShopDay({
       {quiet.length > 0 ? (
         <div className="flex flex-col gap-2">
           <NoChangeTable technicians={quiet} />
-          <p className="text-sm text-muted-foreground">Isaac Stockslager is excluded (short day, not in this review).</p>
         </div>
       ) : null}
 

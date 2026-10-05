@@ -1,7 +1,9 @@
 import type { DayReport, Finding, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
 import { SHOPS } from "@/lib/types";
 import { formatClock } from "@/lib/time";
-import timesheetFile from "../../data/fullbay-timesheets/timesheets-2026-10-05.json";
+import fridayFile from "../../data/fullbay-timesheets/timesheets-2026-10-02.json";
+import saturdayFile from "../../data/fullbay-timesheets/timesheets-2026-10-03.json";
+import mondayFile from "../../data/fullbay-timesheets/timesheets-2026-10-05.json";
 
 /**
  * Shop foremen. They are left out of time-gap review and utilization entirely.
@@ -421,4 +423,6 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
   return reports;
 }
 
-export const OCTOBER_5_REPORTS = timesheetToDayReports(timesheetFile);
+export const OCTOBER_2_REPORTS = timesheetToDayReports(fridayFile);
+export const OCTOBER_3_REPORTS = timesheetToDayReports(saturdayFile);
+export const OCTOBER_5_REPORTS = timesheetToDayReports(mondayFile);

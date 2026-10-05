@@ -68,7 +68,7 @@ export function DayBar({
       <fieldset>
         <legend className="text-sm font-medium">Days</legend>
         <p className="mt-1 text-sm text-muted-foreground">
-          Demo date is Tuesday, October 6, 2026, so Monday, October 5 is due. Friday, October 2 stays on the trail. Check an earlier day to go further back.
+          Demo date is Tuesday, October 6, 2026, so Monday, October 5 is due. Friday, October 2 and Saturday, October 3 stay on the trail. Check an earlier day to go further back.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {windowDays.map((day) => {

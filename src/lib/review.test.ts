@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { CURATED_FRIDAY } from "@/lib/curated-friday";
 import { DEMO_TODAY, defaultPendingDays, reviewWindow } from "@/lib/dates";
 import { SEED } from "@/lib/seed";
 import { parsePersistedState } from "@/lib/storage";
@@ -26,7 +27,7 @@ const accept: Decision = { kind: "accept", start: "", end: "" };
 const reject: Decision = { kind: "reject", start: "", end: "" };
 
 function recommendation(id: string) {
-  const finding = SEED[0].findings.find((item) => item.id === id);
+  const finding = CURATED_FRIDAY.findings.find((item) => item.id === id);
   assert.ok(finding?.recommendation);
   return finding.recommendation;
 }
@@ -53,21 +54,23 @@ describe("review days", () => {
 });
 
 describe("shop scope", () => {
-  it("lists the loaded shops, with Friday still the curated Dayton report", () => {
+  it("lists every shop and loads Friday, Saturday, and Monday from the scrapes", () => {
     assert.deepEqual(
       SHOPS.map((shop) => shop.name),
       ["Dayton", "Covington", "Greenville", "Springfield", "Mobile", "Columbus"],
     );
-    assert.equal(SEED[0]?.day, friday);
-    assert.equal(SEED[0]?.shopId, "dayton");
-    assert.equal(SEED[0]?.findings.length, 26);
     assert.deepEqual(shopsWithData(SEED), ["dayton", "covington", "greenville", "springfield", "mobile", "columbus"]);
+    assert.ok(filterReports(SEED, "all", [friday]).length > 1);
+    assert.ok(filterReports(SEED, "covington", [friday]).length === 1);
+    assert.ok(filterReports(SEED, "all", [saturday]).length > 0);
+    assert.ok(filterReports(SEED, "all", ["2026-10-05"]).length > 0);
   });
 
-  it("shows the same Friday rows for All shops and Dayton", () => {
-    assert.deepEqual(filterReports(SEED, "all", [friday]), filterReports(SEED, "dayton", [friday]));
-    assert.deepEqual(filterReports(SEED, "covington", [friday]), []);
-    assert.deepEqual(filterReports(SEED, "all", [saturday]), []);
+  it("does not treat All shops and Dayton as the same Friday", () => {
+    const allFriday = filterReports(SEED, "all", [friday]);
+    const daytonFriday = filterReports(SEED, "dayton", [friday]);
+    assert.ok(allFriday.length > daytonFriday.length);
+    assert.ok(daytonFriday.every((report) => report.shopId === "dayton" && report.day === friday));
   });
 });
 
@@ -81,7 +84,7 @@ describe("decisions and utilization", () => {
   });
 
   it("states the day outcome from eligible recommendations only", () => {
-    const report = SEED[0];
+    const report = CURATED_FRIDAY;
     const zach = report.technicians.find((tech) => tech.id === "zach-spencer");
     const cole = report.technicians.find((tech) => tech.id === "cole-lozan");
     const tanveer = report.technicians.find((tech) => tech.id === "tanveer-dhaliwal");
@@ -106,18 +109,18 @@ describe("decisions and utilization", () => {
   });
 
   it("lists every Zach segment from the day sheet, including leave-as-is work", () => {
-    const zach = SEED[0].findings.filter((finding) => finding.techId === "zach-spencer").map((finding) => finding.start);
+    const zach = CURATED_FRIDAY.findings.filter((finding) => finding.techId === "zach-spencer").map((finding) => finding.start);
     assert.deepEqual(zach, ["06:29", "08:07", "11:06", "12:07", "12:20", "13:09", "13:44", "13:47", "15:06", "15:51"]);
-    const work = SEED[0].findings.find((finding) => finding.id === "zach-0807");
+    const work = CURATED_FRIDAY.findings.find((finding) => finding.id === "zach-0807");
     assert.equal(work?.kind, "as_is");
     assert.equal(work?.detail, "D-88889 / Replace engine.");
     assert.equal(work?.recommendation, null);
-    const tire = SEED[0].findings.find((finding) => finding.id === "zach-flag-1506");
+    const tire = CURATED_FRIDAY.findings.find((finding) => finding.id === "zach-flag-1506");
     assert.equal(tire?.recommendation, null);
   });
 
   it("adds recommended minutes for accept and nothing for reject", () => {
-    const report = SEED[0];
+    const report = CURATED_FRIDAY;
     const accepted = techTotals([report], { "zach-0629": accept, "cole-1518": reject });
     const zach = accepted.find((tech) => tech.techId === "zach-spencer");
     const cole = accepted.find((tech) => tech.techId === "cole-lozan");
@@ -154,8 +157,7 @@ describe("decisions and utilization", () => {
   });
 
   it("recomputes shop utilization from accepted minutes only", () => {
-    const fridayReport = SEED.find((report) => report.day === friday && report.shopId === "dayton");
-    assert.ok(fridayReport);
+    const fridayReport = CURATED_FRIDAY;
     const decisions = Object.fromEntries(
       fridayReport.findings.filter((finding) => finding.recommendation).map((finding) => [finding.id, accept]),
     );
@@ -175,7 +177,7 @@ describe("decisions and utilization", () => {
 
 describe("submit plan", () => {
   it("skips invoiced orders and records rejects with no reason", () => {
-    const reports = filterReports(SEED, "all", [friday]);
+    const reports = [CURATED_FRIDAY];
     const plan = buildPlan(reports, {
       "zach-0629": accept,
       "cole-1518": reject,
@@ -234,7 +236,7 @@ describe("submit plan", () => {
   });
 
   it("records a local submission for the active filter", () => {
-    const reports = filterReports(SEED, "dayton", [friday, saturday]);
+    const reports = [CURATED_FRIDAY];
     const submission = buildSubmission(reports, { "tanveer-1421": accept }, "dayton", [saturday, friday], "2026-10-05T15:00:00.000Z");
     assert.deepEqual(submission.days, [friday, saturday]);
     assert.equal(submission.edits.length, 1);
