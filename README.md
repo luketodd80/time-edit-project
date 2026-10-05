@@ -20,11 +20,13 @@ npm run lint
 
 ## What is loaded
 
-The demo clock is Monday, October 5, 2026. A Monday review covers Friday and Saturday, so those two days start selected.
+The demo clock is Tuesday, October 6, 2026. A Tuesday review covers the previous day, so Monday, October 5 starts selected. Friday, October 2 stays on the 14-day trail.
 
-Friday, October 2, 2026 is the Dayton shop: Nick Sontag, Brayden Mapp, and Colby Purvis are already at goal with no gaps. Zach Spencer, Cole Lozan, and Tanveer Dhaliwal have the findings from that report. Saturday, October 3 is in the day list with no findings yet.
+Friday, October 2, 2026 is the curated Dayton shop report: Nick Sontag, Brayden Mapp, and Colby Purvis are already at goal with no gaps. Zach Spencer, Cole Lozan, and Tanveer Dhaliwal have the findings from that report. Saturday, October 3 is in the day list with no findings yet.
 
-The shop filter is All shops plus every shop that has a loaded day. Covington, Greenville, Springfield, and Mobile are in the shop list so a later day can be added without changing the screen. With only Dayton loaded, All shops and Dayton show the same rows.
+Monday, October 5, 2026 comes from a Fullbay Office timesheet scrape (`data/fullbay-timesheets/timesheets-2026-10-05.json`, status All, all shops, all employees). Each shop in that file becomes a day report: Dayton, Covington, Greenville, Springfield, Mobile, and Columbus. Clocked hours are the punch rows. Service-order hours are the segments whose complaint names an SO. Shop foremen Thomas Flora, James Benedict, Isaac Stockslager, and Kevin Neal are omitted, as is anyone with no service-order time that day. Suggested edits are a nearest-order heuristic from those punches, not a manager note. The scrape does not say whether an order is invoiced, so Monday orders are marked open on priorities. Open punches keep the elapsed hours already on the row and say that end is not a clock-out. Nothing here writes back to Fullbay.
+
+The shop filter is All shops plus every shop that has a loaded day.
 
 ## How a review works
 
@@ -34,4 +36,4 @@ The shop filter is All shops plus every shop that has a loaded day. Covington, G
 4. Summary recomputes utilization for the same shop and days. Accepted and overridden minutes are added to SO hours. Rejected items add none.
 5. Check off that you approve that day's utilization numbers, then mark the day done. The day cannot be marked done without the check. Done days stay on the trail. Uncheck to reopen a day.
 
-Decisions, the shop and day selection, and sign-off stay in `localStorage` under `tsc-time-gap-review-v1`. There is no login and no network call.
+Decisions, the shop and day selection, and sign-off stay in `localStorage` under `tsc-time-gap-review-v2`. There is no login and no network call.

@@ -32,9 +32,10 @@ function recommendation(id: string) {
 }
 
 describe("review days", () => {
-  it("treats Monday October 5 as a Friday and Saturday review", () => {
-    assert.equal(DEMO_TODAY, "2026-10-05");
-    assert.deepEqual(defaultPendingDays(DEMO_TODAY), [friday, saturday]);
+  it("opens on Tuesday October 6 so Monday October 5 is due", () => {
+    assert.equal(DEMO_TODAY, "2026-10-06");
+    assert.deepEqual(defaultPendingDays(DEMO_TODAY), ["2026-10-05"]);
+    assert.deepEqual(defaultPendingDays("2026-10-05"), [friday, saturday]);
   });
 
   it("approves the previous day on Tuesday and Wednesday mornings", () => {
@@ -46,17 +47,21 @@ describe("review days", () => {
     const days = reviewWindow(DEMO_TODAY);
     assert.ok(days.includes(friday));
     assert.ok(days.includes(saturday));
+    assert.ok(days.includes("2026-10-05"));
     assert.equal(days.some((day) => new Date(`${day}T12:00:00Z`).getUTCDay() === 0), false);
   });
 });
 
 describe("shop scope", () => {
-  it("lists later shops in the catalog and only Dayton in the loaded data", () => {
+  it("lists the loaded shops, with Friday still the curated Dayton report", () => {
     assert.deepEqual(
       SHOPS.map((shop) => shop.name),
-      ["Dayton", "Covington", "Greenville", "Springfield", "Mobile"],
+      ["Dayton", "Covington", "Greenville", "Springfield", "Mobile", "Columbus"],
     );
-    assert.deepEqual(shopsWithData(SEED), ["dayton"]);
+    assert.equal(SEED[0]?.day, friday);
+    assert.equal(SEED[0]?.shopId, "dayton");
+    assert.equal(SEED[0]?.findings.length, 26);
+    assert.deepEqual(shopsWithData(SEED), ["dayton", "covington", "greenville", "springfield", "mobile", "columbus"]);
   });
 
   it("shows the same Friday rows for All shops and Dayton", () => {
@@ -149,10 +154,12 @@ describe("decisions and utilization", () => {
   });
 
   it("recomputes shop utilization from accepted minutes only", () => {
+    const fridayReport = SEED.find((report) => report.day === friday && report.shopId === "dayton");
+    assert.ok(fridayReport);
     const decisions = Object.fromEntries(
-      SEED[0].findings.filter((finding) => finding.recommendation).map((finding) => [finding.id, accept]),
+      fridayReport.findings.filter((finding) => finding.recommendation).map((finding) => [finding.id, accept]),
     );
-    const totals = techTotals(SEED, decisions);
+    const totals = techTotals([fridayReport], decisions);
     const sum = sumTotals(totals);
     assert.equal(sum.addedMinutes, 168);
     const soHours = sum.baselineSoHours + sum.addedMinutes / 60;

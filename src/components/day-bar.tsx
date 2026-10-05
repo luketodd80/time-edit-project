@@ -61,14 +61,14 @@ export function DayBar({
         </div>
         <p className="max-w-xl text-sm text-muted-foreground">
           All shops is the combined view. Choosing one shop narrows the gaps, orders, submit, and utilization to that shop.
-          Covington, Greenville, Springfield, and Mobile appear here once a day is loaded for them.
+          The menu lists every shop that has a loaded day.
         </p>
       </div>
 
       <fieldset>
         <legend className="text-sm font-medium">Days</legend>
         <p className="mt-1 text-sm text-muted-foreground">
-          Demo date is Monday, October 5, 2026, so Friday and Saturday are due together. Check an earlier day to go further back.
+          Demo date is Tuesday, October 6, 2026, so Monday, October 5 is due. Friday, October 2 stays on the trail. Check an earlier day to go further back.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {windowDays.map((day) => {

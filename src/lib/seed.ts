@@ -1,3 +1,4 @@
+import { OCTOBER_5_REPORTS } from "@/lib/fullbay-timesheet";
 import type { DayReport, Technician } from "@/lib/types";
 
 const shopId = "dayton" as const;
@@ -40,9 +41,9 @@ function asIs(
 }
 
 /**
- * Friday, October 2, 2026, Dayton.
- * Saturday, October 3 is a reviewable day with no report loaded yet.
- * Covington, Greenville, Springfield, and Mobile have no rows until a report is added.
+ * Friday, October 2, 2026, Dayton, is the curated shop report and is left as written.
+ * Monday, October 5, 2026 is built from the Fullbay timesheet scrape.
+ * Saturday, October 3 is still a reviewable day with no report loaded.
  */
 export const SEED: DayReport[] = [
   {
@@ -334,4 +335,5 @@ export const SEED: DayReport[] = [
       asIs("tanveer-1548", "tanveer-dhaliwal", "15:48", "16:59", "D-90523 / B service straight truck, through clock-out.", "Leave as is."),
     ],
   },
+  ...OCTOBER_5_REPORTS,
 ];

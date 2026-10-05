@@ -102,6 +102,11 @@ function ShopDay({
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
           Only time inside a clocked window counts. Off-the-clock stretches are in the table so the day reads straight through, and they are not gaps. Times are Eastern. Yellow is missed time. Orange is billable work with no service order.
         </p>
+        {report.day === "2026-10-05" ? (
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+            These rows come from the Fullbay timesheet scrape. Suggested edits are a nearest-order heuristic, not a manager note. The scrape does not say whether an order is invoiced, so each order is marked open on priorities.
+          </p>
+        ) : null}
       </div>
 
       {active.map((tech) => (

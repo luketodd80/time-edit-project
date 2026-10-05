@@ -1,6 +1,6 @@
 import { SHOPS, type Decision, type PersistedState, type ShopFilter, type Signoff, type Submission, type ViewId } from "@/lib/types";
 
-const STORAGE_KEY = "tsc-time-gap-review-v1";
+const STORAGE_KEY = "tsc-time-gap-review-v2";
 
 const SHOP_IDS = new Set<string>(SHOPS.map((shop) => shop.id));
 const VIEWS = new Set<ViewId>(["review", "confirm", "summary"]);

@@ -5,6 +5,7 @@ export const SHOPS = [
   { id: "greenville", name: "Greenville" },
   { id: "springfield", name: "Springfield" },
   { id: "mobile", name: "Mobile" },
+  { id: "columbus", name: "Columbus" },
 ] as const;
 
 export type ShopId = (typeof SHOPS)[number]["id"];
