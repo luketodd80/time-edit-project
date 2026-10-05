@@ -2,29 +2,57 @@
 
 import { OrderStatusBadge } from "@/components/order-status";
 import { formatDayShort, formatTimestamp } from "@/lib/dates";
+import { batchForSubmission, type FullbayEditBatch, type FullbayQueueEdit } from "@/lib/fullbay-edit-queue";
 import { shopName } from "@/lib/review";
 import type { PlannedEdit, SkippedOrder, Submission } from "@/lib/types";
 import { formatClock, formatDuration } from "@/lib/time";
 
-export function ConfirmView({ submission, stale }: { submission: Submission | null; stale: boolean }) {
+export function ConfirmView({
+  submission,
+  stale,
+  batches,
+  queueLoaded,
+  awaitingQueue,
+  queueError,
+}: {
+  submission: Submission | null;
+  stale: boolean;
+  batches: FullbayEditBatch[];
+  queueLoaded: boolean;
+  awaitingQueue: boolean;
+  queueError: string | null;
+}) {
   if (!submission) {
     return (
       <p className="rounded-xl bg-muted/50 p-4 text-sm leading-6">
-        Submit from Review to record what would be edited. The confirmation stays in this browser. Fullbay is not called.
+        Submit from Review to save a confirmation in this browser and queue accepted edits for Fullbay Time Stamp apply.
       </p>
     );
   }
 
   const shop = submission.shopId === "all" ? "All shops" : shopName(submission.shopId);
   const dayList = submission.days.map((day) => formatDayShort(day)).join(", ");
+  const queued = batchForSubmission(batches, submission);
+  const byId = new Map(queued?.edits.map((edit) => [edit.findingId, edit]) ?? []);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-medium">What would be edited</h2>
+        <h2 className="text-xl font-medium">Queued for Fullbay apply</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Recorded locally {formatTimestamp(submission.submittedAt)} for {shop} · {dayList}. Nothing was sent to Fullbay.
+          Recorded locally {formatTimestamp(submission.submittedAt)} for {shop} · {dayList}. Accepted edits are queued for Fullbay Time Stamp apply (Chris). They are not written until the apply is confirmed.
         </p>
+        {queueError ? (
+          <p role="alert" className="mt-3 text-sm text-destructive">
+            {queueError}
+          </p>
+        ) : null}
+        {queueLoaded && !awaitingQueue && !queued && !queueError ? (
+          <p role="alert" className="mt-3 text-sm text-destructive">
+            This confirmation is saved in this browser. It is not in the Fullbay apply queue, so apply has not started.
+          </p>
+        ) : null}
+        {awaitingQueue || !queueLoaded ? <p className="mt-3 text-sm text-muted-foreground">Checking the apply queue.</p> : null}
         {stale ? (
           <p role="alert" className="mt-3 text-sm text-destructive">
             The shop, days, or decisions changed after this confirmation. Submit again from Review to refresh it.
@@ -33,11 +61,11 @@ export function ConfirmView({ submission, stale }: { submission: Submission | nu
       </div>
 
       <EditList
-        title="Would be written"
+        title="Queued for Fullbay apply"
         empty="No accepted or overridden edits in this confirmation."
         edits={submission.edits}
         render={(edit) =>
-          `${edit.decision === "accept" ? "Accepted as recommended" : "Override"} · ${formatClock(edit.start)}–${formatClock(edit.end)} · ${formatDuration(edit.minutes)} added to SO hours`
+          `${edit.decision === "accept" ? "Accepted as recommended" : "Override"} · ${formatClock(edit.start)}–${formatClock(edit.end)} · ${formatDuration(edit.minutes)} added to SO hours. ${applyStatusText(byId.get(edit.findingId))}`
         }
       />
       <EditList
@@ -104,6 +132,14 @@ function EditList({
       )}
     </section>
   );
+}
+
+function applyStatusText(edit: FullbayQueueEdit | undefined): string {
+  if (!edit) return "Not queued.";
+  if (edit.status === "pending") return "Pending Fullbay apply.";
+  if (edit.status === "failed") return edit.applyNote ? `Fullbay apply failed. ${edit.applyNote}` : "Fullbay apply failed.";
+  const when = edit.appliedAt ? ` ${formatTimestamp(edit.appliedAt)}` : "";
+  return edit.applyNote ? `Applied in Fullbay${when}. ${edit.applyNote}` : `Applied in Fullbay${when}.`;
 }
 
 function SkippedRow({ order }: { order: SkippedOrder }) {

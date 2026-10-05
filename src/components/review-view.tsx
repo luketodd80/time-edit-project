@@ -64,7 +64,7 @@ export function ReviewView({
           Submit decisions
         </Button>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Records the accepted, rejected, and overridden edits for the shop and days in view. Nothing is sent to Fullbay.
+          Saves this confirmation in the browser and queues accepted and overridden edits for Fullbay Time Stamp apply. Rejected edits are not queued.
         </p>
         {submitError ? (
           <p role="alert" className="text-sm text-destructive">

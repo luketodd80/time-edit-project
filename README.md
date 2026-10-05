@@ -30,8 +30,14 @@ The shop filter is All shops plus every shop that has a loaded day.
 
 1. Filter by shop and check the days to review. The recent range, Sundays excluded, is the audit trail. Due days that are still open are not approved. Older days that were never signed off are marked skipped.
 2. On Review, each technician who needs a decision is one table of the segments loaded for that day, in clock order. Yellow rows are missed time. The orange row is billable work with no service order. Off-the-clock rows say they are not a gap. Accept or reject a recommendation in one click. Reject does not ask for a reason. Override shows a start and an end, prefilled with the recommendation. Change either field, or both. Clear a field, or leave it as recommended, and that side stays recommended. Techs already at or above 98% sit in a short no-change table.
-3. Submit records the decisions in this browser and opens Confirm: edits that would be written, rejects with no reason, and orders skipped because they are invoiced or closed. Nothing is sent to Fullbay.
+3. Submit records the decisions in this browser and opens Confirm. Accepted and overridden edits are also posted to the apply queue. Rejected edits are not queued. Confirm shows each edit as pending, applied, or failed. Chris applies the clock times in Fullbay, then confirms the batch. This app does not log into Fullbay.
 4. Summary recomputes utilization for the same shop and days. Accepted and overridden minutes are added to SO hours. Rejected items add none.
-5. Check off that you approve that day's utilization numbers, then mark the day done. The day cannot be marked done without the check. Done days stay on the trail. Uncheck to reopen a day.
+5. Check off that you approve that day's utilization numbers, then mark the day done. The day cannot be marked done without that check, or while the latest queued edits for that shop and day are still pending or failed. Rejected edits do not block sign-off. Done days stay on the trail. Uncheck to reopen a day.
 
-Decisions, the shop and day selection, and sign-off stay in `localStorage` under `tsc-time-gap-review-v2`. There is no login and no network call.
+Decisions, the shop and day selection, and sign-off stay in `localStorage` under `tsc-time-gap-review-v2`. The apply queue is `data/fullbay-edit-queue.json` on the server.
+
+### Apply queue
+
+`POST /api/fullbay-edits` stores a batch. The server assigns `id`. Each edit has `findingId`, `day`, `shopId`, `shopName`, `techName`, `orderId`, `work`, `decision` (`accept` or `override`), `newClockIn`, `newClockOut`, `minutes`, `status` (`pending`, `applied`, or `failed`), `appliedAt`, and `applyNote`.
+
+`GET /api/fullbay-edits/pending` lists batches that still have a pending edit. `GET /api/fullbay-edits/latest` returns the newest batch and the full queue. `POST /api/fullbay-edits/confirm` takes `{ batchId, results: [{ findingId, status, applyNote? }] }` and updates those edits. If `FULLBAY_EDIT_QUEUE_TOKEN` is set, POST and confirm require the header `x-fullbay-edit-token`.
