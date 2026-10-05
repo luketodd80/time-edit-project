@@ -172,6 +172,51 @@ describe("timesheet conversion rules", () => {
     assert.equal(reports[0]?.technicians[0]?.soHours, 1);
   });
 
+  it("does not recommend a gap where an earlier service order already covers the next punch", () => {
+    const reports = timesheetToDayReports({
+      date: monday,
+      rows: [
+        row({
+          employee: "Span Tech",
+          shop: "The Service Company - Springfield (S)",
+          clock_in: "8:00:00AM 10/5/2026",
+          clock_out: "8:30:00AM 10/5/2026",
+          hours: 0.5,
+        }),
+        row({
+          employee: "Span Tech",
+          shop: "The Service Company - Springfield (S)",
+          clock_in: "8:10:00AM 10/5/2026",
+          clock_out: "9:30:00AM 10/5/2026",
+          hours: 1.33,
+          so_complaint: "S-12 / Diagnose",
+        }),
+        row({
+          employee: "Span Tech",
+          shop: "The Service Company - Springfield (S)",
+          clock_in: "8:30:00AM 10/5/2026",
+          clock_out: "10:00:00AM 10/5/2026",
+          hours: 1.5,
+        }),
+        row({
+          employee: "Span Tech",
+          shop: "The Service Company - Springfield (S)",
+          clock_in: "9:30:00AM 10/5/2026",
+          clock_out: "10:00:00AM 10/5/2026",
+          hours: 0.5,
+          so_complaint: "S-13 / Replace hose",
+        }),
+      ],
+    });
+    const findings = reports[0]?.findings ?? [];
+    assert.equal(
+      findings.some((finding) => finding.kind === "gap" && finding.start === "08:30"),
+      false,
+    );
+    assert.ok(findings.some((finding) => finding.kind === "as_is" && finding.detail.includes("S-12 / Diagnose") && finding.end === "09:30"));
+    assert.ok(findings.some((finding) => finding.kind === "as_is" && finding.detail.includes("S-13 / Replace hose")));
+  });
+
   it("treats a shop meeting as a gap toward the nearest order, not a billable flag", () => {
     const reports = timesheetToDayReports({
       date: monday,
@@ -456,7 +501,24 @@ describe("October 2 and October 3 downloads", () => {
     assert.deepEqual(namesOn(OCTOBER_2_REPORTS, "mobile"), ["Chris Clark", "Jeff Haney"]);
     assert.deepEqual(namesOn(OCTOBER_2_REPORTS, "columbus"), ["Derek Roby", "Justin Winner", "Stephen Hill"]);
     assert.equal(OCTOBER_2_REPORTS.reduce((sum, report) => sum + report.technicians.length, 0), 26);
-    assert.equal(OCTOBER_2_REPORTS.reduce((sum, report) => sum + report.findings.length, 0), 296);
+    assert.equal(OCTOBER_2_REPORTS.reduce((sum, report) => sum + report.findings.length, 0), 287);
+    const springfield = OCTOBER_2_REPORTS.find((report) => report.shopId === "springfield");
+    const gary = springfield?.findings.filter((finding) => finding.techId === "gary-evans" && finding.kind === "gap") ?? [];
+    const john = springfield?.findings.filter((finding) => finding.techId === "john-spichty" && finding.kind === "gap") ?? [];
+    assert.deepEqual(
+      gary.map((finding) => [finding.start, finding.end, finding.recommendation?.orderId]),
+      [["06:54", "06:57", "S-90485"]],
+    );
+    assert.deepEqual(
+      john.map((finding) => [finding.start, finding.end, finding.recommendation?.orderId]),
+      [["11:44", "11:45", "S-90541"]],
+    );
+    assert.ok(springfield?.findings.some((finding) => finding.techId === "gary-evans" && finding.kind === "as_is" && finding.detail.includes("S-90507 / Check AC") && finding.start === "13:51"));
+    assert.ok(springfield?.findings.some((finding) => finding.techId === "gary-evans" && finding.kind === "as_is" && finding.detail.includes("S-90512") && finding.end === "16:30"));
+    assert.ok(springfield?.findings.some((finding) => finding.techId === "john-spichty" && finding.kind === "as_is" && finding.detail.includes("install drive line") && finding.start === "07:03" && finding.end === "08:08"));
+    assert.ok(springfield?.findings.some((finding) => finding.techId === "john-spichty" && finding.kind === "as_is" && finding.detail.includes("S-90480 / Alignment") && finding.start === "08:09"));
+    assert.ok(springfield?.findings.some((finding) => finding.techId === "john-spichty" && finding.kind === "as_is" && finding.detail.includes("S-90541") && finding.start === "11:45"));
+    assert.ok(springfield?.findings.some((finding) => finding.techId === "john-spichty" && finding.kind === "as_is" && finding.detail.includes("B service light duty") && finding.start === "13:51"));
     assertReportShape(OCTOBER_2_REPORTS);
     const cole = OCTOBER_2_REPORTS.find((report) => report.shopId === "dayton")?.findings.find(
       (finding) => finding.techId === "cole-lozan" && finding.detail.includes("Help Nick"),

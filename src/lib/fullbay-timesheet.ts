@@ -457,6 +457,44 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     });
   }
 
+  // A segment is attached to the punch where it starts, but a pencil edit can run that
+  // service order into the next clock punch. Time already on the order is not a gap.
+  function uncoveredByServiceOrders(startSeconds: number, endSeconds: number): Array<[number, number]> {
+    let pieces: Array<[number, number]> = [[startSeconds, endSeconds]];
+    for (const segment of segments) {
+      const segmentEnd = impliedEnd(segment.start, segment.end, segment.hours);
+      const next: Array<[number, number]> = [];
+      for (const [start, end] of pieces) {
+        const coverStart = Math.max(start, segment.start);
+        const coverEnd = Math.min(end, segmentEnd);
+        if (coverEnd <= coverStart) {
+          next.push([start, end]);
+          continue;
+        }
+        if (start < coverStart) next.push([start, coverStart]);
+        if (coverEnd < end) next.push([coverEnd, end]);
+      }
+      pieces = next;
+    }
+    return pieces;
+  }
+
+  function pushUncovered(
+    startSeconds: number,
+    endSeconds: number,
+    open: boolean,
+    activity: string,
+    comment: string,
+    commentFromClockIn: boolean,
+    wholePunch: boolean,
+  ) {
+    const pieces = uncoveredByServiceOrders(startSeconds, endSeconds);
+    for (const [start, end] of pieces) {
+      const fullPiece = pieces.length === 1 && start === startSeconds && end === endSeconds;
+      pushGap(start, end, open && end >= endSeconds - 1, activity, comment, commentFromClockIn, wholePunch && fullPiece);
+    }
+  }
+
   function pushGap(
     startSeconds: number,
     endSeconds: number,
@@ -553,14 +591,14 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     const nested = assigned[i];
     let cursor = punch.start;
     if (nested.length === 0) {
-      pushGap(punch.start, punchEnd, open, punch.activity, punch.comment, punch.commentFromClockIn, true);
+      pushUncovered(punch.start, punchEnd, open, punch.activity, punch.comment, punch.commentFromClockIn, true);
     } else {
       for (const segment of nested) {
-        if (segment.start > cursor) pushGap(cursor, segment.start, false, punch.activity, "", false, false);
+        if (segment.start > cursor) pushUncovered(cursor, segment.start, false, punch.activity, "", false, false);
         pushSegment(segment);
         cursor = Math.max(cursor, impliedEnd(segment.start, segment.end, segment.hours));
       }
-      if (punchEnd > cursor) pushGap(cursor, punchEnd, open, punch.activity, "", false, false);
+      if (punchEnd > cursor) pushUncovered(cursor, punchEnd, open, punch.activity, "", false, false);
     }
 
     const next = punches[i + 1];
