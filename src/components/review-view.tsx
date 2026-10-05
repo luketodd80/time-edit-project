@@ -102,7 +102,7 @@ function ShopDay({
           Only time inside a clocked window counts. Off-the-clock stretches are in the table so the day reads straight through, and they are not gaps. Times are Eastern. Yellow is missed time. Orange is billable work with no service order.
         </p>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-          These rows come from the Fullbay timesheet scrape. Suggested edits are a nearest-order heuristic, not a manager note. The scrape does not say whether an order is invoiced, so each order is marked open on priorities.
+          These rows come from the Fullbay timesheet. A gap with no Clock In Comment is aimed at the nearest service order for that tech. A Clock In Comment that names a coworker, such as “Help Nick”, is aimed at that person’s overlapping service order on the same shop day. Orders are marked open on priorities.
         </p>
       </div>
 

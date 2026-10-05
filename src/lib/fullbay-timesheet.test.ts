@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import fridayFile from "../../data/fullbay-timesheets/timesheets-2026-10-02.json";
+import { readFileSync } from "node:fs";
 import saturdayFile from "../../data/fullbay-timesheets/timesheets-2026-10-03.json";
 import timesheetFile from "../../data/fullbay-timesheets/timesheets-2026-10-05.json";
+import { FRIDAY_DETAILS_CSV } from "@/lib/friday-details-csv";
 import {
   FOREMEN,
   OCTOBER_2_REPORTS,
@@ -10,6 +11,7 @@ import {
   OCTOBER_5_REPORTS,
   OPEN_PUNCH_NOTE,
   isForeman,
+  parseDetailsListCsv,
   shopIdForTimesheetShop,
   timesheetToDayReports,
   type FullbayTimesheetRow,
@@ -297,19 +299,122 @@ function assertReportShape(reports: DayReport[]) {
   }
 }
 
-describe("October 2 and 3 scrapes", () => {
-  it("keeps the Friday and Saturday source files", () => {
-    assert.equal(fridayFile.date, "2026-10-02");
-    assert.equal(fridayFile.row_count, 344);
-    assert.equal(fridayFile.rows.length, 344);
-    assert.equal(fridayFile.footer_total_hours, 541.12);
+describe("October 2 download and October 3 scrape", () => {
+  it("keeps the Friday Details List download and the Saturday scrape", () => {
+    const csv = readFileSync("data/fullbay-timesheets/timesheets-download-2026-10-02.csv", "utf8");
+    assert.equal(csv, FRIDAY_DETAILS_CSV);
+    const friday = parseDetailsListCsv(csv, "2026-10-02");
+    assert.equal(friday.rows.length, 344);
+    const cole = friday.rows.find(
+      (row) => row.employee === "Cole Lozan" && row.clock_in.startsWith("7:27:38AM") && row.clock_in_activity === "Normal Non Pro",
+    );
+    assert.equal(cole?.clock_in_comment, "Help Nick");
+    assert.equal(cole?.comment, "");
+    assert.equal(cole?.so_complaint, "");
     assert.equal(saturdayFile.date, "2026-10-03");
     assert.equal(saturdayFile.row_count, 31);
     assert.equal(saturdayFile.rows.length, 31);
     assert.equal(saturdayFile.footer_total_hours, 110.33);
   });
 
-  it("builds Friday from the scrape for every shop that has service-order time", () => {
+  it("sends Help Nick to the named coworker’s overlapping service order", () => {
+    const reports = timesheetToDayReports({
+      date: monday,
+      rows: [
+        row({
+          employee: "Cole Lozan",
+          clock_in: "7:09:00AM 10/5/2026",
+          clock_out: "7:26:00AM 10/5/2026",
+          hours: 0.28,
+        }),
+        row({
+          employee: "Cole Lozan",
+          clock_in: "7:09:00AM 10/5/2026",
+          clock_out: "7:26:00AM 10/5/2026",
+          hours: 0.28,
+          so_complaint: "D-90394 / Unit is in derate",
+        }),
+        row({
+          employee: "Cole Lozan",
+          clock_in: "7:27:00AM 10/5/2026",
+          clock_out: "8:03:00AM 10/5/2026",
+          clock_in_activity: "Normal Non Pro",
+          hours: 0.6,
+          clock_in_comment: "Help Nick",
+        }),
+        row({
+          employee: "Cole Lozan",
+          clock_in: "8:03:00AM 10/5/2026",
+          clock_out: "9:23:00AM 10/5/2026",
+          hours: 1.33,
+        }),
+        row({
+          employee: "Cole Lozan",
+          clock_in: "8:03:00AM 10/5/2026",
+          clock_out: "9:23:00AM 10/5/2026",
+          hours: 1.33,
+          so_complaint: "D-90394 / Unit is in derate",
+        }),
+        row({
+          employee: "Nick Sontag",
+          clock_in: "7:08:00AM 10/5/2026",
+          clock_out: "11:40:00AM 10/5/2026",
+          hours: 4.53,
+        }),
+        row({
+          employee: "Nick Sontag",
+          clock_in: "7:08:00AM 10/5/2026",
+          clock_out: "9:35:00AM 10/5/2026",
+          hours: 2.45,
+          so_complaint: "D-89637 / Replace injectors",
+        }),
+      ],
+    });
+    const help = reports[0]?.findings.find((finding) => finding.detail.includes("Help Nick"));
+    assert.equal(help?.kind, "gap");
+    assert.equal(help?.recommendation?.orderId, "D-89637");
+    assert.equal(help?.recommendation?.work, "Replace injectors");
+    assert.match(help?.detail ?? "", /Clock In Comment: “Help Nick”/);
+    assert.match(help?.detail ?? "", /Nick Sontag/);
+    assert.match(help?.recommendation?.summary ?? "", /D-89637 Replace injectors/);
+  });
+
+  it("keeps a trailing Comment of Help Nick on this tech’s nearest order", () => {
+    const reports = timesheetToDayReports({
+      date: monday,
+      rows: [
+        row({
+          employee: "Cole Lozan",
+          clock_in: "7:09:00AM 10/5/2026",
+          clock_out: "7:26:00AM 10/5/2026",
+          hours: 0.28,
+          so_complaint: "D-90394 / Unit is in derate",
+        }),
+        row({
+          employee: "Cole Lozan",
+          clock_in: "7:27:00AM 10/5/2026",
+          clock_out: "8:03:00AM 10/5/2026",
+          clock_in_activity: "Normal Non Pro",
+          hours: 0.6,
+          comment: "Help Nick",
+        }),
+        row({
+          employee: "Nick Sontag",
+          clock_in: "7:08:00AM 10/5/2026",
+          clock_out: "9:35:00AM 10/5/2026",
+          hours: 2.45,
+          so_complaint: "D-89637 / Replace injectors",
+        }),
+      ],
+    });
+    const help = reports[0]?.findings.find((finding) => finding.techId === "cole-lozan" && finding.detail.includes("Help Nick"));
+    assert.equal(help?.kind, "gap");
+    assert.equal(help?.recommendation?.orderId, "D-90394");
+    assert.match(help?.detail ?? "", /Comment: “Help Nick”/);
+    assert.doesNotMatch(help?.detail ?? "", /Clock In Comment/);
+  });
+
+  it("builds Friday from the Details List download for every shop that has service-order time", () => {
     assert.deepEqual(
       OCTOBER_2_REPORTS.map((report) => report.shopId),
       ["dayton", "covington", "greenville", "springfield", "mobile", "columbus"],
@@ -345,6 +450,24 @@ describe("October 2 and 3 scrapes", () => {
     assert.equal(OCTOBER_2_REPORTS.reduce((sum, report) => sum + report.technicians.length, 0), 26);
     assert.equal(OCTOBER_2_REPORTS.reduce((sum, report) => sum + report.findings.length, 0), 296);
     assertReportShape(OCTOBER_2_REPORTS);
+    const cole = OCTOBER_2_REPORTS.find((report) => report.shopId === "dayton")?.findings.find(
+      (finding) => finding.techId === "cole-lozan" && finding.detail.includes("Help Nick"),
+    );
+    assert.equal(cole?.kind, "gap");
+    assert.equal(cole?.start, "07:28");
+    assert.equal(cole?.end, "08:03");
+    assert.equal(cole?.minutes, 35);
+    assert.equal(cole?.recommendation?.orderId, "D-89637");
+    assert.match(cole?.detail ?? "", /Clock In Comment: “Help Nick”/);
+    assert.match(cole?.detail ?? "", /Nick Sontag’s overlapping order is D-89637/);
+    assert.match(cole?.recommendation?.summary ?? "", /Put this on D-89637/);
+    assert.match(cole?.recommendation?.summary ?? "", /Nick Sontag/);
+    const tire = OCTOBER_2_REPORTS.find((report) => report.shopId === "dayton")?.findings.find(
+      (finding) => finding.techId === "zach-spencer" && finding.detail.includes("plugging tire"),
+    );
+    assert.equal(tire?.kind, "flag");
+    assert.equal(tire?.recommendation, null);
+    assert.match(tire?.detail ?? "", /Clock In Comment: “plugging tire for mansfeild”/);
     const loaded = OCTOBER_2_REPORTS.flatMap((report) => report.technicians.map((tech) => tech.name));
     for (const name of ["Thomas Flora", "James Benedict", "Isaac Stockslager", "Kevin Neal", "Jacob Griffith", "Josh Silva-holley", "Travis Hess"]) {
       assert.equal(loaded.includes(name), false);

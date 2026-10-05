@@ -1,9 +1,9 @@
 import type { DayReport, Finding, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
 import { SHOPS } from "@/lib/types";
 import { formatClock } from "@/lib/time";
-import fridayFile from "../../data/fullbay-timesheets/timesheets-2026-10-02.json";
 import saturdayFile from "../../data/fullbay-timesheets/timesheets-2026-10-03.json";
 import mondayFile from "../../data/fullbay-timesheets/timesheets-2026-10-05.json";
+import { FRIDAY_DETAILS_CSV } from "@/lib/friday-details-csv";
 
 /**
  * Shop foremen. They are left out of time-gap review and utilization entirely.
@@ -22,9 +22,31 @@ export interface FullbayTimesheetRow {
   clock_out: string;
   hours: number;
   so_complaint: string;
+  /** Trailing Comment column. Details List downloads also have Clock In Comment; that one wins for Non-Pro notes. */
   comment: string;
+  clock_in_comment?: string;
   open_punch?: boolean;
 }
+
+/** Column order of a Fullbay Office Details List timesheet download. */
+export const DETAILS_LIST_HEADERS = [
+  "Shop",
+  "Employee",
+  "Clock In",
+  "Clock In IP",
+  "Clock In Activity",
+  "Clock In Comment",
+  "Clock Out",
+  "Clock Out IP",
+  "Clock Out Activity",
+  "Clock Out Comment",
+  "Type",
+  "Hours",
+  "SO / Complaint",
+  "Modified By",
+  "Modified Date/Time",
+  "Comment",
+] as const;
 
 export interface FullbayTimesheetFile {
   date: string;
@@ -37,6 +59,13 @@ interface Punch {
   hours: number;
   activity: string;
   comment: string;
+  /** True when `comment` came from Clock In Comment rather than the trailing Comment column. */
+  commentFromClockIn: boolean;
+}
+
+interface PeerSegment {
+  name: string;
+  segment: Segment;
 }
 
 interface Segment {
@@ -71,6 +100,91 @@ export function isForeman(name: string): boolean {
 export function shopIdForTimesheetShop(shop: string): ShopId | null {
   const match = SHOP_PATTERNS.find((entry) => entry.pattern.test(shop));
   return match?.id ?? null;
+}
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  const source = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (source[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += char;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (char === ",") {
+      row.push(field);
+      field = "";
+      continue;
+    }
+    if (char === "\n" || char === "\r") {
+      if (char === "\r" && source[i + 1] === "\n") i += 1;
+      row.push(field);
+      field = "";
+      if (row.some((cell) => cell.length > 0)) rows.push(row);
+      row = [];
+      continue;
+    }
+    field += char;
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    if (row.some((cell) => cell.length > 0)) rows.push(row);
+  }
+  return rows;
+}
+
+/**
+ * Details List download. `Type` of SO Hours is a service-order segment.
+ * `Type` of Clocked is the punch envelope. Clock In Comment is kept separate
+ * from the trailing Comment column.
+ */
+export function parseDetailsListCsv(csv: string, date: string): FullbayTimesheetFile {
+  const table = parseCsv(csv);
+  const header = table[0]?.map((cell) => cell.trim()) ?? [];
+  const missing = DETAILS_LIST_HEADERS.filter((name) => !header.includes(name));
+  if (missing.length > 0) throw new Error(`Details List CSV is missing ${missing.join(", ")}.`);
+  const index = new Map(header.map((name, position) => [name, position]));
+  const cell = (record: string[], name: (typeof DETAILS_LIST_HEADERS)[number]) => (record[index.get(name) ?? -1] ?? "").trim();
+  const rows: FullbayTimesheetRow[] = [];
+  for (const record of table.slice(1)) {
+    const employee = cell(record, "Employee");
+    const shop = cell(record, "Shop");
+    if (!employee && !shop) continue;
+    const type = cell(record, "Type").toLowerCase();
+    const complaint = cell(record, "SO / Complaint");
+    const isSegment = type === "so hours" || (type !== "clocked" && complaint.length > 0);
+    const hours = Number(cell(record, "Hours"));
+    const clockOut = cell(record, "Clock Out");
+    rows.push({
+      shop,
+      employee,
+      clock_in: cell(record, "Clock In"),
+      clock_in_activity: cell(record, "Clock In Activity"),
+      clock_out: clockOut,
+      hours: Number.isFinite(hours) ? hours : 0,
+      so_complaint: isSegment ? complaint : "",
+      comment: cell(record, "Comment"),
+      clock_in_comment: cell(record, "Clock In Comment"),
+      open_punch: clockOut.length === 0,
+    });
+  }
+  return { date, rows };
 }
 
 function round2(value: number): number {
@@ -147,6 +261,80 @@ function nearestOrder(
   return { segment: previous, side: "previous" };
 }
 
+/**
+ * Clock In Comment "Help {Name}" (also helping / helped / assist, with an optional "with")
+ * names another tech on the same shop and day. When that person has a service-order
+ * segment overlapping this punch, recommend their order. Cole Lozan’s 7:27–8:03
+ * “Help Nick” uses Nick Sontag’s overlapping D-89637, rather than Cole’s own nearest SO.
+ * No overlapping segment falls back to this tech’s nearest service order.
+ */
+function helpTargetName(comment: string): string | null {
+  const match = /^(?:help(?:ing|ed)?|assist(?:ing|ed)?)(?:\s+with)?\s+(.+?)\s*$/i.exec(comment.trim());
+  if (!match) return null;
+  const name = match[1].replace(/^["']+|["',.!?;:]+$/g, "").trim();
+  if (!/^[a-z][a-z .'-]*$/i.test(name)) return null;
+  return name;
+}
+
+function personMatchesHelpTarget(person: string, target: string): boolean {
+  const personTokens = normalizePersonName(person).split(" ").filter(Boolean);
+  const targetTokens = normalizePersonName(target).split(" ").filter(Boolean);
+  return targetTokens.length > 0 && targetTokens.every((token) => personTokens.includes(token));
+}
+
+function overlappingHelp(
+  comment: string,
+  gapStart: number,
+  gapEnd: number,
+  selfName: string,
+  peers: PeerSegment[],
+): PeerSegment | null {
+  const target = helpTargetName(comment);
+  if (!target) return null;
+  const self = normalizePersonName(selfName);
+  let best: { peer: PeerSegment; overlap: number } | null = null;
+  for (const peer of peers) {
+    if (normalizePersonName(peer.name) === self) continue;
+    if (!personMatchesHelpTarget(peer.name, target)) continue;
+    const end = impliedEnd(peer.segment.start, peer.segment.end, peer.segment.hours);
+    const overlap = Math.min(gapEnd, end) - Math.max(gapStart, peer.segment.start);
+    if (overlap <= 0) continue;
+    const earlier = best != null && peer.segment.start < best.peer.segment.start;
+    const sameStart = best != null && peer.segment.start === best.peer.segment.start && peer.segment.orderId < best.peer.segment.orderId;
+    if (best == null || overlap > best.overlap || (overlap === best.overlap && (earlier || sameStart))) {
+      best = { peer, overlap };
+    }
+  }
+  return best?.peer ?? null;
+}
+
+function segmentSpan(segment: Segment): { start: string; end: string } {
+  const end = impliedEnd(segment.start, segment.end, segment.hours);
+  return { start: clockLabel(toMinute(segment.start)), end: clockLabel(Math.max(toMinute(segment.start), toMinute(end))) };
+}
+
+function recommendationForPeer(
+  start: string,
+  end: string,
+  minutes: number,
+  peer: PeerSegment,
+  comment: string,
+  open: boolean,
+): Recommendation {
+  const work = peer.segment.title;
+  const label = work ? `${peer.segment.orderId} ${work}` : peer.segment.orderId;
+  const span = segmentSpan(peer.segment);
+  const openNote = open ? ` ${OPEN_PUNCH_NOTE}` : "";
+  return {
+    orderId: peer.segment.orderId,
+    work,
+    start,
+    end,
+    minutes,
+    summary: `Put this on ${label}. Clock In Comment “${comment}” matches ${peer.name}, who is on that order ${formatClock(span.start)}–${formatClock(span.end)}.${openNote}`,
+  };
+}
+
 function recommendationFor(
   start: string,
   end: string,
@@ -190,7 +378,20 @@ interface BuiltTech {
   firstStart: number;
 }
 
-function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimesheetRow[]): BuiltTech | null {
+function segmentsFromRows(rows: FullbayTimesheetRow[]): Segment[] {
+  const segments: Segment[] = [];
+  for (const row of rows) {
+    const complaint = parseComplaint(row.so_complaint);
+    if (!complaint) continue;
+    const start = parseClockSeconds(row.clock_in);
+    if (start == null) continue;
+    const end = row.clock_out ? parseClockSeconds(row.clock_out) : null;
+    segments.push({ start, end, hours: Number(row.hours) || 0, orderId: complaint.orderId, title: complaint.title });
+  }
+  return segments;
+}
+
+function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimesheetRow[], peers: PeerSegment[]): BuiltTech | null {
   if (isForeman(name)) return null;
 
   const punches: Punch[] = [];
@@ -204,12 +405,14 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     if (complaint) {
       segments.push({ start, end, hours, orderId: complaint.orderId, title: complaint.title });
     } else if (!row.so_complaint.trim()) {
+      const clockInComment = row.clock_in_comment?.trim() ?? "";
       punches.push({
         start,
         end,
         hours,
         activity: row.clock_in_activity.trim(),
-        comment: row.comment.trim(),
+        comment: clockInComment || row.comment.trim(),
+        commentFromClockIn: clockInComment.length > 0,
       });
     }
   }
@@ -254,15 +457,43 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     });
   }
 
-  function pushGap(startSeconds: number, endSeconds: number, open: boolean, activity: string, comment: string, wholePunch: boolean) {
+  function pushGap(
+    startSeconds: number,
+    endSeconds: number,
+    open: boolean,
+    activity: string,
+    comment: string,
+    commentFromClockIn: boolean,
+    wholePunch: boolean,
+  ) {
     const window = windowOf(startSeconds, endSeconds);
     if (!window) return;
     const billable = wholePunch && comment.length > 0 && BILLABLE_COMMENT.test(comment);
     const activityText = activity && activity !== "Inactive" ? ` Activity: ${activity}.` : "";
     const openText = open ? ` ${OPEN_PUNCH_NOTE}` : "";
-    const detail = wholePunch
-      ? `Clocked.${activityText} No service order on this punch.${comment ? ` Comment: “${comment}”.` : ""}${openText}`
+    const commentText = comment
+      ? commentFromClockIn
+        ? ` Clock In Comment: “${comment}”.`
+        : ` Comment: “${comment}”.`
+      : "";
+    let detail = wholePunch
+      ? `Clocked.${activityText} No service order on this punch.${commentText}${openText}`
       : `Clocked. No service order on this stretch.${openText}`;
+    const peer = commentFromClockIn ? overlappingHelp(comment, startSeconds, endSeconds, name, peers) : null;
+    if (peer) {
+      const span = segmentSpan(peer.segment);
+      const orderLabel = peer.segment.title ? `${peer.segment.orderId} / ${peer.segment.title}` : peer.segment.orderId;
+      detail += ` ${peer.name}’s overlapping order is ${orderLabel} (${formatClock(span.start)}–${formatClock(span.end)}).`;
+      push({
+        kind: "gap",
+        start: window.start,
+        end: window.end,
+        minutes: window.minutes,
+        detail,
+        recommendation: recommendationForPeer(window.start, window.end, window.minutes, peer, comment, open),
+      });
+      return;
+    }
     if (billable) {
       push({
         kind: "flag",
@@ -270,7 +501,7 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
         end: window.end,
         minutes: window.minutes,
         detail,
-        suggested: `Clocked with no service order. The note looks like billable work (“${comment}”). This scrape does not name an order for it, so no edit is proposed.`,
+        suggested: `Clocked with no service order. The note looks like billable work (“${comment}”). This timesheet does not name an order for it, so no edit is proposed.`,
         recommendation: null,
       });
       return;
@@ -283,7 +514,7 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
         end: window.end,
         minutes: window.minutes,
         detail,
-        suggested: "Clocked with no service order, and no other service order for this tech today. No edit from this scrape.",
+        suggested: "Clocked with no service order, and no other service order for this tech today. No edit from this timesheet.",
         recommendation: null,
       });
       return;
@@ -322,14 +553,14 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     const nested = assigned[i];
     let cursor = punch.start;
     if (nested.length === 0) {
-      pushGap(punch.start, punchEnd, open, punch.activity, punch.comment, true);
+      pushGap(punch.start, punchEnd, open, punch.activity, punch.comment, punch.commentFromClockIn, true);
     } else {
       for (const segment of nested) {
-        if (segment.start > cursor) pushGap(cursor, segment.start, false, punch.activity, "", false);
+        if (segment.start > cursor) pushGap(cursor, segment.start, false, punch.activity, "", false, false);
         pushSegment(segment);
         cursor = Math.max(cursor, impliedEnd(segment.start, segment.end, segment.hours));
       }
-      if (punchEnd > cursor) pushGap(cursor, punchEnd, open, punch.activity, "", false);
+      if (punchEnd > cursor) pushGap(cursor, punchEnd, open, punch.activity, "", false, false);
     }
 
     const next = punches[i + 1];
@@ -358,6 +589,12 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     if (seen.has(segment.orderId)) continue;
     seen.add(segment.orderId);
     orders.push({ id: segment.orderId, shopId, title: segment.title, status: "priorities" });
+  }
+  for (const finding of findings) {
+    const recommended = finding.recommendation;
+    if (!recommended || seen.has(recommended.orderId)) continue;
+    seen.add(recommended.orderId);
+    orders.push({ id: recommended.orderId, shopId, title: recommended.work, status: "priorities" });
   }
 
   return {
@@ -388,9 +625,16 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
     else grouped.set(key, { shopId, name, rows: [row] });
   }
 
+  const peersByShop = new Map<ShopId, PeerSegment[]>();
+  for (const group of grouped.values()) {
+    const list = peersByShop.get(group.shopId) ?? [];
+    for (const segment of segmentsFromRows(group.rows)) list.push({ name: group.name, segment });
+    peersByShop.set(group.shopId, list);
+  }
+
   const byShop = new Map<ShopId, BuiltTech[]>();
   for (const group of grouped.values()) {
-    const built = buildTech(file.date, group.shopId, group.name, group.rows);
+    const built = buildTech(file.date, group.shopId, group.name, group.rows, peersByShop.get(group.shopId) ?? []);
     if (!built) continue;
     const list = byShop.get(group.shopId) ?? [];
     list.push(built);
@@ -423,6 +667,7 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
   return reports;
 }
 
-export const OCTOBER_2_REPORTS = timesheetToDayReports(fridayFile);
+/** Friday prefers the Details List download (Clock In Comment). Saturday and Monday stay on the Office scrapes. */
+export const OCTOBER_2_REPORTS = timesheetToDayReports(parseDetailsListCsv(FRIDAY_DETAILS_CSV, "2026-10-02"));
 export const OCTOBER_3_REPORTS = timesheetToDayReports(saturdayFile);
 export const OCTOBER_5_REPORTS = timesheetToDayReports(mondayFile);

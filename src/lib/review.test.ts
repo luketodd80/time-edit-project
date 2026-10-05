@@ -54,7 +54,7 @@ describe("review days", () => {
 });
 
 describe("shop scope", () => {
-  it("lists every shop and loads Friday, Saturday, and Monday from the scrapes", () => {
+  it("lists every shop and loads Friday, Saturday, and Monday", () => {
     assert.deepEqual(
       SHOPS.map((shop) => shop.name),
       ["Dayton", "Covington", "Greenville", "Springfield", "Mobile", "Columbus"],
