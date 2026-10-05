@@ -18,6 +18,25 @@ npm test
 npm run lint
 ```
 
+## Shared password
+
+Set these on Render (or any other host) to put one shared login in front of the app:
+
+| Variable | Role |
+| --- | --- |
+| `SITE_USER` | Shared username |
+| `SITE_PASSWORD` | Shared password |
+
+When `SITE_PASSWORD` has a value, HTTP Basic auth covers every path: pages, `/api` (including the Fullbay edit queue), and static files. The browser asks once, then sends `Authorization: Basic` on later requests.
+
+When `SITE_PASSWORD` is unset or empty, the gate is off. Local `npm run dev` stays open.
+
+Set `SITE_USER` along with the password. A password with a blank username rejects every request.
+
+Both values are read on each request. Restart the service after changing them. A rebuild is not required for a new password to apply.
+
+`FULLBAY_EDIT_QUEUE_TOKEN` is separate. When that token is set, queue POST and confirm still require the header `x-fullbay-edit-token`.
+
 ## What is loaded
 
 The demo clock is Tuesday, October 6, 2026. A Tuesday review covers the previous day, so Monday, October 5 starts selected. The day chips and audit trail start on Friday, October 2. Later weekdays appear as the demo date moves forward. Sundays stay off the trail.
