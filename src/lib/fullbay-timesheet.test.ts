@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
-import saturdayFile from "../../data/fullbay-timesheets/timesheets-2026-10-03.json";
 import timesheetFile from "../../data/fullbay-timesheets/timesheets-2026-10-05.json";
 import { FRIDAY_DETAILS_CSV } from "@/lib/friday-details-csv";
+import { SATURDAY_DETAILS_CSV } from "@/lib/saturday-details-csv";
 import {
   FOREMEN,
   OCTOBER_2_REPORTS,
@@ -299,11 +299,13 @@ function assertReportShape(reports: DayReport[]) {
   }
 }
 
-describe("October 2 download and October 3 scrape", () => {
-  it("keeps the Friday Details List download and the Saturday scrape", () => {
-    const csv = readFileSync("data/fullbay-timesheets/timesheets-download-2026-10-02.csv", "utf8");
-    assert.equal(csv, FRIDAY_DETAILS_CSV);
-    const friday = parseDetailsListCsv(csv, "2026-10-02");
+describe("October 2 and October 3 downloads", () => {
+  it("keeps the Friday and Saturday Details List downloads", () => {
+    const fridayCsv = readFileSync("data/fullbay-timesheets/timesheets-download-2026-10-02.csv", "utf8");
+    const saturdayCsv = readFileSync("data/fullbay-timesheets/timesheets-download-2026-10-03.csv", "utf8");
+    assert.equal(fridayCsv, FRIDAY_DETAILS_CSV);
+    assert.equal(saturdayCsv, SATURDAY_DETAILS_CSV);
+    const friday = parseDetailsListCsv(fridayCsv, "2026-10-02");
     assert.equal(friday.rows.length, 344);
     const cole = friday.rows.find(
       (row) => row.employee === "Cole Lozan" && row.clock_in.startsWith("7:27:38AM") && row.clock_in_activity === "Normal Non Pro",
@@ -311,10 +313,16 @@ describe("October 2 download and October 3 scrape", () => {
     assert.equal(cole?.clock_in_comment, "Help Nick");
     assert.equal(cole?.comment, "");
     assert.equal(cole?.so_complaint, "");
-    assert.equal(saturdayFile.date, "2026-10-03");
-    assert.equal(saturdayFile.row_count, 31);
-    assert.equal(saturdayFile.rows.length, 31);
-    assert.equal(saturdayFile.footer_total_hours, 110.33);
+    const saturday = parseDetailsListCsv(saturdayCsv, "2026-10-03");
+    assert.equal(saturday.rows.length, 31);
+    assert.equal(
+      saturday.rows.filter((row) => (row.clock_in_comment ?? "").length > 0).length,
+      0,
+    );
+    assert.equal(
+      saturday.rows.some((row) => row.employee === "Jacob Griffith" && row.hours === 24),
+      true,
+    );
   });
 
   it("sends Help Nick to the named coworker’s overlapping service order", () => {
@@ -478,7 +486,7 @@ describe("October 2 download and October 3 scrape", () => {
     );
   });
 
-  it("builds Saturday only for shops with service-order time", () => {
+  it("builds Saturday from the Details List download only for shops with service-order time", () => {
     assert.deepEqual(
       OCTOBER_3_REPORTS.map((report) => report.shopId),
       ["covington", "greenville"],

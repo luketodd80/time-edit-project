@@ -1,9 +1,9 @@
 import type { DayReport, Finding, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
 import { SHOPS } from "@/lib/types";
 import { formatClock } from "@/lib/time";
-import saturdayFile from "../../data/fullbay-timesheets/timesheets-2026-10-03.json";
 import mondayFile from "../../data/fullbay-timesheets/timesheets-2026-10-05.json";
 import { FRIDAY_DETAILS_CSV } from "@/lib/friday-details-csv";
+import { SATURDAY_DETAILS_CSV } from "@/lib/saturday-details-csv";
 
 /**
  * Shop foremen. They are left out of time-gap review and utilization entirely.
@@ -667,7 +667,7 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
   return reports;
 }
 
-/** Friday prefers the Details List download (Clock In Comment). Saturday and Monday stay on the Office scrapes. */
+/** Friday and Saturday prefer the Details List download (Clock In Comment). Monday stays on the Office scrape. */
 export const OCTOBER_2_REPORTS = timesheetToDayReports(parseDetailsListCsv(FRIDAY_DETAILS_CSV, "2026-10-02"));
-export const OCTOBER_3_REPORTS = timesheetToDayReports(saturdayFile);
+export const OCTOBER_3_REPORTS = timesheetToDayReports(parseDetailsListCsv(SATURDAY_DETAILS_CSV, "2026-10-03"));
 export const OCTOBER_5_REPORTS = timesheetToDayReports(mondayFile);
