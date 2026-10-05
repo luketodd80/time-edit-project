@@ -6,6 +6,15 @@ export interface SiteAuthEnv {
   SITE_PASSWORD?: string;
 }
 
+/** Username used when `SITE_USER` is unset or blank. */
+export const DEFAULT_SITE_USER = "servco";
+
+/** Shared username. A blank `SITE_USER` falls back to `servco`. */
+export function siteUser(env: SiteAuthEnv): string {
+  const user = env.SITE_USER?.trim() ?? "";
+  return user.length === 0 ? DEFAULT_SITE_USER : user;
+}
+
 /**
  * Shared password for the whole site. An unset or empty `SITE_PASSWORD` leaves the gate off.
  * A whitespace-only value is treated as unset so a blank host field does not lock the app.
@@ -37,15 +46,13 @@ export function credentialsFromAuthorization(header: string | null): { user: str
 /**
  * Whether this request may proceed.
  * The gate is open when `SITE_PASSWORD` is unset. When it is set, the Basic username must equal
- * `SITE_USER` and the password must equal `SITE_PASSWORD`. A set password with a blank `SITE_USER`
- * rejects every request.
+ * `SITE_USER` (or `servco` when that variable is unset) and the password must equal `SITE_PASSWORD`.
  */
 export function basicAuthAllows(authorization: string | null, env?: SiteAuthEnv): boolean {
   const source: SiteAuthEnv = env ?? (process.env as SiteAuthEnv);
   const password = sitePassword(source);
   if (password == null) return true;
-  const user = source.SITE_USER ?? "";
-  if (user.length === 0) return false;
+  const user = siteUser(source);
   const credentials = credentialsFromAuthorization(authorization);
   if (!credentials) return false;
   return sameText(credentials.user, user) && sameText(credentials.password, password);

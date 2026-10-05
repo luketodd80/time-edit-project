@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { basicAuthAllows, credentialsFromAuthorization, sitePassword } from "@/lib/site-auth";
+import { basicAuthAllows, credentialsFromAuthorization, DEFAULT_SITE_USER, sitePassword, siteUser } from "@/lib/site-auth";
 
 function basic(user: string, password: string): string {
   return `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`;
@@ -28,11 +28,17 @@ describe("site password gate", () => {
     assert.equal(basicAuthAllows(basic("review", "shared-secret").replace("Basic", "basic"), env), true);
   });
 
-  it("rejects every request when the password is set and SITE_USER is blank", () => {
+  it("uses servco when SITE_USER is unset or blank", () => {
+    assert.equal(DEFAULT_SITE_USER, "servco");
+    assert.equal(siteUser({}), "servco");
+    assert.equal(siteUser({ SITE_USER: "  " }), "servco");
+    assert.equal(siteUser({ SITE_USER: "review" }), "review");
     const env = { SITE_PASSWORD: "shared-secret" };
     assert.equal(basicAuthAllows(null, env), false);
     assert.equal(basicAuthAllows(basic("", "shared-secret"), env), false);
     assert.equal(basicAuthAllows(basic("review", "shared-secret"), env), false);
+    assert.equal(basicAuthAllows(basic("servco", "shared-secret"), env), true);
+    assert.equal(basicAuthAllows(basic("servco", "shared-secret"), { SITE_USER: "", SITE_PASSWORD: "shared-secret" }), true);
   });
 
   it("keeps a colon inside the password", () => {
