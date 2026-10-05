@@ -5,21 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { DEMO_TODAY, defaultPendingDays, formatDay, formatDayShort, formatTimestamp, reviewWindow } from "@/lib/dates";
-import { auditLabel, auditStatus, shopName, shopsInScope, signoffKey, type AuditStatus } from "@/lib/review";
+import { auditLabel, auditStatus, dayUtilization, shopName, shopsInScope, signoffKey } from "@/lib/review";
 import { SEED } from "@/lib/seed";
-import type { ShopFilter, ShopId, Signoff } from "@/lib/types";
+import type { Decision, ShopFilter, ShopId, Signoff } from "@/lib/types";
+import { formatPercent } from "@/lib/time";
 
-function trailLabel(day: string, status: AuditStatus, dueDays: string[]): string {
-  if (status !== "open") return auditLabel(status);
-  const earliestDue = [...dueDays].sort()[0];
-  if (earliestDue && day < earliestDue) return "Skipped";
-  return "Not approved";
+function percentOrDash(ratio: number | null): string {
+  return ratio == null ? "—" : formatPercent(ratio);
 }
 
 export function DayBar({
   shopId,
   days,
   signoffs,
+  decisions,
   signoffError,
   applyBlock,
   onShop,
@@ -30,6 +29,7 @@ export function DayBar({
   shopId: ShopFilter;
   days: string[];
   signoffs: Record<string, Signoff>;
+  decisions: Record<string, Decision>;
   signoffError: string | null;
   applyBlock?: (day: string, shopId: ShopId) => string | null;
   onShop: (shopId: ShopFilter) => void;
@@ -70,7 +70,7 @@ export function DayBar({
       <fieldset>
         <legend className="text-sm font-medium">Days</legend>
         <p className="mt-1 text-sm text-muted-foreground">
-          Demo date is Tuesday, October 6, 2026, so Monday, October 5 is due. Friday, October 2 and Saturday, October 3 stay on the trail. Check an earlier day to go further back.
+          Demo date is Tuesday, October 6, 2026, so Monday, October 5 is due. The trail starts Friday, October 2. Sundays stay off the chips.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {windowDays.map((day) => {
@@ -97,9 +97,9 @@ export function DayBar({
       </fieldset>
 
       <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
-        <table className="w-full min-w-[36rem] border-collapse text-left text-sm">
+        <table className="w-full min-w-[52rem] border-collapse text-left text-sm">
           <caption className="px-4 py-3 text-left text-sm text-foreground">
-            Audit trail. Due days that are still open are not approved. Older days in this range that were never signed off are skipped.
+            Audit trail. A day is approved when every shop in view is marked done. Original utilization is service-order hours divided by clocked hours. Corrected utilization adds accepted and overridden minutes.
           </caption>
           <thead className="border-y bg-muted/50 text-muted-foreground">
             <tr>
@@ -110,28 +110,32 @@ export function DayBar({
                   {shopName(id)}
                 </th>
               ))}
+              <th className="px-4 py-2 font-medium">Original utilization</th>
+              <th className="px-4 py-2 font-medium">Corrected utilization</th>
             </tr>
           </thead>
           <tbody>
             {windowDays.map((day) => {
               const status = auditStatus(day, shops, signoffs);
-              const label = trailLabel(day, status, dueDays);
+              const ratios = dayUtilization(SEED, day, shops, decisions);
               const tone = status === "approved" ? "bg-green-50" : "bg-amber-50";
               return (
                 <tr key={day} className={`border-b last:border-b-0 ${tone}`}>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 whitespace-nowrap">
                     {formatDayShort(day)}
                     {days.includes(day) ? <span className="ml-2 text-muted-foreground">In view</span> : null}
                   </td>
-                  <td className="px-4 py-2 font-medium">{label}</td>
+                  <td className="px-4 py-2 font-medium whitespace-nowrap">{auditLabel(status)}</td>
                   {shops.map((id) => {
                     const signoff = signoffs[signoffKey(day, id)];
                     return (
-                      <td key={id} className="px-4 py-2">
+                      <td key={id} className="px-4 py-2 whitespace-nowrap">
                         {signoff?.doneAt ? `Approved ${formatTimestamp(signoff.doneAt)}` : "Not approved"}
                       </td>
                     );
                   })}
+                  <td className="px-4 py-2 whitespace-nowrap">{percentOrDash(ratios.original)}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{percentOrDash(ratios.corrected)}</td>
                 </tr>
               );
             })}

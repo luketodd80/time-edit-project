@@ -174,6 +174,7 @@ export function Dashboard() {
         shopId={state.shopId}
         days={state.days}
         signoffs={state.signoffs}
+        decisions={state.decisions}
         signoffError={signoffError}
         applyBlock={(day, shopId) => (queueBatches ? signoffApplyBlock(queueBatches, day, shopId) : null)}
         onShop={setShop}
