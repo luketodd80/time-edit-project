@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
-import timesheetFile from "../../data/fullbay-timesheets/timesheets-2026-10-05.json";
 import { FRIDAY_DETAILS_CSV } from "@/lib/friday-details-csv";
 import { SATURDAY_DETAILS_CSV } from "@/lib/saturday-details-csv";
+import { MONDAY_DETAILS_CSV } from "@/lib/monday-details-csv";
 import {
   FOREMEN,
   OCTOBER_2_REPORTS,
@@ -252,12 +252,30 @@ describe("timesheet conversion rules", () => {
   });
 });
 
-describe("October 5 scrape", () => {
-  it("keeps the attached timesheet as the source file", () => {
-    assert.equal(timesheetFile.date, monday);
-    assert.equal(timesheetFile.row_count, 187);
-    assert.equal(timesheetFile.rows.length, 187);
-    assert.equal(timesheetFile.footer_total_hours, 282.65);
+describe("October 5 download", () => {
+  it("keeps the Monday Details List download", () => {
+    const csv = readFileSync("data/fullbay-timesheets/timesheets-download-2026-10-05.csv", "utf8");
+    assert.equal(csv, MONDAY_DETAILS_CSV);
+    const file = parseDetailsListCsv(csv, monday);
+    assert.equal(file.date, monday);
+    assert.equal(file.rows.length, 337);
+    const byShop = new Map<string, number>();
+    for (const record of file.rows) byShop.set(record.shop, (byShop.get(record.shop) ?? 0) + 1);
+    assert.equal(byShop.get("The Service Company - Greenville (G)"), 105);
+    assert.equal(byShop.get("The Service Company - Dayton (D)"), 67);
+    assert.equal(byShop.get("The Service Company - Covington (C)"), 64);
+    assert.equal(byShop.get("The Service Company - Columbus (CL)"), 49);
+    assert.equal(byShop.get("The Service Company - Springfield (S)"), 37);
+    assert.equal(byShop.get("The Service Company-Mobile Units (M)"), 15);
+    const coleOut = file.rows.find(
+      (record) => record.employee === "Cole Lozan" && record.clock_in.startsWith("8:41:13AM") && !record.so_complaint,
+    );
+    assert.equal(coleOut?.clock_out, "4:37:42PM 10/5/2026");
+    assert.equal(coleOut?.open_punch, false);
+    assert.equal(
+      file.rows.some((record) => record.clock_out.length === 0),
+      false,
+    );
   });
 
   it("builds one Monday report per shop in the file, without foremen or zero-SO techs", () => {
@@ -266,7 +284,7 @@ describe("October 5 scrape", () => {
       ["dayton", "covington", "greenville", "springfield", "mobile", "columbus"],
     );
     assert.ok(OCTOBER_5_REPORTS.every((report) => report.day === monday));
-    assert.deepEqual(names("dayton"), ["Brayden Mapp", "Colby Purvis", "Cole Lozan", "Dakota Stone", "Zach Spencer"]);
+    assert.deepEqual(names("dayton"), ["Brayden Mapp", "Colby Purvis", "Cole Lozan", "Dakota Stone", "Tanveer Dhaliwal", "Zach Spencer"]);
     assert.deepEqual(names("covington"), ["Anthony Montgomery", "Cline Wirick", "Dane Shelton", "Joe Hueber", "Oliver Todd"]);
     assert.deepEqual(names("greenville"), ["Cody Kester", "David Johnson", "Gage Wills", "Jack Eversole", "Kyle Hickman", "Paul Henry"]);
     assert.deepEqual(names("springfield"), ["Gary Evans", "John Spichty", "Mike Wooten"]);
@@ -274,7 +292,7 @@ describe("October 5 scrape", () => {
     assert.deepEqual(names("columbus"), ["Derek Roby", "Griffin Davis", "Justin Winner", "Stephen Hill"]);
 
     const techs = OCTOBER_5_REPORTS.flatMap((report) => report.technicians);
-    assert.equal(techs.length, 24);
+    assert.equal(techs.length, 25);
     for (const tech of techs) {
       assert.equal(isForeman(tech.name), false);
       assert.ok(tech.soHours > 0);
@@ -285,17 +303,40 @@ describe("October 5 scrape", () => {
       techs.some((tech) => dropped.includes(tech.name)),
       false,
     );
+    assert.deepEqual(
+      Object.fromEntries(
+        OCTOBER_5_REPORTS.map((report) => [
+          report.shopId,
+          {
+            techs: report.technicians.length,
+            findings: report.findings.length,
+            gaps: report.findings.filter((finding) => finding.kind === "gap").length,
+          },
+        ]),
+      ),
+      {
+        dayton: { techs: 6, findings: 61, gaps: 4 },
+        covington: { techs: 5, findings: 62, gaps: 10 },
+        greenville: { techs: 6, findings: 88, gaps: 10 },
+        springfield: { techs: 3, findings: 33, gaps: 9 },
+        mobile: { techs: 1, findings: 12, gaps: 2 },
+        columbus: { techs: 4, findings: 40, gaps: 4 },
+      },
+    );
   });
 
-  it("reviews Cole from the Monday scrape", () => {
+  it("reviews Cole from the Monday download and keeps export-time clock-outs", () => {
     const dayton = OCTOBER_5_REPORTS.find((report) => report.shopId === "dayton");
     assert.ok(dayton);
     const cole = dayton.technicians.find((tech) => tech.id === "cole-lozan");
-    assert.equal(cole?.clockedHours, 5.55);
-    assert.equal(cole?.soHours, 5.34);
-    const gap = dayton.findings.find((finding) => finding.techId === "cole-lozan" && finding.detail.includes("Normal Non Pro"));
-    assert.equal(gap?.kind, "gap");
+    assert.equal(cole?.clockedHours, 9.8);
+    assert.equal(cole?.soHours, 9.6);
+    const gap = dayton.findings.find((finding) => finding.techId === "cole-lozan" && finding.kind === "gap");
+    assert.equal(gap?.start, "08:14");
+    assert.equal(gap?.end, "08:26");
+    assert.equal(gap?.minutes, 12);
     assert.equal(gap?.recommendation?.orderId, "D-90228");
+    assert.match(gap?.detail ?? "", /Clock In Comment: “Move Garber farm off trailer”/);
 
     const zach = dayton.findings.filter((finding) => finding.techId === "zach-spencer");
     assert.ok(zach.some((finding) => finding.kind === "as_is" && finding.detail.includes("D-90148")));
@@ -305,10 +346,16 @@ describe("October 5 scrape", () => {
     );
 
     const mike = OCTOBER_5_REPORTS.find((report) => report.shopId === "springfield")?.findings.find(
-      (finding) => finding.techId === "mike-wooten" && finding.detail.includes(OPEN_PUNCH_NOTE),
+      (finding) => finding.techId === "mike-wooten" && finding.kind === "gap",
     );
-    assert.equal(mike?.kind, "gap");
-    assert.match(mike?.recommendation?.summary ?? "", /not a clock-out/);
+    assert.equal(mike?.start, "12:03");
+    assert.equal(mike?.end, "13:32");
+    assert.match(mike?.detail ?? "", /Clock In Comment: “pick up unit”/);
+    assert.equal(mike?.detail.includes(OPEN_PUNCH_NOTE), false);
+    assert.equal(
+      OCTOBER_5_REPORTS.some((report) => report.findings.some((finding) => finding.detail.includes(OPEN_PUNCH_NOTE))),
+      false,
+    );
   });
 
   it("keeps Monday orders on priorities and points every edit at an order on that shop", () => {
