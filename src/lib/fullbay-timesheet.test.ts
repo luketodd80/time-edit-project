@@ -519,6 +519,26 @@ describe("October 2 and October 3 downloads", () => {
     assert.ok(springfield?.findings.some((finding) => finding.techId === "john-spichty" && finding.kind === "as_is" && finding.detail.includes("S-90480 / Alignment") && finding.start === "08:09"));
     assert.ok(springfield?.findings.some((finding) => finding.techId === "john-spichty" && finding.kind === "as_is" && finding.detail.includes("S-90541") && finding.start === "11:45"));
     assert.ok(springfield?.findings.some((finding) => finding.techId === "john-spichty" && finding.kind === "as_is" && finding.detail.includes("B service light duty") && finding.start === "13:51"));
+    const mobile = OCTOBER_2_REPORTS.find((report) => report.shopId === "mobile");
+    const clarkGaps = mobile?.findings.filter((finding) => finding.techId === "chris-clark" && finding.kind === "gap") ?? [];
+    assert.deepEqual(
+      clarkGaps.map((finding) => [finding.start, finding.end, finding.minutes, finding.recommendation?.orderId]),
+      [["07:26", "07:36", 10, "M-90534"]],
+    );
+    assert.equal(
+      mobile?.findings.some((finding) => finding.techId === "chris-clark" && finding.kind === "gap" && finding.start === "07:05" && finding.end === "07:26"),
+      false,
+    );
+    assert.ok(
+      mobile?.findings.some(
+        (finding) =>
+          finding.techId === "chris-clark" &&
+          finding.kind === "as_is" &&
+          finding.detail.includes("M-90534 / Onsite Travel") &&
+          finding.start === "07:05" &&
+          finding.end === "07:26",
+      ),
+    );
     assertReportShape(OCTOBER_2_REPORTS);
     const cole = OCTOBER_2_REPORTS.find((report) => report.shopId === "dayton")?.findings.find(
       (finding) => finding.techId === "cole-lozan" && finding.detail.includes("Help Nick"),
