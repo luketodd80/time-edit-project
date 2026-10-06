@@ -258,20 +258,26 @@ describe("October 5 download", () => {
     assert.equal(csv, MONDAY_DETAILS_CSV);
     const file = parseDetailsListCsv(csv, monday);
     assert.equal(file.date, monday);
-    assert.equal(file.rows.length, 337);
+    assert.equal(file.rows.length, 343);
     const byShop = new Map<string, number>();
     for (const record of file.rows) byShop.set(record.shop, (byShop.get(record.shop) ?? 0) + 1);
-    assert.equal(byShop.get("The Service Company - Greenville (G)"), 105);
+    assert.equal(byShop.get("The Service Company - Greenville (G)"), 106);
     assert.equal(byShop.get("The Service Company - Dayton (D)"), 67);
     assert.equal(byShop.get("The Service Company - Covington (C)"), 64);
-    assert.equal(byShop.get("The Service Company - Columbus (CL)"), 49);
+    assert.equal(byShop.get("The Service Company - Columbus (CL)"), 52);
     assert.equal(byShop.get("The Service Company - Springfield (S)"), 37);
-    assert.equal(byShop.get("The Service Company-Mobile Units (M)"), 15);
+    assert.equal(byShop.get("The Service Company-Mobile Units (M)"), 17);
     const coleOut = file.rows.find(
       (record) => record.employee === "Cole Lozan" && record.clock_in.startsWith("8:41:13AM") && !record.so_complaint,
     );
-    assert.equal(coleOut?.clock_out, "4:37:42PM 10/5/2026");
+    assert.equal(coleOut?.clock_out, "5:00:49PM 10/5/2026");
     assert.equal(coleOut?.open_punch, false);
+    const jacob = file.rows.find((record) => record.employee === "Jacob Griffith" && record.hours === 24);
+    assert.equal(jacob?.clock_in, "12:00:00AM 10/5/2026");
+    assert.equal(jacob?.clock_out, "12:00:00AM 10/6/2026");
+    assert.equal(jacob?.clock_in_activity, "Inactive");
+    assert.equal(jacob?.so_complaint, "");
+    assert.equal(jacob?.open_punch, false);
     assert.equal(
       file.rows.some((record) => record.clock_out.length === 0),
       false,
@@ -317,20 +323,20 @@ describe("October 5 download", () => {
       {
         dayton: { techs: 6, findings: 61, gaps: 4 },
         covington: { techs: 5, findings: 62, gaps: 10 },
-        greenville: { techs: 6, findings: 88, gaps: 10 },
+        greenville: { techs: 6, findings: 89, gaps: 10 },
         springfield: { techs: 3, findings: 33, gaps: 9 },
-        mobile: { techs: 1, findings: 12, gaps: 2 },
-        columbus: { techs: 4, findings: 40, gaps: 4 },
+        mobile: { techs: 1, findings: 14, gaps: 2 },
+        columbus: { techs: 4, findings: 41, gaps: 2 },
       },
     );
   });
 
-  it("reviews Cole from the Monday download and keeps export-time clock-outs", () => {
+  it("reviews Cole from the Monday download and drops the 24-hour placeholders", () => {
     const dayton = OCTOBER_5_REPORTS.find((report) => report.shopId === "dayton");
     assert.ok(dayton);
     const cole = dayton.technicians.find((tech) => tech.id === "cole-lozan");
-    assert.equal(cole?.clockedHours, 9.8);
-    assert.equal(cole?.soHours, 9.6);
+    assert.equal(cole?.clockedHours, 10.19);
+    assert.equal(cole?.soHours, 9.98);
     const gap = dayton.findings.find((finding) => finding.techId === "cole-lozan" && finding.kind === "gap");
     assert.equal(gap?.start, "08:14");
     assert.equal(gap?.end, "08:26");
