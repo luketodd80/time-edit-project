@@ -60,3 +60,19 @@ Decisions, the shop and day selection, and sign-off stay in `localStorage` under
 `POST /api/fullbay-edits` stores a batch. The server assigns `id`. Each edit has `findingId`, `day`, `shopId`, `shopName`, `techName`, `orderId`, `work`, `decision` (`accept` or `override`), `newClockIn`, `newClockOut`, `minutes`, `status` (`pending`, `applied`, or `failed`), `appliedAt`, and `applyNote`.
 
 `GET /api/fullbay-edits/pending` lists batches that still have a pending edit. `GET /api/fullbay-edits/latest` returns the newest batch and the full queue. `POST /api/fullbay-edits/confirm` takes `{ batchId, results: [{ findingId, status, applyNote? }] }` and updates those edits. If `FULLBAY_EDIT_QUEUE_TOKEN` is set, POST and confirm require the header `x-fullbay-edit-token`.
+
+### Submit webhook
+
+After the queue write succeeds, and the batch has at least one accepted or overridden edit, the server POSTs a JSON notice. That notice is how an assistant can wake up and hand the batch to Chris. Leave `SUBMIT_WEBHOOK_URL` unset and nothing is sent. A timeout or a failed call is logged and does not fail Submit.
+
+Set these on the Render service Environment, then redeploy:
+
+| Variable | Role |
+| --- | --- |
+| `SUBMIT_WEBHOOK_URL` | Where to POST. Unset or empty skips the webhook. |
+| `SUBMIT_WEBHOOK_KEY` | Optional sender key. |
+| `SUBMIT_WEBHOOK_KEY_HEADER` | Optional header name for that key. |
+
+When the key is set and `SUBMIT_WEBHOOK_KEY_HEADER` is unset, the request sends `Authorization: Bearer <key>`. When the header name is set, the request sends that header with the key as the raw value.
+
+The body is `{ "event": "time-edit.submitted", "batchId", "shopId", "shopName", "days", "submittedAt", "editCount", "techs", "dashboardUrl" }`. `editCount` is the number of accepted and overridden edits in the batch. `techs` is the unique technician names. `dashboardUrl` is `https://time-edit-project.onrender.com/`. The body does not include passwords. A batch that is only rejections is not sent. The call times out after about 5 seconds.
