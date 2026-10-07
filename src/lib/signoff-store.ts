@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { liveDataPath, readStoredJson, seedDataPath } from "@/lib/durable-file";
 import { SHOPS, type ShopId } from "@/lib/types";
 import type { RecordedSignoff } from "@/lib/fullbay-edit-queue";
 
@@ -8,27 +9,27 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 let writeChain: Promise<unknown> = Promise.resolve();
 
 export function signoffFilePath(): string {
-  return process.env.SHOP_DAY_SIGNOFF_PATH || join(process.cwd(), "data", "shop-day-signoffs.json");
+  return liveDataPath(process.env.SHOP_DAY_SIGNOFF_PATH, "shop-day-signoffs.json");
+}
+
+export function signoffSeedPath(): string {
+  return seedDataPath(process.env.SHOP_DAY_SIGNOFF_SEED_PATH, "shop-day-signoffs.seed.json");
 }
 
 export async function readSignoffs(): Promise<RecordedSignoff[]> {
-  try {
-    const raw = await readFile(/* turbopackIgnore: true */ signoffFilePath(), "utf8");
-    const parsed = JSON.parse(raw) as { signoffs?: RecordedSignoff[] };
-    if (!Array.isArray(parsed.signoffs)) return [];
-    return parsed.signoffs.filter(
-      (signoff) =>
-        signoff &&
-        typeof signoff.day === "string" &&
-        DAY.test(signoff.day) &&
-        typeof signoff.shopId === "string" &&
-        SHOPS.some((shop) => shop.id === signoff.shopId) &&
-        typeof signoff.doneAt === "string",
-    );
-  } catch (error) {
-    if (isMissingFile(error)) return [];
-    throw error;
-  }
+  const parsed = await readStoredJson(signoffFilePath(), signoffSeedPath());
+  if (!parsed || typeof parsed !== "object") return [];
+  const signoffs = (parsed as { signoffs?: RecordedSignoff[] }).signoffs;
+  if (!Array.isArray(signoffs)) return [];
+  return signoffs.filter(
+    (signoff) =>
+      signoff &&
+      typeof signoff.day === "string" &&
+      DAY.test(signoff.day) &&
+      typeof signoff.shopId === "string" &&
+      SHOPS.some((shop) => shop.id === signoff.shopId) &&
+      typeof signoff.doneAt === "string",
+  );
 }
 
 /** Records the first sign-off for a shop and day. A second call keeps the original time. */
@@ -53,8 +54,4 @@ async function writeSignoff(day: string, shopId: ShopId, doneAt: string): Promis
   await writeFile(/* turbopackIgnore: true */ temporary, `${JSON.stringify({ signoffs }, null, 2)}\n`);
   await rename(temporary, file);
   return next;
-}
-
-function isMissingFile(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }

@@ -1,12 +1,17 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { liveDataPath, readStoredJson, seedDataPath } from "@/lib/durable-file";
 import { applyConfirmations, submitRefusal, type FullbayConfirmResult, type FullbayEditBatch, type FullbayQueueRequest } from "@/lib/fullbay-edit-queue";
 import { readSignoffs } from "@/lib/signoff-store";
 
 let writeChain: Promise<unknown> = Promise.resolve();
 
 export function queueFilePath(): string {
-  return process.env.FULLBAY_EDIT_QUEUE_PATH || join(process.cwd(), "data", "fullbay-edit-queue.json");
+  return liveDataPath(process.env.FULLBAY_EDIT_QUEUE_PATH, "fullbay-edit-queue.json");
+}
+
+export function queueSeedPath(): string {
+  return seedDataPath(process.env.FULLBAY_EDIT_QUEUE_SEED_PATH, "fullbay-edit-queue.seed.json");
 }
 
 /** When FULLBAY_EDIT_QUEUE_TOKEN is unset, the demo queue stays open. POST and confirm send x-fullbay-edit-token when it is set. */
@@ -17,14 +22,10 @@ export function queueAuthorized(request: Request): boolean {
 }
 
 export async function readQueue(): Promise<FullbayEditBatch[]> {
-  try {
-    const raw = await readFile(/* turbopackIgnore: true */ queueFilePath(), "utf8");
-    const parsed = JSON.parse(raw) as { batches?: FullbayEditBatch[] };
-    return Array.isArray(parsed.batches) ? parsed.batches : [];
-  } catch (error) {
-    if (isMissingFile(error)) return [];
-    throw error;
-  }
+  const parsed = await readStoredJson(queueFilePath(), queueSeedPath());
+  if (!parsed || typeof parsed !== "object") return [];
+  const batches = (parsed as { batches?: FullbayEditBatch[] }).batches;
+  return Array.isArray(batches) ? batches : [];
 }
 
 export async function enqueueBatch(request: FullbayQueueRequest, id = crypto.randomUUID()): Promise<FullbayEditBatch> {
@@ -87,8 +88,4 @@ async function writeQueue(batches: FullbayEditBatch[]): Promise<void> {
   const temporary = `${file}.${process.pid}.tmp`;
   await writeFile(/* turbopackIgnore: true */ temporary, `${JSON.stringify({ batches }, null, 2)}\n`);
   await rename(temporary, file);
-}
-
-function isMissingFile(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }

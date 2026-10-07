@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -17,7 +17,8 @@ import {
   type FullbayEditBatch,
   type FullbayQueueEdit,
 } from "@/lib/fullbay-edit-queue";
-import { confirmQueuedBatch, enqueueBatch, readQueue } from "@/lib/fullbay-edit-queue-store";
+import { confirmQueuedBatch, enqueueBatch, queueFilePath, readQueue } from "@/lib/fullbay-edit-queue-store";
+import { readSignoffs, recordSignoff, signoffFilePath } from "@/lib/signoff-store";
 import { buildSubmission } from "@/lib/review";
 import type { Decision } from "@/lib/types";
 
@@ -371,6 +372,97 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
       else process.env.FULLBAY_EDIT_QUEUE_PATH = previousQueue;
       if (previousSignoff === undefined) delete process.env.SHOP_DAY_SIGNOFF_PATH;
       else process.env.SHOP_DAY_SIGNOFF_PATH = previousSignoff;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("restores a missing live file from the seed and writes new rows to the live path", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "fullbay-durable-"));
+    const disk = join(directory, "disk");
+    const previousQueue = process.env.FULLBAY_EDIT_QUEUE_PATH;
+    const previousSeed = process.env.FULLBAY_EDIT_QUEUE_SEED_PATH;
+    const previousSignoff = process.env.SHOP_DAY_SIGNOFF_PATH;
+    const previousSignoffSeed = process.env.SHOP_DAY_SIGNOFF_SEED_PATH;
+    const previousDir = process.env.TSC_DATA_DIR;
+    const liveQueue = join(directory, "queue.json");
+    const seedQueue = join(directory, "queue.seed.json");
+    const liveSignoff = join(directory, "signoffs.json");
+    const seedSignoff = join(directory, "signoffs.seed.json");
+    process.env.FULLBAY_EDIT_QUEUE_PATH = liveQueue;
+    process.env.FULLBAY_EDIT_QUEUE_SEED_PATH = seedQueue;
+    process.env.SHOP_DAY_SIGNOFF_PATH = liveSignoff;
+    process.env.SHOP_DAY_SIGNOFF_SEED_PATH = seedSignoff;
+    delete process.env.TSC_DATA_DIR;
+    writeFileSync(
+      seedQueue,
+      `${JSON.stringify({
+        batches: [
+          {
+            id: "seed-batch",
+            submittedAt: "2026-10-07T12:00:00.000Z",
+            shopId: "mobile",
+            days: [friday],
+            edits: [
+              {
+                findingId: "chris-1149",
+                day: friday,
+                shopId: "mobile",
+                shopName: "Mobile",
+                techName: "Chris Clark",
+                orderId: "M-90508",
+                work: "Replace rear light",
+                decision: "accept",
+                newClockIn: "11:49",
+                newClockOut: "11:50",
+                minutes: 1,
+                status: "applied",
+                appliedAt: "2026-10-07T13:00:00.000Z",
+                applyNote: "+1 min overlap bump",
+              },
+            ],
+          },
+        ],
+      })}\n`,
+    );
+    writeFileSync(
+      seedSignoff,
+      `${JSON.stringify({ signoffs: [{ day: friday, shopId: "dayton", doneAt: "2026-10-07T14:00:00.000Z" }] })}\n`,
+    );
+    try {
+      assert.equal((await readQueue())[0]?.edits[0]?.status, "applied");
+      assert.equal((await readSignoffs())[0]?.doneAt, "2026-10-07T14:00:00.000Z");
+      await enqueueBatch({
+        submittedAt: "2026-10-07T15:00:00.000Z",
+        shopId: "covington",
+        days: [friday],
+        edits: [],
+      });
+      const kept = await recordSignoff(friday, "dayton", "2026-10-07T16:00:00.000Z");
+      assert.equal(kept.doneAt, "2026-10-07T14:00:00.000Z");
+      await recordSignoff(friday, "mobile", "2026-10-07T16:00:00.000Z");
+      writeFileSync(seedQueue, `${JSON.stringify({ batches: [] })}\n`);
+      writeFileSync(seedSignoff, `${JSON.stringify({ signoffs: [] })}\n`);
+      assert.equal((await readQueue()).length, 2);
+      assert.equal((await readSignoffs()).length, 2);
+
+      delete process.env.FULLBAY_EDIT_QUEUE_PATH;
+      delete process.env.SHOP_DAY_SIGNOFF_PATH;
+      process.env.TSC_DATA_DIR = disk;
+      assert.equal(queueFilePath(), join(disk, "fullbay-edit-queue.json"));
+      assert.equal(signoffFilePath(), join(disk, "shop-day-signoffs.json"));
+      await recordSignoff("2026-10-06", "springfield", "2026-10-07T17:00:00.000Z");
+      assert.equal((await readSignoffs()).some((signoff) => signoff.shopId === "springfield"), true);
+    } finally {
+      if (previousQueue === undefined) delete process.env.FULLBAY_EDIT_QUEUE_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_PATH = previousQueue;
+      if (previousSeed === undefined) delete process.env.FULLBAY_EDIT_QUEUE_SEED_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_SEED_PATH = previousSeed;
+      if (previousSignoff === undefined) delete process.env.SHOP_DAY_SIGNOFF_PATH;
+      else process.env.SHOP_DAY_SIGNOFF_PATH = previousSignoff;
+      if (previousSignoffSeed === undefined) delete process.env.SHOP_DAY_SIGNOFF_SEED_PATH;
+      else process.env.SHOP_DAY_SIGNOFF_SEED_PATH = previousSignoffSeed;
+      if (previousDir === undefined) delete process.env.TSC_DATA_DIR;
+      else process.env.TSC_DATA_DIR = previousDir;
       rmSync(directory, { recursive: true, force: true });
     }
   });

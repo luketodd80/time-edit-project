@@ -53,13 +53,21 @@ The shop filter is All shops plus every shop that has a loaded day.
 4. Summary recomputes utilization for the same shop and day. Accepted and overridden minutes are added to SO hours. Rejected items add none. A technician's name opens that day's service-order punches after those edits, including another shop's punches as labeled context.
 5. Check off that you approve that day's utilization numbers, then mark the day done. The day cannot be marked done without that check, or while the latest queued edits for that shop and day are still pending or failed. Rejected edits do not block sign-off. Done days stay on the trail and stay locked.
 
-Decisions and the shop and day selection stay in `localStorage` under `tsc-time-gap-review-v2`. Sign-off is also recorded on the server in `data/shop-day-signoffs.json`. The apply queue is `data/fullbay-edit-queue.json` on the server.
+Decisions and the shop and day selection stay in `localStorage` under `tsc-time-gap-review-v2`. Sign-off and the apply queue are JSON files on the server. See Persistence below. Render’s own disk is replaced on every deploy, so those files need `TSC_DATA_DIR` on a persistent disk or they come back only from a committed seed.
 
 ### Apply queue
 
 `POST /api/fullbay-edits` stores a batch and returns 409 when any shop and day in it is already signed off or already submitted. The server assigns `id`. `POST /api/signoffs` records `{ day, shopId }` and keeps the first sign-off time. Each edit has `findingId`, `day`, `shopId`, `shopName`, `techName`, `orderId`, `work`, `decision` (`accept` or `override`), `newClockIn`, `newClockOut`, `minutes`, `status` (`pending`, `applied`, or `failed`), `appliedAt`, and `applyNote`.
 
 `GET /api/fullbay-edits/pending` lists batches that still have a pending edit. `GET /api/fullbay-edits/latest` returns the newest batch and the full queue. `POST /api/fullbay-edits/confirm` takes `{ batchId, results: [{ findingId, status, applyNote? }] }` and updates those edits. If `FULLBAY_EDIT_QUEUE_TOKEN` is set, POST and confirm require the header `x-fullbay-edit-token`.
+
+### Persistence
+
+The apply queue and shop-day sign-offs are files, not a database. With no path set, they are `data/fullbay-edit-queue.json` and `data/shop-day-signoffs.json`. Both are gitignored. Render replaces the service filesystem on every deploy and restart. A free web service also drops local files when it spins down after 15 minutes without traffic. Applied and failed statuses, submit locks, and sign-offs in those files disappear with the disk.
+
+Set one directory for both files. On a paid Render web service, add a persistent disk with mount path `/var/data`, then set `TSC_DATA_DIR=/var/data` and redeploy. Only files under that mount survive. Free web services cannot attach a disk. `FULLBAY_EDIT_QUEUE_PATH` and `SHOP_DAY_SIGNOFF_PATH` still override the directory when a single file should live somewhere else.
+
+A committed snapshot is the fallback when the live file is missing: `data/fullbay-edit-queue.seed.json` (`{ "batches": [] }`) and `data/shop-day-signoffs.seed.json` (`{ "signoffs": [] }`). The same shapes come back from `GET /api/fullbay-edits/latest` and `GET /api/signoffs`. Once a live file exists, it wins over the seed. A seed does not keep confirms or sign-offs made after it was committed. This repo has no production seed. The live API requires the site password, so the current applied rows were not copied in.
 
 ### Submit webhook
 
