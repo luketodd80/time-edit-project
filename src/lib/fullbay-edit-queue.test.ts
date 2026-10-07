@@ -9,10 +9,13 @@ import {
   pendingBatches,
   queueEditFromPlanned,
   shopDayLock,
+  latestQueueEdit,
+  reviewApplyText,
   signoffApplyBlock,
   submissionToQueueRequest,
   submitRefusal,
   type FullbayEditBatch,
+  type FullbayQueueEdit,
 } from "@/lib/fullbay-edit-queue";
 import { confirmQueuedBatch, enqueueBatch, readQueue } from "@/lib/fullbay-edit-queue-store";
 import { buildSubmission } from "@/lib/review";
@@ -186,6 +189,48 @@ describe("submit lock", () => {
     assert.equal(shopDayLock([], signoffs, tuesday, "dayton"), "signed-off");
     assert.equal(shopDayLock([dayton], signoffs, tuesday, "dayton"), "signed-off");
     assert.equal(shopDayLock([], [], tuesday, "mobile"), "open");
+  });
+
+  it("shows the latest applied or failed confirm for a finding", () => {
+    const findingId = "2026-10-06-mobile-chris-clark-15";
+    function edit(status: FullbayQueueEdit["status"], note: string | null, clockIn = "11:49"): FullbayQueueEdit {
+      return {
+        findingId,
+        day: tuesday,
+        shopId: "mobile",
+        shopName: "Mobile",
+        techName: "Chris Clark",
+        orderId: "M-90508",
+        work: "Replace rear light",
+        decision: "accept",
+        newClockIn: clockIn,
+        newClockOut: "11:50",
+        minutes: 1,
+        status,
+        appliedAt: status === "applied" ? "2026-10-07T12:15:00.000Z" : null,
+        applyNote: note,
+      };
+    }
+    const earlier = batch("mobile", [tuesday], "earlier");
+    earlier.submittedAt = "2026-10-07T11:00:00.000Z";
+    earlier.edits = [edit("pending", null)];
+    const applied = batch("mobile", [tuesday], "applied");
+    applied.submittedAt = "2026-10-07T12:00:00.000Z";
+    applied.edits = [edit("applied", "+1 min overlap bump")];
+    const other = batch("mobile", [tuesday], "other");
+    other.edits = [edit("applied", "other finding", "08:00")];
+    other.edits[0]!.findingId = "someone-else";
+
+    assert.equal(latestQueueEdit([earlier, applied, other], findingId)?.status, "applied");
+    assert.equal(latestQueueEdit([applied], "missing"), null);
+    assert.match(reviewApplyText(applied.edits[0]!), /Applied in Fullbay/);
+    assert.match(reviewApplyText(applied.edits[0]!), /M-90508 11:49 AM–11:50 AM/);
+    assert.match(reviewApplyText(applied.edits[0]!), /\+1 min overlap bump/);
+
+    const failed = edit("failed", "Clock out overlaps the next punch");
+    assert.match(reviewApplyText(failed), /Fullbay apply failed\. M-90508 11:49 AM–11:50 AM\. Clock out overlaps the next punch/);
+    const failedWithoutNote = edit("failed", null);
+    assert.equal(reviewApplyText(failedWithoutNote).includes("Fullbay apply failed"), true);
   });
 });
 

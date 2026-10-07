@@ -6,7 +6,7 @@ import { DayBar } from "@/components/day-bar";
 import { ReviewView } from "@/components/review-view";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { shopDayLock, signoffApplyBlock, submissionToQueueRequest, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
+import { latestQueueEdit, shopDayLock, signoffApplyBlock, submissionToQueueRequest, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { attest, buildPlan, buildSubmission, filterReports, markDone, signoffKey, submissionFingerprint, submitBlockers } from "@/lib/review";
 import { updateReview, useReviewSnapshot } from "@/lib/review-store";
 import { SEED } from "@/lib/seed";
@@ -94,6 +94,7 @@ export function Dashboard() {
 
   function setDecision(findingId: string, decision: Decision | null) {
     const finding = reports.flatMap((report) => report.findings).find((item) => item.id === findingId);
+    if (finding && latestQueueEdit(queueBatches ?? [], finding.id)) return;
     if (finding && shopDayLock(queueBatches ?? [], recordedSignoffs(state.signoffs), finding.day, finding.shopId) !== "open") return;
     setSubmitError(null);
     updateReview((current) => {
@@ -287,6 +288,7 @@ export function Dashboard() {
             submitError={submitError ?? queueError}
             submitLock={submitLock}
             isLocked={(day, shopId) => shopDayLock(queueBatches ?? [], signoffRecords, day, shopId) !== "open"}
+            batches={queueBatches ?? []}
             onDecision={setDecision}
             onSubmit={submit}
           />

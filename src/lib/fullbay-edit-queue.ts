@@ -1,5 +1,7 @@
+import { formatTimestamp } from "@/lib/dates";
 import { shopName } from "@/lib/review";
 import { SHOPS, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
+import { formatClock } from "@/lib/time";
 
 export type FullbayApplyStatus = "pending" | "applied" | "failed";
 
@@ -238,6 +240,24 @@ export function applyConfirmations(
 function compareBatchDesc(a: FullbayEditBatch, b: FullbayEditBatch): number {
   if (a.submittedAt !== b.submittedAt) return a.submittedAt < b.submittedAt ? 1 : -1;
   return a.id < b.id ? 1 : -1;
+}
+
+/** Newest queued edit for a finding. A later confirm replaces an earlier one. */
+export function latestQueueEdit(batches: FullbayEditBatch[], findingId: string): FullbayQueueEdit | null {
+  const matches = batches.flatMap((batch) => batch.edits.filter((edit) => edit.findingId === findingId).map((edit) => ({ edit, batch })));
+  matches.sort((a, b) => compareBatchDesc(a.batch, b.batch));
+  return matches[0]?.edit ?? null;
+}
+
+/** Review copy for a queued finding. Applied rows are done. Failed rows carry the confirm note. */
+export function reviewApplyText(edit: FullbayQueueEdit): string {
+  const times = `${edit.orderId} ${formatClock(edit.newClockIn)}–${formatClock(edit.newClockOut)}`;
+  if (edit.status === "failed") {
+    return edit.applyNote ? `Fullbay apply failed. ${times}. ${edit.applyNote}` : `Fullbay apply failed. ${times}.`;
+  }
+  if (edit.status === "pending") return `Pending Fullbay apply. ${times}.`;
+  const when = edit.appliedAt ? ` ${formatTimestamp(edit.appliedAt)}` : "";
+  return edit.applyNote ? `Applied in Fullbay${when}. ${times}. ${edit.applyNote}` : `Applied in Fullbay${when}. ${times}.`;
 }
 
 export interface ShopDayRef {

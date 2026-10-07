@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay } from "@/lib/dates";
+import { latestQueueEdit, reviewApplyText, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
 import {
   buildPlan,
   isEligible,
@@ -29,6 +30,7 @@ export function ReviewView({
   submitError,
   submitLock,
   isLocked,
+  batches,
   onDecision,
   onSubmit,
 }: {
@@ -38,6 +40,7 @@ export function ReviewView({
   submitError: string | null;
   submitLock: string | null;
   isLocked: (day: string, shopId: DayReport["shopId"]) => boolean;
+  batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
   onSubmit: () => void;
 }) {
@@ -58,7 +61,7 @@ export function ReviewView({
               </p>
             ) : (
               dayReports.map((report) => (
-                <ShopDay key={report.shopId} report={report} decisions={decisions} isLocked={isLocked} onDecision={onDecision} />
+                <ShopDay key={report.shopId} report={report} decisions={decisions} isLocked={isLocked} batches={batches} onDecision={onDecision} />
               ))
             )}
           </section>
@@ -89,11 +92,13 @@ function ShopDay({
   report,
   decisions,
   isLocked,
+  batches,
   onDecision,
 }: {
   report: DayReport;
   decisions: Record<string, Decision>;
   isLocked: (day: string, shopId: DayReport["shopId"]) => boolean;
+  batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
 }) {
   const active = techsWithFindings(report);
@@ -116,7 +121,7 @@ function ShopDay({
       </div>
 
       {active.map((tech) => (
-        <TechDay key={tech.id} report={report} tech={tech} decisions={decisions} locked={isLocked(report.day, report.shopId)} onDecision={onDecision} />
+        <TechDay key={tech.id} report={report} tech={tech} decisions={decisions} locked={isLocked(report.day, report.shopId)} batches={batches} onDecision={onDecision} />
       ))}
 
       {quiet.length > 0 ? (
@@ -155,12 +160,14 @@ function TechDay({
   tech,
   decisions,
   locked,
+  batches,
   onDecision,
 }: {
   report: DayReport;
   tech: Technician;
   decisions: Record<string, Decision>;
   locked: boolean;
+  batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
 }) {
   const outlook = techOutlook(report, tech);
@@ -195,6 +202,7 @@ function TechDay({
                 finding={finding}
                 decision={decisions[finding.id]}
                 locked={locked}
+                queued={latestQueueEdit(batches, finding.id)}
                 onDecision={onDecision}
               />
             ))}
@@ -262,6 +270,7 @@ function DayRows({
   finding,
   decision,
   locked,
+  queued,
   onDecision,
 }: {
   report: DayReport;
@@ -269,13 +278,16 @@ function DayRows({
   finding: Finding;
   decision: Decision | undefined;
   locked: boolean;
+  queued: ReturnType<typeof latestQueueEdit>;
   onDecision: (findingId: string, decision: Decision | null) => void;
 }) {
   const recommendation = finding.recommendation;
   const order = recommendation ? report.orders.find((item) => item.id === recommendation.orderId) : undefined;
   const eligible = isEligible(report, finding);
   const preview = recommendation && decision ? appliedWindow(recommendation, decision) : null;
-  const tone = finding.kind === "flag" ? "bg-orange-200" : finding.kind === "gap" ? "bg-yellow-100" : "bg-card";
+  const queueClosed = queued != null;
+  const tone =
+    queued?.status === "applied" ? "bg-green-50" : queued?.status === "failed" ? "bg-red-50" : finding.kind === "flag" ? "bg-orange-200" : finding.kind === "gap" ? "bg-yellow-100" : "bg-card";
 
   function choose(kind: DecisionKind) {
     if (!recommendation) return;
@@ -294,21 +306,32 @@ function DayRows({
     <>
       <tr className={`border-b align-top ${tone}`}>
         <td className="px-3 py-3 whitespace-nowrap font-medium">
-          {formatClock(finding.start)}–{formatClock(finding.end)}
+          {queued?.status === "applied" ? formatClock(queued.newClockIn) : formatClock(finding.start)}–
+          {queued?.status === "applied" ? formatClock(queued.newClockOut) : formatClock(finding.end)}
+          {queued?.status === "applied" && (queued.newClockIn !== finding.start || queued.newClockOut !== finding.end) ? (
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+              Pulled {formatClock(finding.start)}–{formatClock(finding.end)}
+            </span>
+          ) : null}
         </td>
         <td className="px-3 py-3 leading-6">{reportText(finding)}</td>
-        <td className="px-3 py-3 whitespace-nowrap">{missedText(finding)}</td>
+        <td className="px-3 py-3 whitespace-nowrap">{queued?.status === "applied" ? "Done" : missedText(finding)}</td>
         <td className="px-3 py-3 leading-6">
-          <p>{suggestedText(finding)}</p>
-          {recommendation?.optional ? <Badge variant="outline" className="mt-2">Optional</Badge> : null}
-          {order ? (
+          {queued ? (
+            <p className={queued.status === "failed" ? "text-destructive" : "font-medium"}>{reviewApplyText(queued)}</p>
+          ) : (
+            <p>{suggestedText(finding)}</p>
+          )}
+          {queued ? <p className="mt-2 text-muted-foreground">{suggestedText(finding)}</p> : null}
+          {recommendation?.optional && !queueClosed ? <Badge variant="outline" className="mt-2">Optional</Badge> : null}
+          {order && !queueClosed ? (
             <p className="mt-2 flex flex-wrap items-center gap-2">
               <OrderStatusBadge status={order.status} />
               <span className="text-muted-foreground">{eligible ? "Eligible for a time edit." : `${statusLabel(order.status)}. Not eligible.`}</span>
             </p>
           ) : null}
-          {locked && recommendation ? <p className="mt-3 text-muted-foreground">Signed off or already submitted. This decision is locked.</p> : null}
-          {eligible && recommendation && !locked ? (
+          {locked && recommendation && !queueClosed ? <p className="mt-3 text-muted-foreground">Signed off or already submitted. This decision is locked.</p> : null}
+          {eligible && recommendation && !locked && !queueClosed ? (
             <div className="mt-3 flex flex-col gap-2">
               <div className="flex flex-wrap gap-2" role="group" aria-label={`Decision for ${tech.name} ${recommendation.orderId}`}>
                 <Button type="button" size="sm" variant={decision?.kind === "accept" ? "default" : "outline"} aria-pressed={decision?.kind === "accept"} onClick={() => choose("accept")}>
@@ -327,7 +350,7 @@ function DayRows({
           ) : null}
         </td>
       </tr>
-      {eligible && recommendation && !locked && decision?.kind === "override" && preview ? (
+      {eligible && recommendation && !locked && !queueClosed && decision?.kind === "override" && preview ? (
         <tr className={`border-b ${tone}`}>
           <td colSpan={4} className="px-3 py-3">
             <div className="grid gap-3 sm:grid-cols-2">
