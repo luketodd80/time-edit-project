@@ -285,7 +285,7 @@ function DayRows({
   const order = recommendation ? report.orders.find((item) => item.id === recommendation.orderId) : undefined;
   const eligible = isEligible(report, finding);
   const preview = recommendation && decision ? appliedWindow(recommendation, decision) : null;
-  const queueClosed = queued != null;
+  const canDecide = !locked && (queued == null || queued.status === "failed");
   const tone =
     queued?.status === "applied" ? "bg-green-50" : queued?.status === "failed" ? "bg-red-50" : finding.kind === "flag" ? "bg-orange-200" : finding.kind === "gap" ? "bg-yellow-100" : "bg-card";
 
@@ -306,32 +306,24 @@ function DayRows({
     <>
       <tr className={`border-b align-top ${tone}`}>
         <td className="px-3 py-3 whitespace-nowrap font-medium">
-          {queued?.status === "applied" ? formatClock(queued.newClockIn) : formatClock(finding.start)}–
-          {queued?.status === "applied" ? formatClock(queued.newClockOut) : formatClock(finding.end)}
-          {queued?.status === "applied" && (queued.newClockIn !== finding.start || queued.newClockOut !== finding.end) ? (
-            <span className="mt-1 block text-xs font-normal text-muted-foreground">
-              Pulled {formatClock(finding.start)}–{formatClock(finding.end)}
-            </span>
-          ) : null}
+          {formatClock(finding.start)}–{formatClock(finding.end)}
         </td>
         <td className="px-3 py-3 leading-6">{reportText(finding)}</td>
-        <td className="px-3 py-3 whitespace-nowrap">{queued?.status === "applied" ? "Done" : missedText(finding)}</td>
+        <td className="px-3 py-3 whitespace-nowrap">{missedText(finding)}</td>
         <td className="px-3 py-3 leading-6">
+          <p>{suggestedText(finding)}</p>
           {queued ? (
-            <p className={queued.status === "failed" ? "text-destructive" : "font-medium"}>{reviewApplyText(queued)}</p>
-          ) : (
-            <p>{suggestedText(finding)}</p>
-          )}
-          {queued ? <p className="mt-2 text-muted-foreground">{suggestedText(finding)}</p> : null}
-          {recommendation?.optional && !queueClosed ? <Badge variant="outline" className="mt-2">Optional</Badge> : null}
-          {order && !queueClosed ? (
+            <p className={`mt-3 ${queued.status === "failed" ? "text-destructive" : "font-medium"}`}>{reviewApplyText(queued)}</p>
+          ) : null}
+          {recommendation?.optional && canDecide ? <Badge variant="outline" className="mt-2">Optional</Badge> : null}
+          {order && canDecide ? (
             <p className="mt-2 flex flex-wrap items-center gap-2">
               <OrderStatusBadge status={order.status} />
               <span className="text-muted-foreground">{eligible ? "Eligible for a time edit." : `${statusLabel(order.status)}. Not eligible.`}</span>
             </p>
           ) : null}
-          {locked && recommendation && !queueClosed ? <p className="mt-3 text-muted-foreground">Signed off or already submitted. This decision is locked.</p> : null}
-          {eligible && recommendation && !locked && !queueClosed ? (
+          {locked && recommendation && !queued ? <p className="mt-3 text-muted-foreground">Signed off. This decision is locked.</p> : null}
+          {eligible && recommendation && canDecide ? (
             <div className="mt-3 flex flex-col gap-2">
               <div className="flex flex-wrap gap-2" role="group" aria-label={`Decision for ${tech.name} ${recommendation.orderId}`}>
                 <Button type="button" size="sm" variant={decision?.kind === "accept" ? "default" : "outline"} aria-pressed={decision?.kind === "accept"} onClick={() => choose("accept")}>
@@ -350,7 +342,7 @@ function DayRows({
           ) : null}
         </td>
       </tr>
-      {eligible && recommendation && !locked && !queueClosed && decision?.kind === "override" && preview ? (
+      {eligible && recommendation && canDecide && decision?.kind === "override" && preview ? (
         <tr className={`border-b ${tone}`}>
           <td colSpan={4} className="px-3 py-3">
             <div className="grid gap-3 sm:grid-cols-2">

@@ -9,6 +9,8 @@ import {
   pendingBatches,
   queueEditFromPlanned,
   shopDayLock,
+  editsForSubmit,
+  findingCanBeDecided,
   latestQueueEdit,
   reviewApplyText,
   signoffApplyBlock,
@@ -224,14 +226,30 @@ describe("submit lock", () => {
 
     assert.equal(latestQueueEdit([earlier, applied, other], findingId)?.status, "applied");
     assert.equal(latestQueueEdit([applied], "missing"), null);
-    assert.match(reviewApplyText(applied.edits[0]!), /Applied in Fullbay/);
-    assert.match(reviewApplyText(applied.edits[0]!), /M-90508 11:49 AM–11:50 AM/);
-    assert.match(reviewApplyText(applied.edits[0]!), /\+1 min overlap bump/);
+    assert.equal(reviewApplyText(applied.edits[0]!), "Edits already updated");
+    assert.equal(reviewApplyText(earlier.edits[0]!), "Waiting on Fullbay.");
+    assert.equal(findingCanBeDecided([applied], findingId), false);
+    assert.equal(findingCanBeDecided([earlier], findingId), false);
+    assert.equal(findingCanBeDecided([], findingId), true);
 
     const failed = edit("failed", "Clock out overlaps the next punch");
-    assert.match(reviewApplyText(failed), /Fullbay apply failed\. M-90508 11:49 AM–11:50 AM\. Clock out overlaps the next punch/);
-    const failedWithoutNote = edit("failed", null);
-    assert.equal(reviewApplyText(failedWithoutNote).includes("Fullbay apply failed"), true);
+    assert.equal(reviewApplyText(failed), "Fullbay apply failed. Clock out overlaps the next punch");
+    assert.equal(reviewApplyText(edit("failed", null)), "Fullbay apply failed.");
+    assert.equal(findingCanBeDecided([{ ...applied, edits: [failed] }], findingId), true);
+
+    const failedBatch = batch("mobile", [tuesday], "failed-batch");
+    failedBatch.edits = [failed];
+    const retry = { findingId, day: tuesday, shopId: "mobile" as const };
+    assert.equal(submitRefusal([failedBatch], [], { shopId: "mobile", days: [tuesday], edits: [retry] }), null);
+    assert.match(
+      submitRefusal([failedBatch], [], { shopId: "mobile", days: [tuesday], edits: [{ ...retry, findingId: "never-pushed" }] }) ?? "",
+      /Already submitted: Mobile 2026-10-06/,
+    );
+    assert.equal(
+      editsForSubmit([failedBatch], [retry, { findingId: "never-pushed", day: tuesday, shopId: "mobile" }]).map((item) => item.findingId).join(","),
+      findingId,
+    );
+    assert.equal(editsForSubmit([applied], [{ findingId, day: tuesday, shopId: "mobile" }]).length, 0);
   });
 });
 

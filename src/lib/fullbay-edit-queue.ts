@@ -1,7 +1,5 @@
-import { formatTimestamp } from "@/lib/dates";
 import { shopName } from "@/lib/review";
 import { SHOPS, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
-import { formatClock } from "@/lib/time";
 
 export type FullbayApplyStatus = "pending" | "applied" | "failed";
 
@@ -249,15 +247,34 @@ export function latestQueueEdit(batches: FullbayEditBatch[], findingId: string):
   return matches[0]?.edit ?? null;
 }
 
-/** Review copy for a queued finding. Applied rows are done. Failed rows carry the confirm note. */
+/** Review copy for a queued finding. Applied and pending rows are not open actions. A failed row keeps its note. */
 export function reviewApplyText(edit: FullbayQueueEdit): string {
-  const times = `${edit.orderId} ${formatClock(edit.newClockIn)}–${formatClock(edit.newClockOut)}`;
-  if (edit.status === "failed") {
-    return edit.applyNote ? `Fullbay apply failed. ${times}. ${edit.applyNote}` : `Fullbay apply failed. ${times}.`;
-  }
-  if (edit.status === "pending") return `Pending Fullbay apply. ${times}.`;
-  const when = edit.appliedAt ? ` ${formatTimestamp(edit.appliedAt)}` : "";
-  return edit.applyNote ? `Applied in Fullbay${when}. ${times}. ${edit.applyNote}` : `Applied in Fullbay${when}. ${times}.`;
+  if (edit.status === "pending") return "Waiting on Fullbay.";
+  if (edit.status === "failed") return edit.applyNote ? `Fullbay apply failed. ${edit.applyNote}` : "Fullbay apply failed.";
+  return "Edits already updated";
+}
+
+/** Accept, Reject, and Override stay available only for a finding that was never pushed, or whose latest push failed. */
+export function findingCanBeDecided(batches: FullbayEditBatch[], findingId: string): boolean {
+  const latest = latestQueueEdit(batches, findingId);
+  return latest == null || latest.status === "failed";
+}
+
+/**
+ * Edits to send. Applied and pending findings stay out.
+ * A shop day that was already submitted can only send findings whose latest push failed.
+ */
+export function editsForSubmit<T extends { findingId: string; day: string; shopId: ShopId }>(batches: FullbayEditBatch[], edits: T[]): T[] {
+  return edits.filter((edit) => {
+    const latest = latestQueueEdit(batches, edit.findingId);
+    if (latest?.status === "applied" || latest?.status === "pending") return false;
+    if (latest?.status === "failed") return true;
+    return !shopDayWasSubmitted(batches, edit.day, edit.shopId);
+  });
+}
+
+function shopDayWasSubmitted(batches: FullbayEditBatch[], day: string, shopId: ShopId): boolean {
+  return batches.some((batch) => shopDaysCovered(batch.shopId, batch.days).some((pair) => pair.day === day && pair.shopId === shopId));
 }
 
 export interface ShopDayRef {
@@ -288,13 +305,14 @@ function labelPairs(pairs: ShopDayRef[]): string {
 }
 
 /**
- * Refuse another submit when any covered shop and day is signed off or already queued.
+ * Refuse another submit when any covered shop and day is signed off, or when the request
+ * would push a shop day that was already submitted except as a retry of a failed finding.
  * An all-shops batch counts as submitted for every shop on those days.
  */
 export function submitRefusal(
   batches: FullbayEditBatch[],
   signoffs: RecordedSignoff[],
-  request: { shopId: ShopFilter; days: string[]; edits?: ShopDayRef[] },
+  request: { shopId: ShopFilter; days: string[]; edits?: Array<ShopDayRef & { findingId?: string }> },
 ): string | null {
   const pairs = shopDaysCovered(request.shopId, request.days);
   const seen = new Set(pairs.map((pair) => pairKey(pair.day, pair.shopId)));
@@ -315,10 +333,14 @@ export function submitRefusal(
     for (const pair of shopDaysCovered(batch.shopId, batch.days)) submitted.add(pairKey(pair.day, pair.shopId));
   }
   const again = pairs.filter((pair) => submitted.has(pairKey(pair.day, pair.shopId)));
-  if (again.length > 0) {
-    return `Already submitted: ${labelPairs(again)}. Submit is closed for a shop and day that was already submitted.`;
-  }
-  return null;
+  if (again.length === 0) return null;
+
+  const editsOnSubmitted = (request.edits ?? []).filter((edit) => submitted.has(pairKey(edit.day, edit.shopId)));
+  const failedRetry =
+    editsOnSubmitted.length > 0 &&
+    editsOnSubmitted.every((edit) => edit.findingId != null && latestQueueEdit(batches, edit.findingId)?.status === "failed");
+  if (failedRetry) return null;
+  return `Already submitted: ${labelPairs(again)}. Submit is closed for a shop and day that was already submitted.`;
 }
 
 export type ShopDayLock = "open" | "signed-off" | "submitted";

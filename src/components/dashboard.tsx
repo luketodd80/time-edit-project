@@ -6,7 +6,7 @@ import { DayBar } from "@/components/day-bar";
 import { ReviewView } from "@/components/review-view";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { latestQueueEdit, shopDayLock, signoffApplyBlock, submissionToQueueRequest, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
+import { editsForSubmit, findingCanBeDecided, shopDayLock, signoffApplyBlock, submissionToQueueRequest, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { attest, buildPlan, buildSubmission, filterReports, markDone, signoffKey, submissionFingerprint, submitBlockers } from "@/lib/review";
 import { updateReview, useReviewSnapshot } from "@/lib/review-store";
 import { SEED } from "@/lib/seed";
@@ -94,8 +94,8 @@ export function Dashboard() {
 
   function setDecision(findingId: string, decision: Decision | null) {
     const finding = reports.flatMap((report) => report.findings).find((item) => item.id === findingId);
-    if (finding && latestQueueEdit(queueBatches ?? [], finding.id)) return;
-    if (finding && shopDayLock(queueBatches ?? [], recordedSignoffs(state.signoffs), finding.day, finding.shopId) !== "open") return;
+    if (finding && !findingCanBeDecided(queueBatches ?? [], finding.id)) return;
+    if (finding && shopDayLock(queueBatches ?? [], recordedSignoffs(state.signoffs), finding.day, finding.shopId) === "signed-off") return;
     setSubmitError(null);
     updateReview((current) => {
       const decisions = { ...current.decisions };
@@ -194,10 +194,12 @@ export function Dashboard() {
       return;
     }
     const submission = buildSubmission(reports, state.decisions, state.shopId, state.days, new Date().toISOString());
+    const edits = editsForSubmit(queueBatches ?? [], submission.edits);
+    const queuedSubmission = { ...submission, edits };
     const refusal = submitRefusal(queueBatches ?? [], recordedSignoffs(state.signoffs), {
       shopId: state.shopId,
       days: state.days,
-      edits: submission.edits,
+      edits,
     });
     if (refusal) {
       setSubmitError(refusal);
@@ -209,7 +211,7 @@ export function Dashboard() {
       const response = await fetch("/api/fullbay-edits", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(submissionToQueueRequest(submission)),
+        body: JSON.stringify(submissionToQueueRequest(queuedSubmission)),
       });
       if (response.status === 409) {
         const body = (await response.json()) as { error?: string };
@@ -221,7 +223,7 @@ export function Dashboard() {
         return;
       }
       setQueueError(null);
-      updateReview((current) => ({ ...current, submission, view: "confirm" }));
+      updateReview((current) => ({ ...current, submission: queuedSubmission, view: "confirm" }));
       await refreshQueue();
     } catch {
       setSubmitError("The Fullbay apply queue could not be reached, so nothing was submitted.");
@@ -231,7 +233,8 @@ export function Dashboard() {
   }
 
   const signoffRecords = recordedSignoffs(state.signoffs);
-  const submitLock = submitRefusal(queueBatches ?? [], signoffRecords, { shopId: state.shopId, days: state.days });
+  const submitEdits = editsForSubmit(queueBatches ?? [], buildPlan(reports, state.decisions).edits);
+  const submitLock = submitRefusal(queueBatches ?? [], signoffRecords, { shopId: state.shopId, days: state.days, edits: submitEdits });
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6">
@@ -287,7 +290,7 @@ export function Dashboard() {
             decisions={state.decisions}
             submitError={submitError ?? queueError}
             submitLock={submitLock}
-            isLocked={(day, shopId) => shopDayLock(queueBatches ?? [], signoffRecords, day, shopId) !== "open"}
+            isLocked={(day, shopId) => shopDayLock(queueBatches ?? [], signoffRecords, day, shopId) === "signed-off"}
             batches={queueBatches ?? []}
             onDecision={setDecision}
             onSubmit={submit}
