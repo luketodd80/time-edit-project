@@ -35,9 +35,9 @@ function recommendation(id: string) {
 }
 
 describe("review days", () => {
-  it("opens on Tuesday October 6 so Monday October 5 is due", () => {
-    assert.equal(DEMO_TODAY, "2026-10-06");
-    assert.deepEqual(defaultPendingDays(DEMO_TODAY), ["2026-10-05"]);
+  it("opens on Wednesday October 7 so Tuesday October 6 is due", () => {
+    assert.equal(DEMO_TODAY, "2026-10-07");
+    assert.deepEqual(defaultPendingDays(DEMO_TODAY), ["2026-10-06"]);
     assert.deepEqual(defaultPendingDays("2026-10-05"), [friday, saturday]);
   });
 
@@ -47,7 +47,8 @@ describe("review days", () => {
   });
 
   it("starts the trail on Friday October 2 and drops Sunday", () => {
-    assert.deepEqual(reviewWindow(DEMO_TODAY), [friday, saturday, "2026-10-05"]);
+    assert.deepEqual(reviewWindow(DEMO_TODAY), [friday, saturday, "2026-10-05", "2026-10-06"]);
+    assert.deepEqual(reviewWindow("2026-10-06"), [friday, saturday, "2026-10-05"]);
     const later = reviewWindow("2026-10-20", 30);
     assert.equal(later[0], AUDIT_START);
     assert.equal(later.includes("2026-10-01"), false);
@@ -58,7 +59,7 @@ describe("review days", () => {
 });
 
 describe("shop scope", () => {
-  it("lists every shop and loads Friday, Saturday, and Monday", () => {
+  it("lists every shop and loads Friday through Tuesday", () => {
     assert.deepEqual(
       SHOPS.map((shop) => shop.name),
       ["Dayton", "Covington", "Greenville", "Springfield", "Mobile", "Columbus"],
@@ -68,6 +69,7 @@ describe("shop scope", () => {
     assert.ok(filterReports(SEED, "covington", [friday]).length === 1);
     assert.ok(filterReports(SEED, "all", [saturday]).length > 0);
     assert.ok(filterReports(SEED, "all", ["2026-10-05"]).length > 0);
+    assert.ok(filterReports(SEED, "all", ["2026-10-06"]).length > 0);
   });
 
   it("does not treat All shops and Dayton as the same Friday", () => {
