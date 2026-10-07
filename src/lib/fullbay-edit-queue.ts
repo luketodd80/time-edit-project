@@ -311,20 +311,15 @@ export function findingCanBeDecided(batches: FullbayEditBatch[], findingId: stri
 }
 
 /**
- * Edits to send. Applied and pending findings stay out.
- * A shop day that was already submitted can only send findings whose latest push failed.
+ * Edits to send. Applied and pending findings stay out, so nothing is pushed twice.
+ * A finding that was never pushed, or whose latest push failed, can be sent even on a shop day
+ * that was already submitted (for example a line the manager left undecided on the first submit).
  */
 export function editsForSubmit<T extends { findingId: string; day: string; shopId: ShopId }>(batches: FullbayEditBatch[], edits: T[]): T[] {
   return edits.filter((edit) => {
     const latest = latestQueueEdit(batches, edit.findingId);
-    if (latest?.status === "applied" || latest?.status === "pending") return false;
-    if (latest?.status === "failed") return true;
-    return !shopDayWasSubmitted(batches, edit.day, edit.shopId);
+    return latest == null || latest.status === "failed";
   });
-}
-
-function shopDayWasSubmitted(batches: FullbayEditBatch[], day: string, shopId: ShopId): boolean {
-  return batches.some((batch) => shopDaysCovered(batch.shopId, batch.days).some((pair) => pair.day === day && pair.shopId === shopId));
 }
 
 export interface ShopDayRef {
@@ -357,7 +352,8 @@ function labelPairs(pairs: ShopDayRef[]): string {
 
 /**
  * Refuse another submit when any covered shop and day is signed off, or when the request
- * would push a shop day that was already submitted except as a retry of a failed finding.
+ * would push a shop day that was already submitted with nothing new: every edit on that
+ * day must be a never-pushed finding or a retry of a failed one. Applied or pending edits are refused.
  * An all-shops batch counts as submitted for every shop on those days.
  */
 export function submitRefusal(
@@ -387,10 +383,14 @@ export function submitRefusal(
   if (again.length === 0) return null;
 
   const editsOnSubmitted = (request.edits ?? []).filter((edit) => submitted.has(pairKey(edit.day, edit.shopId)));
-  const failedRetry =
+  const onlyNewOrFailed =
     editsOnSubmitted.length > 0 &&
-    editsOnSubmitted.every((edit) => edit.findingId != null && latestQueueEdit(batches, edit.findingId)?.status === "failed");
-  if (failedRetry) return null;
+    editsOnSubmitted.every((edit) => {
+      if (edit.findingId == null) return false;
+      const latest = latestQueueEdit(batches, edit.findingId);
+      return latest == null || latest.status === "failed";
+    });
+  if (onlyNewOrFailed) return null;
   return `Already submitted: ${labelPairs(again)}. Submit is closed for a shop and day that was already submitted.`;
 }
 

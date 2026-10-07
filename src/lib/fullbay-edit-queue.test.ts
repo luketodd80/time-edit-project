@@ -253,13 +253,18 @@ describe("submit lock", () => {
     failedBatch.edits = [failed];
     const retry = { findingId, day: tuesday, shopId: "mobile" as const };
     assert.equal(submitRefusal([failedBatch], [], { shopId: "mobile", days: [tuesday], edits: [retry] }), null);
+    assert.equal(
+      submitRefusal([failedBatch], [], { shopId: "mobile", days: [tuesday], edits: [{ ...retry, findingId: "never-pushed" }] }),
+      null,
+    );
     assert.match(
-      submitRefusal([failedBatch], [], { shopId: "mobile", days: [tuesday], edits: [{ ...retry, findingId: "never-pushed" }] }) ?? "",
+      submitRefusal([applied], [], { shopId: "mobile", days: [tuesday], edits: [retry] }) ?? "",
       /Already submitted: Mobile 2026-10-06/,
     );
+    assert.match(submitRefusal([earlier], [], { shopId: "mobile", days: [tuesday], edits: [retry] }) ?? "", /Already submitted: Mobile 2026-10-06/);
     assert.equal(
       editsForSubmit([failedBatch], [retry, { findingId: "never-pushed", day: tuesday, shopId: "mobile" }]).map((item) => item.findingId).join(","),
-      findingId,
+      `${findingId},never-pushed`,
     );
     assert.equal(editsForSubmit([applied], [{ findingId, day: tuesday, shopId: "mobile" }]).length, 0);
   });
@@ -487,10 +492,12 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
 
       const first = await submit("dayton", tuesday, "zach-1");
       assert.equal(first.status, 200);
-      const again = await submit("dayton", tuesday, "zach-2");
+      const again = await submit("dayton", tuesday, "zach-1");
       assert.equal(again.status, 409);
       const againBody = (await again.json()) as { error?: string };
       assert.match(againBody.error ?? "", /Already submitted: Dayton 2026-10-06/);
+      const leftover = await submit("dayton", tuesday, "zach-2");
+      assert.equal(leftover.status, 200);
 
       const otherShop = await submit("mobile", tuesday, "zach-3");
       assert.equal(otherShop.status, 200);
