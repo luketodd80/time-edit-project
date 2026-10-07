@@ -14,6 +14,7 @@ import {
   OPEN_PUNCH_NOTE,
   isForeman,
   parseDetailsListCsv,
+  shopIdForOrderId,
   shopIdForTimesheetShop,
   timesheetToDayReports,
   type FullbayTimesheetRow,
@@ -87,6 +88,12 @@ describe("timesheet conversion rules", () => {
     });
     assert.equal(shopIdForTimesheetShop("The Service Company - Lima (L)"), null);
     assert.equal(shopIdForTimesheetShop("The Service Company-Mobile Units (M)"), "mobile");
+    assert.equal(shopIdForOrderId("D-100"), "dayton");
+    assert.equal(shopIdForOrderId("M-10"), "mobile");
+    assert.equal(shopIdForOrderId("S-1"), "springfield");
+    assert.equal(shopIdForOrderId("C-4"), "covington");
+    assert.equal(shopIdForOrderId("G-3"), "greenville");
+    assert.equal(shopIdForOrderId("CL-2"), "columbus");
     assert.equal(reports.length, 1);
     assert.equal(reports[0]?.technicians.length, 1);
     assert.equal(reports[0]?.technicians[0]?.name, "Ada Lovelace");
@@ -468,11 +475,11 @@ describe("October 6 download", () => {
         ]),
       ),
       {
-        dayton: { techs: 8, findings: 97, gaps: 10 },
+        dayton: { techs: 8, findings: 125, gaps: 10 },
         covington: { techs: 6, findings: 90, gaps: 11 },
         greenville: { techs: 6, findings: 67, gaps: 9 },
-        springfield: { techs: 4, findings: 63, gaps: 16 },
-        mobile: { techs: 2, findings: 34, gaps: 7 },
+        springfield: { techs: 4, findings: 64, gaps: 15 },
+        mobile: { techs: 2, findings: 38, gaps: 8 },
         columbus: { techs: 4, findings: 30, gaps: 0 },
       },
     );
@@ -833,11 +840,174 @@ describe("October 2 and October 3 downloads", () => {
     assert.deepEqual(namesOn(OCTOBER_3_REPORTS, "covington"), ["Cline Wirick", "Kody Peters", "Paul Henry"]);
     assert.deepEqual(namesOn(OCTOBER_3_REPORTS, "greenville"), ["Gage Wills", "Jack Eversole", "Paul Henry"]);
     assert.equal(OCTOBER_3_REPORTS.reduce((sum, report) => sum + report.technicians.length, 0), 6);
-    assert.equal(OCTOBER_3_REPORTS.reduce((sum, report) => sum + report.findings.length, 0), 22);
+    assert.equal(OCTOBER_3_REPORTS.reduce((sum, report) => sum + report.findings.length, 0), 28);
     assertReportShape(OCTOBER_3_REPORTS);
     const loaded = OCTOBER_3_REPORTS.flatMap((report) => report.technicians.map((tech) => tech.name));
     for (const name of ["Thomas Flora", "James Benedict", "Isaac Stockslager", "Kevin Neal", "Jacob Griffith", "Josh Silva-holley", "Travis Hess"]) {
       assert.equal(loaded.includes(name), false);
+    }
+  });
+});
+
+function clockMinutes(value: string): number {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+/** Half-open minute windows. Touching at an endpoint is not an overlap. */
+function windowsOverlap(start: string, end: string, otherStart: string, otherEnd: string): boolean {
+  return clockMinutes(start) < clockMinutes(otherEnd) && clockMinutes(otherStart) < clockMinutes(end);
+}
+
+describe("cross-shop service orders", () => {
+  it("lists a tech on every shop with their own SO punches, not on a single home shop", () => {
+    const reports = timesheetToDayReports({
+      date: tuesday,
+      rows: [
+        row({
+          employee: "Split Tech",
+          shop: "The Service Company-Mobile Units (M)",
+          clock_in: "7:00:00AM 10/6/2026",
+          clock_out: "11:00:00AM 10/6/2026",
+          hours: 4,
+        }),
+        row({
+          employee: "Split Tech",
+          shop: "The Service Company-Mobile Units (M)",
+          clock_in: "7:00:00AM 10/6/2026",
+          clock_out: "9:00:00AM 10/6/2026",
+          hours: 2,
+          so_complaint: "M-10 / Onsite",
+        }),
+        row({
+          employee: "Split Tech",
+          shop: "The Service Company - Dayton (D)",
+          clock_in: "9:00:00AM 10/6/2026",
+          clock_out: "5:00:00PM 10/6/2026",
+          hours: 8,
+          so_complaint: "D-80 / Axle",
+        }),
+      ],
+    });
+    const mobile = reports.find((report) => report.shopId === "mobile");
+    const dayton = reports.find((report) => report.shopId === "dayton");
+    const mobileTech = mobile?.technicians.find((tech) => tech.name === "Split Tech");
+    const daytonTech = dayton?.technicians.find((tech) => tech.name === "Split Tech");
+    assert.ok(mobileTech);
+    assert.ok(daytonTech);
+    assert.equal(mobileTech?.soHours, 2);
+    assert.equal(mobileTech?.clockedHours, 4);
+    assert.equal(daytonTech?.soHours, 8);
+    assert.equal(daytonTech?.clockedHours, 8);
+    assert.deepEqual(mobile?.orders.map((order) => order.id), ["M-10"]);
+    assert.deepEqual(dayton?.orders.map((order) => order.id), ["D-80"]);
+
+    const mobileFindings = mobile?.findings.filter((finding) => finding.techId === "split-tech") ?? [];
+    const daytonFindings = dayton?.findings.filter((finding) => finding.techId === "split-tech") ?? [];
+    const mobileOwn = mobileFindings.find((finding) => finding.detail.startsWith("M-10 / Onsite"));
+    const daytonOwn = daytonFindings.find((finding) => finding.detail.startsWith("D-80 / Axle"));
+    assert.equal(mobileOwn?.kind, "as_is");
+    assert.equal(mobileOwn?.notAGap, undefined);
+    assert.equal(mobileOwn?.recommendation, null);
+    assert.equal(daytonOwn?.kind, "as_is");
+    assert.equal(daytonOwn?.recommendation, null);
+
+    const mobileContext = mobileFindings.find((finding) => finding.detail.includes("D-80"));
+    const daytonContext = daytonFindings.find((finding) => finding.detail.includes("M-10"));
+    assert.equal(mobileContext?.notAGap, true);
+    assert.equal(mobileContext?.recommendation, null);
+    assert.match(mobileContext?.detail ?? "", /Dayton/);
+    assert.match(mobileContext?.suggested ?? "", /No edit/);
+    assert.equal(daytonContext?.notAGap, true);
+    assert.equal(daytonContext?.recommendation, null);
+    assert.match(daytonContext?.detail ?? "", /Mobile/);
+
+    assert.equal(
+      mobileFindings.some(
+        (finding) =>
+          finding.recommendation != null &&
+          windowsOverlap(finding.recommendation.start, finding.recommendation.end, "09:00", "17:00"),
+      ),
+      false,
+    );
+    assert.equal(
+      daytonFindings.some((finding) => finding.recommendation != null),
+      false,
+    );
+  });
+
+  it("does not suggest Tuesday edits that overlap another shop's service-order punch", () => {
+    const mobile = OCTOBER_6_REPORTS.find((report) => report.shopId === "mobile");
+    const springfield = OCTOBER_6_REPORTS.find((report) => report.shopId === "springfield");
+    const dayton = OCTOBER_6_REPORTS.find((report) => report.shopId === "dayton");
+    const clark = mobile?.findings.filter((finding) => finding.techId === "chris-clark") ?? [];
+    const wooten = springfield?.findings.filter((finding) => finding.techId === "mike-wooten") ?? [];
+
+    assert.ok(mobile?.technicians.some((tech) => tech.name === "Chris Clark"));
+    assert.ok(dayton?.technicians.some((tech) => tech.name === "Chris Clark"));
+    assert.ok(springfield?.technicians.some((tech) => tech.name === "Mike Wooten"));
+    assert.ok(dayton?.technicians.some((tech) => tech.name === "Mike Wooten"));
+    assert.equal(mobile?.technicians.find((tech) => tech.id === "chris-clark")?.soHours, 7.33);
+    assert.equal(mobile?.technicians.find((tech) => tech.id === "chris-clark")?.clockedHours, 9.49);
+    assert.equal(dayton?.technicians.find((tech) => tech.id === "chris-clark")?.soHours, 1.05);
+    assert.equal(dayton?.technicians.find((tech) => tech.id === "chris-clark")?.clockedHours, 1.05);
+    assert.equal(springfield?.technicians.find((tech) => tech.id === "mike-wooten")?.soHours, 2.16);
+    assert.equal(dayton?.technicians.find((tech) => tech.id === "mike-wooten")?.soHours, 5.63);
+
+    const clarkMorning = clark.find((finding) => finding.id === "2026-10-06-mobile-chris-clark-17");
+    const clarkAfternoon = clark.find((finding) => finding.id === "2026-10-06-mobile-chris-clark-21");
+    const wootenAfternoon = wooten.find((finding) => finding.id === "2026-10-06-springfield-mike-wooten-17");
+    assert.equal(clarkMorning?.recommendation?.orderId, "M-90508");
+    assert.equal(clarkMorning?.start, "11:52");
+    assert.equal(clarkMorning?.end, "12:02");
+    assert.equal(
+      windowsOverlap(clarkMorning?.start ?? "", clarkMorning?.end ?? "", "12:02", "12:43"),
+      false,
+    );
+    assert.equal(clarkAfternoon?.recommendation?.orderId, "M-90534");
+    assert.equal(clarkAfternoon?.start, "14:09");
+    assert.equal(clarkAfternoon?.end, "14:17");
+    assert.equal(
+      windowsOverlap(clarkAfternoon?.start ?? "", clarkAfternoon?.end ?? "", "14:17", "14:39"),
+      false,
+    );
+    assert.equal(
+      clark.some((finding) => finding.recommendation != null && finding.start === "11:52" && finding.end === "12:44"),
+      false,
+    );
+    assert.equal(
+      clark.some((finding) => finding.recommendation != null && finding.start === "14:09" && finding.end === "14:41"),
+      false,
+    );
+    assert.equal(wootenAfternoon?.recommendation, null);
+    assert.equal(wootenAfternoon?.notAGap, true);
+    assert.match(wootenAfternoon?.detail ?? "", /Dayton D-89514/);
+    assert.equal(
+      wooten.some((finding) => finding.recommendation != null && finding.start === "11:31" && finding.end === "17:10"),
+      false,
+    );
+    assert.ok(clark.some((finding) => finding.notAGap && finding.detail.includes("Dayton D-90273") && finding.recommendation == null));
+
+    for (const reports of [OCTOBER_2_REPORTS, OCTOBER_3_REPORTS, OCTOBER_5_REPORTS, OCTOBER_6_REPORTS]) {
+      const byTech = new Map<string, { shopId: string; start: string; end: string }[]>();
+      for (const report of reports) {
+        for (const finding of report.findings) {
+          if (finding.kind !== "as_is" || finding.notAGap) continue;
+          const key = `${report.day}\0${finding.techId}`;
+          const list = byTech.get(key) ?? [];
+          list.push({ shopId: report.shopId, start: finding.start, end: finding.end });
+          byTech.set(key, list);
+        }
+      }
+      for (const report of reports) {
+        for (const finding of report.findings) {
+          const recommendation = finding.recommendation;
+          if (!recommendation) continue;
+          const others = (byTech.get(`${report.day}\0${finding.techId}`) ?? []).filter((span) => span.shopId !== report.shopId);
+          const overlap = others.some((span) => windowsOverlap(recommendation.start, recommendation.end, span.start, span.end));
+          assert.equal(overlap, false, `${finding.id} overlaps another shop`);
+        }
+      }
     }
   });
 });
