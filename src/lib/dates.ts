@@ -1,5 +1,5 @@
-/** Demo "today". Tuesday, so the default review day is Monday 2026-10-05. */
-export const DEMO_TODAY = "2026-10-06";
+/** Demo "today". Wednesday, so the default review day is Tuesday 2026-10-06. */
+export const DEMO_TODAY = "2026-10-07";
 
 export const REVIEW_LOOKBACK_DAYS = 14;
 

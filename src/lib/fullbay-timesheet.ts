@@ -4,6 +4,7 @@ import { formatClock } from "@/lib/time";
 import { FRIDAY_DETAILS_CSV } from "@/lib/friday-details-csv";
 import { SATURDAY_DETAILS_CSV } from "@/lib/saturday-details-csv";
 import { MONDAY_DETAILS_CSV } from "@/lib/monday-details-csv";
+import { TUESDAY_DETAILS_CSV } from "@/lib/tuesday-details-csv";
 
 /**
  * Shop foremen. They are left out of time-gap review and utilization entirely.
@@ -87,6 +88,15 @@ const SHOP_PATTERNS: { id: ShopId; pattern: RegExp }[] = [
 
 const BILLABLE_COMMENT = /\b(tire|tires|plug|plugged|plugging|tow|towing|road\s*side|flat)\b/i;
 const COMPLAINT = /^\s*([A-Za-z]{1,3}-\d+)\s*\/\s*(.*?)\s*$/;
+/** Non-Pro and shop-meeting punches. Inactive clock time is not attendance. */
+const ATTENDANCE_ACTIVITY = /non[-\s]?pro|shop\s*meeting|attendance/i;
+/** Paul Henry’s Greenville stretches: waiting is not billable service-order time. */
+const WAITING_ON_WORK = /waiting on (?:a )?(?:job|work)\b/i;
+/**
+ * Suggestion rules from the October 5 review. Earlier days keep the previous
+ * nearest-order wording so live Submit and Confirm history stays on the same finding ids.
+ */
+const SUGGESTION_RULES_FROM = "2026-10-06";
 
 export function normalizePersonName(name: string): string {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -335,6 +345,17 @@ function recommendationForPeer(
   };
 }
 
+function previousSegment(gapStart: number, segments: Segment[]): Segment | null {
+  let previous: Segment | null = null;
+  for (const segment of segments) {
+    const end = impliedEnd(segment.start, segment.end, segment.hours);
+    if (end <= gapStart + 5 && (previous == null || impliedEnd(previous.start, previous.end, previous.hours) <= end)) {
+      previous = segment;
+    }
+  }
+  return previous;
+}
+
 function recommendationFor(
   start: string,
   end: string,
@@ -343,8 +364,15 @@ function recommendationFor(
   gapStart: number,
   gapEnd: number,
   open: boolean,
+  sideLimit: "either" | "previous" = "either",
 ): Recommendation | null {
-  const nearest = nearestOrder(gapStart, gapEnd, segments);
+  const nearest =
+    sideLimit === "previous"
+      ? (() => {
+          const previous = previousSegment(gapStart, segments);
+          return previous ? { segment: previous, side: "previous" as const } : null;
+        })()
+      : nearestOrder(gapStart, gapEnd, segments);
   if (!nearest) return null;
   const work = nearest.segment.title;
   const name = work ? `${nearest.segment.orderId} ${work}` : nearest.segment.orderId;
@@ -391,12 +419,32 @@ function segmentsFromRows(rows: FullbayTimesheetRow[]): Segment[] {
   return segments;
 }
 
+function suggestionRules(day: string): boolean {
+  return day >= SUGGESTION_RULES_FROM;
+}
+
+function isAttendanceActivity(activity: string): boolean {
+  return ATTENDANCE_ACTIVITY.test(activity.trim());
+}
+
+/** Midnight-to-midnight Inactive row with no service order, such as a 24-hour placeholder. */
+function isInactiveDayPlaceholder(row: FullbayTimesheetRow): boolean {
+  if (row.so_complaint.trim()) return false;
+  if (row.clock_in_activity.trim().toLowerCase() !== "inactive") return false;
+  if (Math.abs((Number(row.hours) || 0) - 24) > 0.001) return false;
+  const start = parseClockSeconds(row.clock_in);
+  const end = row.clock_out ? parseClockSeconds(row.clock_out) : null;
+  return start === 0 && end === 0;
+}
+
 function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimesheetRow[], peers: PeerSegment[]): BuiltTech | null {
   if (isForeman(name)) return null;
+  const rules = suggestionRules(day);
 
   const punches: Punch[] = [];
   const segments: Segment[] = [];
   for (const row of rows) {
+    if (isInactiveDayPlaceholder(row)) continue;
     const start = parseClockSeconds(row.clock_in);
     if (start == null) continue;
     const end = row.clock_out ? parseClockSeconds(row.clock_out) : null;
@@ -487,11 +535,22 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     comment: string,
     commentFromClockIn: boolean,
     wholePunch: boolean,
+    nextIsAttendance: boolean,
   ) {
     const pieces = uncoveredByServiceOrders(startSeconds, endSeconds);
     for (const [start, end] of pieces) {
       const fullPiece = pieces.length === 1 && start === startSeconds && end === endSeconds;
-      pushGap(start, end, open && end >= endSeconds - 1, activity, comment, commentFromClockIn, wholePunch && fullPiece);
+      const reachesPunchEnd = end >= endSeconds - 5;
+      pushGap(
+        start,
+        end,
+        open && end >= endSeconds - 1,
+        activity,
+        comment,
+        commentFromClockIn,
+        wholePunch && fullPiece,
+        nextIsAttendance && reachesPunchEnd,
+      );
     }
   }
 
@@ -503,6 +562,7 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     comment: string,
     commentFromClockIn: boolean,
     wholePunch: boolean,
+    nextIsAttendance: boolean,
   ) {
     const window = windowOf(startSeconds, endSeconds);
     if (!window) return;
@@ -517,6 +577,20 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     let detail = wholePunch
       ? `Clocked.${activityText} No service order on this punch.${commentText}${openText}`
       : `Clocked. No service order on this stretch.${openText}`;
+    const attendance = wholePunch && isAttendanceActivity(activity);
+    const waiting = wholePunch && WAITING_ON_WORK.test(comment);
+    if (rules && waiting) {
+      push({
+        kind: "gap",
+        start: window.start,
+        end: window.end,
+        minutes: window.minutes,
+        detail,
+        suggested: `Non-Pro “${comment}”. That stretch stays off billable service-order time.`,
+        recommendation: null,
+      });
+      return;
+    }
     const peer = commentFromClockIn ? overlappingHelp(comment, startSeconds, endSeconds, name, peers) : null;
     if (peer) {
       const span = segmentSpan(peer.segment);
@@ -529,6 +603,51 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
         minutes: window.minutes,
         detail,
         recommendation: recommendationForPeer(window.start, window.end, window.minutes, peer, comment, open),
+      });
+      return;
+    }
+    if (rules && attendance) {
+      push({
+        kind: "gap",
+        start: window.start,
+        end: window.end,
+        minutes: window.minutes,
+        detail,
+        suggested: "Non-Pro attendance. Do not move a clock-in onto this row.",
+        recommendation: null,
+      });
+      return;
+    }
+    if (rules && nextIsAttendance) {
+      const recommendation = recommendationFor(
+        window.start,
+        window.end,
+        window.minutes,
+        segments,
+        startSeconds,
+        endSeconds,
+        open,
+        "previous",
+      );
+      if (!recommendation) {
+        push({
+          kind: "gap",
+          start: window.start,
+          end: window.end,
+          minutes: window.minutes,
+          detail,
+          suggested: "The next punch is Non-Pro. There is no earlier service order to extend up to that start.",
+          recommendation: null,
+        });
+        return;
+      }
+      push({
+        kind: "gap",
+        start: window.start,
+        end: window.end,
+        minutes: window.minutes,
+        detail,
+        recommendation,
       });
       return;
     }
@@ -590,18 +709,19 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     const open = punch.end == null;
     const nested = assigned[i];
     let cursor = punch.start;
+    const next = punches[i + 1];
+    const nextIsAttendance = next != null && isAttendanceActivity(next.activity);
     if (nested.length === 0) {
-      pushUncovered(punch.start, punchEnd, open, punch.activity, punch.comment, punch.commentFromClockIn, true);
+      pushUncovered(punch.start, punchEnd, open, punch.activity, punch.comment, punch.commentFromClockIn, true, nextIsAttendance);
     } else {
       for (const segment of nested) {
-        if (segment.start > cursor) pushUncovered(cursor, segment.start, false, punch.activity, "", false, false);
+        if (segment.start > cursor) pushUncovered(cursor, segment.start, false, punch.activity, "", false, false, false);
         pushSegment(segment);
         cursor = Math.max(cursor, impliedEnd(segment.start, segment.end, segment.hours));
       }
-      if (punchEnd > cursor) pushUncovered(cursor, punchEnd, open, punch.activity, "", false, false);
+      if (punchEnd > cursor) pushUncovered(cursor, punchEnd, open, punch.activity, "", false, false, nextIsAttendance);
     }
 
-    const next = punches[i + 1];
     if (punch.end != null && next && next.start - punch.end >= 60) {
       const window = windowOf(punch.end, next.start);
       if (window) {
@@ -705,7 +825,8 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
   return reports;
 }
 
-/** Friday, Saturday, and Monday all use the Details List download (Clock In Comment). */
+/** Friday through Tuesday use the Details List download (Clock In Comment). */
 export const OCTOBER_2_REPORTS = timesheetToDayReports(parseDetailsListCsv(FRIDAY_DETAILS_CSV, "2026-10-02"));
 export const OCTOBER_3_REPORTS = timesheetToDayReports(parseDetailsListCsv(SATURDAY_DETAILS_CSV, "2026-10-03"));
 export const OCTOBER_5_REPORTS = timesheetToDayReports(parseDetailsListCsv(MONDAY_DETAILS_CSV, "2026-10-05"));
+export const OCTOBER_6_REPORTS = timesheetToDayReports(parseDetailsListCsv(TUESDAY_DETAILS_CSV, "2026-10-06"));
