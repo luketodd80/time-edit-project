@@ -85,17 +85,19 @@ export function DayBar({
                   ? "border-amber-600 bg-amber-50 text-amber-950"
                   : "border-border bg-background";
             const status = chip.tone === "done" && chip.doneAt ? `Done ${formatTimestamp(chip.doneAt)}` : chip.tone === "due" ? "Due" : "Open";
+            const doneLabel = chip.note ? `${status}. ${chip.note}` : status;
             return (
               <li key={day}>
                 <button
                   type="button"
                   aria-pressed={selected}
-                  aria-label={chip.tone === "done" ? `${formatDay(day)}, ${status}. Opens summary.` : `${formatDay(day)}, ${status}.`}
+                  aria-label={chip.tone === "done" ? `${formatDay(day)}, ${doneLabel}. Opens summary.` : `${formatDay(day)}, ${status}.`}
                   onClick={() => (chip.tone === "done" ? onOpenSummary(day) : onSelectDay(day))}
                   className={`flex min-w-36 flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left ${tone} ${selected ? "ring-2 ring-foreground" : ""}`}
                 >
                   <span className="font-medium">{formatDayShort(day)}</span>
                   <span className="text-xs">{status}</span>
+                  {chip.note ? <span className="text-xs">{chip.note}</span> : null}
                 </button>
               </li>
             );
@@ -137,7 +139,14 @@ export function DayBar({
                     const signoff = signoffs[signoffKey(day, id)];
                     return (
                       <td key={id} className="px-4 py-2 whitespace-nowrap">
-                        {signoff?.doneAt ? `Approved ${formatTimestamp(signoff.doneAt)}` : "Not approved"}
+                        {signoff?.doneAt ? (
+                          <span className="flex flex-col">
+                            <span>Approved {formatTimestamp(signoff.doneAt)}</span>
+                            {signoff.note ? <span className="font-normal text-muted-foreground">{signoff.note}</span> : null}
+                          </span>
+                        ) : (
+                          "Not approved"
+                        )}
                       </td>
                     );
                   })}
@@ -153,7 +162,7 @@ export function DayBar({
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-medium">Sign-off</h2>
         <p className="text-sm text-muted-foreground">
-          Check that you approve the utilization numbers, then mark the day done. Accepted edits for that shop and day must be confirmed applied in Fullbay first. Rejected edits do not block sign-off. The day cannot be marked done without the utilization check. A signed-off day stays locked: its decisions cannot be changed and it cannot be submitted again.
+          Check that you approve the utilization numbers, then mark the day done. Accepted edits for that shop and day must be confirmed applied in Fullbay first. Rejected edits do not block sign-off. The day cannot be marked done without the utilization check. When every finding has a decision and every accepted edit is applied, or the submit rejected every finding, the day is marked done on its own. A signed-off day stays locked: its decisions cannot be changed and it cannot be submitted again.
         </p>
         {signoffError ? (
           <p role="alert" className="text-sm text-destructive">
@@ -184,7 +193,10 @@ export function DayBar({
                     </Label>
                   </div>
                   {signoff?.doneAt ? (
-                    <p className="text-sm text-green-800">Done {formatTimestamp(signoff.doneAt)}</p>
+                    <p className="text-sm text-green-800">
+                      Done {formatTimestamp(signoff.doneAt)}
+                      {signoff.note ? <span className="mt-1 block text-muted-foreground">{signoff.note}</span> : null}
+                    </p>
                   ) : (
                     <div className="flex max-w-md flex-col items-start gap-2">
                       <Button type="button" disabled={!signoff?.attested || blocked !== null} onClick={() => onMarkDone(day, id)}>

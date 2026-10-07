@@ -66,10 +66,21 @@ describe("review days", () => {
     assert.deepEqual(dayChipState(friday, ["dayton"], signoffs, ["2026-10-06"]), {
       tone: "done",
       doneAt: "2026-10-06T12:43:00.000Z",
+      note: null,
     });
-    assert.deepEqual(dayChipState("2026-10-06", ["dayton"], signoffs, ["2026-10-06"]), { tone: "due", doneAt: null });
-    assert.deepEqual(dayChipState(saturday, ["dayton"], {}, []), { tone: "open", doneAt: null });
+    assert.deepEqual(dayChipState("2026-10-06", ["dayton"], signoffs, ["2026-10-06"]), { tone: "due", doneAt: null, note: null });
+    assert.deepEqual(dayChipState(saturday, ["dayton"], {}, []), { tone: "open", doneAt: null, note: null });
     assert.equal(dayChipState(friday, ["dayton", "mobile"], signoffs, []).tone, "open");
+    const autoNote = "Auto-approved after all edits applied";
+    const auto = {
+      [`${friday}|dayton`]: { attested: true, doneAt: "2026-10-06T12:43:00.000Z", note: autoNote },
+      [`${friday}|mobile`]: { attested: true, doneAt: "2026-10-06T12:50:00.000Z", note: autoNote },
+    };
+    assert.equal(dayChipState(friday, ["dayton", "mobile"], auto, []).note, autoNote);
+    assert.equal(
+      dayChipState(friday, ["dayton", "mobile"], { ...auto, [`${friday}|mobile`]: { attested: true, doneAt: "2026-10-06T12:50:00.000Z" } }, []).note,
+      null,
+    );
   });
 });
 

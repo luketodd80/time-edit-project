@@ -6,7 +6,7 @@ import { DayBar } from "@/components/day-bar";
 import { ReviewView } from "@/components/review-view";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { editsForSubmit, findingCanBeDecided, shopDayLock, signoffApplyBlock, submissionToQueueRequest, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
+import { editsForSubmit, findingCanBeDecided, queueRequestForSubmit, shopDayLock, signoffApplyBlock, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { attest, buildPlan, buildSubmission, filterReports, markDone, signoffKey, submissionFingerprint, submitBlockers } from "@/lib/review";
 import { updateReview, useReviewSnapshot } from "@/lib/review-store";
 import { SEED } from "@/lib/seed";
@@ -70,7 +70,7 @@ export function Dashboard() {
       for (const item of serverSignoffs) {
         const key = signoffKey(item.day, item.shopId);
         if (signoffs[key]?.doneAt) continue;
-        signoffs[key] = { attested: true, doneAt: item.doneAt };
+        signoffs[key] = item.note ? { attested: true, doneAt: item.doneAt, note: item.note } : { attested: true, doneAt: item.doneAt };
         changed = true;
       }
       return changed ? { ...current, signoffs } : current;
@@ -194,13 +194,9 @@ export function Dashboard() {
       return;
     }
     const submission = buildSubmission(reports, state.decisions, state.shopId, state.days, new Date().toISOString());
-    const edits = editsForSubmit(queueBatches ?? [], submission.edits);
-    const queuedSubmission = { ...submission, edits };
-    const refusal = submitRefusal(queueBatches ?? [], recordedSignoffs(state.signoffs), {
-      shopId: state.shopId,
-      days: state.days,
-      edits,
-    });
+    const queuedRequest = queueRequestForSubmit(queueBatches ?? [], submission);
+    const queuedSubmission = { ...submission, edits: submission.edits.filter((edit) => queuedRequest.edits.some((queued) => queued.findingId === edit.findingId)) };
+    const refusal = submitRefusal(queueBatches ?? [], recordedSignoffs(state.signoffs), queuedRequest);
     if (refusal) {
       setSubmitError(refusal);
       return;
@@ -211,16 +207,23 @@ export function Dashboard() {
       const response = await fetch("/api/fullbay-edits", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(submissionToQueueRequest(queuedSubmission)),
+        body: JSON.stringify(queuedRequest),
       });
+      const body = (await response.json()) as { error?: string; autoSignedOff?: RecordedSignoff[] };
       if (response.status === 409) {
-        const body = (await response.json()) as { error?: string };
         setSubmitError(body.error ?? "Submit is closed for this shop and day.");
         return;
       }
       if (!response.ok) {
         setSubmitError("The Fullbay apply queue did not accept the edits, so nothing was submitted.");
         return;
+      }
+      if (body.autoSignedOff && body.autoSignedOff.length > 0) {
+        setServerSignoffs((current) => {
+          const list = current ?? [];
+          const additions = body.autoSignedOff!.filter((item) => !list.some((existing) => existing.day === item.day && existing.shopId === item.shopId));
+          return additions.length > 0 ? [...list, ...additions] : list;
+        });
       }
       setQueueError(null);
       updateReview((current) => ({ ...current, submission: queuedSubmission, view: "confirm" }));

@@ -39,14 +39,20 @@ export function dayChipState(
   shopIds: ShopId[],
   signoffs: Record<string, Signoff>,
   dueDays: string[],
-): { tone: DayChipTone; doneAt: string | null } {
+): { tone: DayChipTone; doneAt: string | null; note: string | null } {
   const doneAts = shopIds.map((shopId) => signoffs[signoffKey(day, shopId)]?.doneAt ?? null);
   if (shopIds.length > 0 && doneAts.every((doneAt) => Boolean(doneAt))) {
     const doneAt = doneAts.filter((doneAt): doneAt is string => Boolean(doneAt)).sort().at(-1) ?? null;
-    return { tone: "done", doneAt };
+    const notes = shopIds.map((shopId) => {
+      const note = signoffs[signoffKey(day, shopId)]?.note;
+      return typeof note === "string" && note.trim().length > 0 ? note.trim() : null;
+    });
+    const shared = notes[0];
+    const note = shared != null && notes.every((item) => item === shared) ? shared : null;
+    return { tone: "done", doneAt, note };
   }
-  if (dueDays.includes(day)) return { tone: "due", doneAt: null };
-  return { tone: "open", doneAt: null };
+  if (dueDays.includes(day)) return { tone: "due", doneAt: null, note: null };
+  return { tone: "open", doneAt: null, note: null };
 }
 
 export function statusLabel(status: ServiceOrder["status"]): string {
@@ -61,6 +67,18 @@ export function orderFor(report: DayReport, orderId: string): ServiceOrder | und
 
 export function techFor(report: DayReport, techId: string): Technician | undefined {
   return report.technicians.find((tech) => tech.id === techId);
+}
+
+/**
+ * Findings a manager must accept, reject, or override for this shop and day.
+ * Invoiced orders and rows with no recommendation are not included. An empty list means this shop has nothing to sign off.
+ */
+export function requiredDecisionFindingIds(reports: DayReport[], pair: { day: string; shopId: ShopId }): string[] {
+  const report = reports.find((item) => item.day === pair.day && item.shopId === pair.shopId);
+  if (!report) return [];
+  return report.findings
+    .filter((finding) => finding.recommendation != null && isEligible(report, finding) && techFor(report, finding.techId) != null)
+    .map((finding) => finding.id);
 }
 
 /** Eligible orders are open on priorities or sitting on the office tab. Invoiced orders are not. */
@@ -119,13 +137,13 @@ export function ordersWithoutEdit(report: DayReport): ServiceOrder[] {
 
 export function attest(current: Signoff | undefined, attested: boolean): Signoff {
   if (!attested) return { attested: false, doneAt: null };
-  return { attested: true, doneAt: current?.doneAt ?? null };
+  return { attested: true, doneAt: current?.doneAt ?? null, ...(current?.note ? { note: current.note } : {}) };
 }
 
 /** A day stays open until the utilization checkbox is checked. */
 export function markDone(current: Signoff | undefined, now: string): Signoff | null {
   if (!current?.attested) return null;
-  return { attested: true, doneAt: now };
+  return { attested: true, doneAt: now, ...(current.note ? { note: current.note } : {}) };
 }
 
 export type AuditStatus = "approved" | "open";

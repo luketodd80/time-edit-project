@@ -101,6 +101,8 @@ export interface Decision {
 export interface Signoff {
   attested: boolean;
   doneAt: string | null;
+  /** Server note when the day was signed off without the checkbox, such as an auto sign-off. */
+  note?: string | null;
 }
 
 export type ViewId = "review" | "confirm" | "summary";

@@ -5,10 +5,15 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { CURATED_FRIDAY } from "@/lib/curated-friday";
 import {
+  AUTO_SIGNOFF_NOTE,
   applyConfirmations,
+  parseQueueRequest,
   pendingBatches,
   queueEditFromPlanned,
+  queueRequestForSubmit,
   shopDayLock,
+  shopDaysCovered,
+  shopDaysToAutoSignOff,
   editsForSubmit,
   findingCanBeDecided,
   latestQueueEdit,
@@ -18,11 +23,13 @@ import {
   submitRefusal,
   type FullbayEditBatch,
   type FullbayQueueEdit,
+  type ShopDayRef,
 } from "@/lib/fullbay-edit-queue";
 import { confirmQueuedBatch, enqueueBatch, queueFilePath, readQueue } from "@/lib/fullbay-edit-queue-store";
-import { readSignoffs, recordSignoff, signoffFilePath } from "@/lib/signoff-store";
-import { buildSubmission } from "@/lib/review";
-import type { Decision } from "@/lib/types";
+import { readSignoffs, recordAutoSignoffs, recordSignoff, signoffFilePath } from "@/lib/signoff-store";
+import { buildSubmission, requiredDecisionFindingIds } from "@/lib/review";
+import { SEED } from "@/lib/seed";
+import type { Decision, ShopId } from "@/lib/types";
 
 const friday = "2026-10-02";
 const accept: Decision = { kind: "accept", start: "", end: "" };
@@ -59,6 +66,11 @@ describe("fullbay edit queue mapping", () => {
     assert.equal(accepted.appliedAt, null);
     assert.equal(accepted.applyNote, null);
     assert.throws(() => queueEditFromPlanned(submission.rejected[0]!));
+    assert.deepEqual(
+      request.decided?.map((item) => item.findingId).sort(),
+      ["cole-1518", "tanveer-1421", "zach-0629"],
+    );
+    assert.equal(request.decided?.some((item) => item.findingId === "tanveer-1300"), false);
   });
 
   it("marks confirmed edits applied or failed and leaves the rest pending", () => {
@@ -250,6 +262,141 @@ describe("submit lock", () => {
       findingId,
     );
     assert.equal(editsForSubmit([applied], [{ findingId, day: tuesday, shopId: "mobile" }]).length, 0);
+  });
+});
+
+function sampleEdit(findingId: string, day: string, shopId: ShopId, status: FullbayQueueEdit["status"]): FullbayQueueEdit {
+  return {
+    findingId,
+    day,
+    shopId,
+    shopName: shopId,
+    techName: "Tech",
+    orderId: "D-1",
+    work: "Work",
+    decision: "accept",
+    newClockIn: "08:00",
+    newClockOut: "09:00",
+    minutes: 60,
+    status,
+    appliedAt: status === "applied" ? "2026-10-07T16:00:00.000Z" : null,
+    applyNote: status === "failed" ? "nope" : null,
+  };
+}
+
+function batch(
+  id: string,
+  edits: FullbayQueueEdit[],
+  decided: { findingId: string; day: string; shopId: ShopId }[] = [],
+  shopId: FullbayEditBatch["shopId"] = "dayton",
+): FullbayEditBatch {
+  return {
+    id,
+    submittedAt: "2026-10-07T15:00:00.000Z",
+    shopId,
+    days: [friday],
+    edits,
+    decided: decided.map((item) => ({ findingId: item.findingId, day: item.day, shopId: item.shopId })),
+  };
+}
+
+describe("auto sign-off", () => {
+  const scope: ShopDayRef[] = [{ day: friday, shopId: "dayton" }];
+  const required = () => ["a", "b"];
+  const decided = [
+    { findingId: "a", day: friday, shopId: "dayton" as const },
+    { findingId: "b", day: friday, shopId: "dayton" as const },
+  ];
+
+  it("signs off when every finding is decided and every accepted edit is applied", () => {
+    const ready = shopDaysToAutoSignOff(
+      [batch("1", [sampleEdit("a", friday, "dayton", "applied"), sampleEdit("b", friday, "dayton", "applied")], decided)],
+      scope,
+      required,
+    );
+    assert.deepEqual(ready, scope);
+  });
+
+  it("stays open when an edit failed or is still pending", () => {
+    const failed = shopDaysToAutoSignOff(
+      [batch("1", [sampleEdit("a", friday, "dayton", "applied"), sampleEdit("b", friday, "dayton", "failed")], decided)],
+      scope,
+      required,
+    );
+    const pending = shopDaysToAutoSignOff(
+      [batch("1", [sampleEdit("a", friday, "dayton", "applied"), sampleEdit("b", friday, "dayton", "pending")], decided)],
+      scope,
+      required,
+    );
+    assert.deepEqual(failed, []);
+    assert.deepEqual(pending, []);
+  });
+
+  it("stays open when a required finding has no decision", () => {
+    const missing = shopDaysToAutoSignOff(
+      [batch("1", [sampleEdit("a", friday, "dayton", "applied")], [{ findingId: "a", day: friday, shopId: "dayton" }])],
+      scope,
+      required,
+    );
+    assert.deepEqual(missing, []);
+  });
+
+  it("signs off an all-reject submit that decided every finding", () => {
+    const ready = shopDaysToAutoSignOff([batch("1", [], decided)], scope, required);
+    assert.deepEqual(ready, scope);
+  });
+
+  it("signs off one finished shop while another shop on the batch is still pending", () => {
+    const mobilePending = sampleEdit("m", friday, "mobile", "pending");
+    const stored = batch(
+      "1",
+      [sampleEdit("a", friday, "dayton", "applied"), sampleEdit("b", friday, "dayton", "applied"), mobilePending],
+      [
+        ...decided,
+        { findingId: "m", day: friday, shopId: "mobile" },
+      ],
+      "all",
+    );
+    const ready = shopDaysToAutoSignOff([stored], shopDaysCovered("all", [friday]), (pair) =>
+      pair.shopId === "dayton" ? ["a", "b"] : pair.shopId === "mobile" ? ["m"] : [],
+    );
+    assert.deepEqual(ready, [{ day: friday, shopId: "dayton" }]);
+  });
+
+  it("counts an applied edit as decided when an older batch stored no decided list", () => {
+    const legacy = batch("1", [sampleEdit("a", friday, "dayton", "applied"), sampleEdit("b", friday, "dayton", "applied")]);
+    delete legacy.decided;
+    assert.deepEqual(shopDaysToAutoSignOff([legacy], scope, required), scope);
+    const partial = batch("2", [sampleEdit("a", friday, "dayton", "applied")]);
+    delete partial.decided;
+    assert.deepEqual(shopDaysToAutoSignOff([partial], scope, required), []);
+  });
+
+  it("keeps decided findings when submit drops an already applied edit", () => {
+    const applied = batch("1", [sampleEdit("tanveer-1421", friday, "dayton", "applied"), sampleEdit("zach-0629", friday, "dayton", "failed")]);
+    const submission = buildSubmission([CURATED_FRIDAY], { "tanveer-1421": accept, "cole-1518": reject, "zach-0629": override }, "dayton", [friday], "2026-10-07T15:00:00.000Z");
+    const request = queueRequestForSubmit([applied], submission);
+    assert.deepEqual(request.edits.map((edit) => edit.findingId), ["zach-0629"]);
+    assert.deepEqual(request.decided?.map((item) => item.findingId).sort(), ["cole-1518", "tanveer-1421", "zach-0629"]);
+  });
+
+  it("rejects a decided list that is not findings", () => {
+    const parsed = parseQueueRequest({
+      submittedAt: "2026-10-07T15:00:00.000Z",
+      shopId: "dayton",
+      days: [friday],
+      edits: [],
+      decided: [{ findingId: "", day: friday, shopId: "nope" }],
+    });
+    assert.equal(parsed.ok, false);
+    const absent = parseQueueRequest({
+      submittedAt: "2026-10-07T15:00:00.000Z",
+      shopId: "dayton",
+      days: [friday],
+      edits: [],
+    });
+    assert.equal(absent.ok, true);
+    if (absent.ok) assert.deepEqual(absent.value.decided, []);
   });
 });
 
@@ -483,5 +630,228 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
       else process.env.TSC_DATA_DIR = previousDir;
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  function seededPair(minFindings: number): { day: string; shopId: ShopId; ids: string[] } {
+    let best: { day: string; shopId: ShopId; ids: string[] } | null = null;
+    for (const report of SEED) {
+      const ids = requiredDecisionFindingIds(SEED, { day: report.day, shopId: report.shopId });
+      if (ids.length < minFindings) continue;
+      if (!best || ids.length < best.ids.length) best = { day: report.day, shopId: report.shopId, ids };
+    }
+    assert.ok(best, `expected a seeded shop day with at least ${minFindings} decisions`);
+    return best;
+  }
+
+  function decidedRows(day: string, shopId: ShopId, ids: string[]) {
+    return ids.map((findingId) => ({ findingId, day, shopId }));
+  }
+
+  function acceptedEdit(findingId: string, day: string, shopId: ShopId) {
+    return {
+      findingId,
+      day,
+      shopId,
+      techName: "Tech",
+      orderId: "D-1",
+      work: "Work",
+      decision: "accept",
+      newClockIn: "08:00",
+      newClockOut: "09:00",
+      minutes: 60,
+    };
+  }
+
+  async function withStores(run: () => Promise<void>) {
+    const directory = mkdtempSync(join(tmpdir(), "fullbay-auto-signoff-"));
+    const previousQueue = process.env.FULLBAY_EDIT_QUEUE_PATH;
+    const previousSignoff = process.env.SHOP_DAY_SIGNOFF_PATH;
+    process.env.FULLBAY_EDIT_QUEUE_PATH = join(directory, "queue.json");
+    process.env.SHOP_DAY_SIGNOFF_PATH = join(directory, "signoffs.json");
+    try {
+      await run();
+    } finally {
+      if (previousQueue === undefined) delete process.env.FULLBAY_EDIT_QUEUE_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_PATH = previousQueue;
+      if (previousSignoff === undefined) delete process.env.SHOP_DAY_SIGNOFF_PATH;
+      else process.env.SHOP_DAY_SIGNOFF_PATH = previousSignoff;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  it("marks a shop day done at submit when every finding was rejected", async () => {
+    await withStores(async () => {
+      const pair = seededPair(1);
+      const { POST } = await import("@/app/api/fullbay-edits/route");
+      const response = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            submittedAt: "2026-10-07T18:00:00.000Z",
+            shopId: pair.shopId,
+            days: [pair.day],
+            edits: [],
+            decided: decidedRows(pair.day, pair.shopId, pair.ids),
+          }),
+        }),
+      );
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as { autoSignedOff?: { day: string; shopId: string; doneAt: string; note: string | null }[] };
+      assert.equal(body.autoSignedOff?.length, 1);
+      assert.equal(body.autoSignedOff?.[0]?.day, pair.day);
+      assert.equal(body.autoSignedOff?.[0]?.shopId, pair.shopId);
+      assert.equal(body.autoSignedOff?.[0]?.note, AUTO_SIGNOFF_NOTE);
+      assert.equal(Number.isNaN(Date.parse(body.autoSignedOff?.[0]?.doneAt ?? "")), false);
+      const stored = await readSignoffs();
+      assert.equal(stored.length, 1);
+      assert.equal(stored[0]?.note, AUTO_SIGNOFF_NOTE);
+      assert.equal(stored[0]?.doneAt, body.autoSignedOff?.[0]?.doneAt);
+
+      const again = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            submittedAt: "2026-10-07T18:05:00.000Z",
+            shopId: pair.shopId,
+            days: [pair.day],
+            edits: [],
+            decided: decidedRows(pair.day, pair.shopId, pair.ids),
+          }),
+        }),
+      );
+      assert.equal(again.status, 409);
+    });
+  });
+
+  it("signs off on confirm only after every accepted edit is applied", async () => {
+    await withStores(async () => {
+      const pair = seededPair(2);
+      const { POST } = await import("@/app/api/fullbay-edits/route");
+      const { POST: confirm } = await import("@/app/api/fullbay-edits/confirm/route");
+      const submitted = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            submittedAt: "2026-10-07T18:00:00.000Z",
+            shopId: pair.shopId,
+            days: [pair.day],
+            edits: [acceptedEdit(pair.ids[0]!, pair.day, pair.shopId), acceptedEdit(pair.ids[1]!, pair.day, pair.shopId)],
+            decided: decidedRows(pair.day, pair.shopId, pair.ids),
+          }),
+        }),
+      );
+      assert.equal(submitted.status, 200);
+      const submittedBody = (await submitted.json()) as { id?: string; autoSignedOff?: unknown[] };
+      assert.deepEqual(submittedBody.autoSignedOff, []);
+      assert.equal((await readSignoffs()).length, 0);
+
+      const partial = await confirm(
+        new Request("http://127.0.0.1/api/fullbay-edits/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ batchId: submittedBody.id, results: [{ findingId: pair.ids[0], status: "applied" }] }),
+        }),
+      );
+      assert.equal(partial.status, 200);
+      const partialBody = (await partial.json()) as { autoSignedOff?: unknown[] };
+      assert.deepEqual(partialBody.autoSignedOff, []);
+      assert.equal((await readSignoffs()).length, 0);
+
+      const done = await confirm(
+        new Request("http://127.0.0.1/api/fullbay-edits/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ batchId: submittedBody.id, results: [{ findingId: pair.ids[1], status: "applied" }] }),
+        }),
+      );
+      assert.equal(done.status, 200);
+      const doneBody = (await done.json()) as { autoSignedOff?: { day: string; shopId: string; note: string | null; doneAt: string }[] };
+      assert.equal(doneBody.autoSignedOff?.length, 1);
+      assert.equal(doneBody.autoSignedOff?.[0]?.note, AUTO_SIGNOFF_NOTE);
+      assert.equal(doneBody.autoSignedOff?.[0]?.shopId, pair.shopId);
+      const stored = await readSignoffs();
+      assert.equal(stored[0]?.doneAt, doneBody.autoSignedOff?.[0]?.doneAt);
+
+      const repeat = await confirm(
+        new Request("http://127.0.0.1/api/fullbay-edits/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            batchId: submittedBody.id,
+            results: [
+              { findingId: pair.ids[0], status: "applied" },
+              { findingId: pair.ids[1], status: "applied" },
+            ],
+          }),
+        }),
+      );
+      const repeatBody = (await repeat.json()) as { autoSignedOff?: unknown[] };
+      assert.deepEqual(repeatBody.autoSignedOff, []);
+      assert.equal((await readSignoffs())[0]?.doneAt, stored[0]?.doneAt);
+    });
+  });
+
+  it("leaves a failed edit actionable and keeps a manual sign-off", async () => {
+    await withStores(async () => {
+      const pair = seededPair(1);
+      const { POST } = await import("@/app/api/fullbay-edits/route");
+      const { POST: confirm } = await import("@/app/api/fullbay-edits/confirm/route");
+      const submitted = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            submittedAt: "2026-10-07T18:00:00.000Z",
+            shopId: pair.shopId,
+            days: [pair.day],
+            edits: [acceptedEdit(pair.ids[0]!, pair.day, pair.shopId)],
+            decided: decidedRows(pair.day, pair.shopId, pair.ids),
+          }),
+        }),
+      );
+      const submittedBody = (await submitted.json()) as { id?: string; autoSignedOff?: unknown[] };
+      assert.deepEqual(submittedBody.autoSignedOff, []);
+      const failed = await confirm(
+        new Request("http://127.0.0.1/api/fullbay-edits/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ batchId: submittedBody.id, results: [{ findingId: pair.ids[0], status: "failed", applyNote: "clock rejected" }] }),
+        }),
+      );
+      const failedBody = (await failed.json()) as { autoSignedOff?: unknown[] };
+      assert.equal(failed.status, 200);
+      assert.deepEqual(failedBody.autoSignedOff, []);
+      assert.equal((await readSignoffs()).length, 0);
+      assert.equal(findingCanBeDecided(await readQueue(), pair.ids[0]!), true);
+
+      const manual = await recordSignoff(pair.day, pair.shopId, "2026-10-07T19:00:00.000Z");
+      const afterManual = await confirm(
+        new Request("http://127.0.0.1/api/fullbay-edits/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ batchId: submittedBody.id, results: [{ findingId: pair.ids[0], status: "applied" }] }),
+        }),
+      );
+      const afterBody = (await afterManual.json()) as { autoSignedOff?: unknown[] };
+      assert.deepEqual(afterBody.autoSignedOff, []);
+      const stored = await readSignoffs();
+      assert.equal(stored.length, 1);
+      assert.equal(stored[0]?.doneAt, manual.doneAt);
+      assert.equal(stored[0]?.note, null);
+    });
+  });
+
+  it("does not report a shop day that recordAutoSignoffs already stored", async () => {
+    await withStores(async () => {
+      const first = await recordAutoSignoffs([{ day: friday, shopId: "columbus" }], "2026-10-07T19:00:00.000Z", AUTO_SIGNOFF_NOTE);
+      assert.equal(first.length, 1);
+      assert.equal(first[0]?.note, AUTO_SIGNOFF_NOTE);
+      const second = await recordAutoSignoffs([{ day: friday, shopId: "columbus" }], "2026-10-07T20:00:00.000Z", AUTO_SIGNOFF_NOTE);
+      assert.deepEqual(second, []);
+      assert.equal((await readSignoffs())[0]?.doneAt, "2026-10-07T19:00:00.000Z");
+    });
   });
 });
