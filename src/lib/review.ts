@@ -28,6 +28,27 @@ export function signoffKey(day: string, shopId: ShopId): string {
   return `${day}|${shopId}`;
 }
 
+export type DayChipTone = "done" | "due" | "open";
+
+/**
+ * Done when every shop in the current filter is signed off.
+ * The chip then carries the latest sign-off time. A due day that is not done stays Due.
+ */
+export function dayChipState(
+  day: string,
+  shopIds: ShopId[],
+  signoffs: Record<string, Signoff>,
+  dueDays: string[],
+): { tone: DayChipTone; doneAt: string | null } {
+  const doneAts = shopIds.map((shopId) => signoffs[signoffKey(day, shopId)]?.doneAt ?? null);
+  if (shopIds.length > 0 && doneAts.every((doneAt) => Boolean(doneAt))) {
+    const doneAt = doneAts.filter((doneAt): doneAt is string => Boolean(doneAt)).sort().at(-1) ?? null;
+    return { tone: "done", doneAt };
+  }
+  if (dueDays.includes(day)) return { tone: "due", doneAt: null };
+  return { tone: "open", doneAt: null };
+}
+
 export function statusLabel(status: ServiceOrder["status"]): string {
   if (status === "priorities") return "Open on priorities";
   if (status === "office") return "Office tab, not invoiced";

@@ -1,5 +1,5 @@
 import { parseQueueRequest } from "@/lib/fullbay-edit-queue";
-import { enqueueBatch, queueAuthorized } from "@/lib/fullbay-edit-queue-store";
+import { enqueueIfAllowed, queueAuthorized } from "@/lib/fullbay-edit-queue-store";
 import { notifySubmitWebhook } from "@/lib/submit-webhook";
 import { NextResponse } from "next/server";
 
@@ -18,7 +18,8 @@ export async function POST(request: Request) {
   }
   const parsed = parseQueueRequest(body);
   if (!parsed.ok) return NextResponse.json({ ok: false, error: parsed.error }, { status: 400 });
-  const batch = await enqueueBatch(parsed.value);
-  await notifySubmitWebhook(batch);
-  return NextResponse.json({ ok: true, id: batch.id, editCount: batch.edits.length });
+  const stored = await enqueueIfAllowed(parsed.value);
+  if (!stored.ok) return NextResponse.json({ ok: false, error: stored.error }, { status: 409 });
+  await notifySubmitWebhook(stored.batch);
+  return NextResponse.json({ ok: true, id: stored.batch.id, editCount: stored.batch.edits.length });
 }

@@ -42,3 +42,4 @@ next-env.d.ts
 
 # server apply queue written at runtime
 /data/fullbay-edit-queue.json
+/data/shop-day-signoffs.json

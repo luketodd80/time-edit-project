@@ -8,8 +8,10 @@ import {
   applyConfirmations,
   pendingBatches,
   queueEditFromPlanned,
+  shopDayLock,
   signoffApplyBlock,
   submissionToQueueRequest,
+  submitRefusal,
   type FullbayEditBatch,
 } from "@/lib/fullbay-edit-queue";
 import { confirmQueuedBatch, enqueueBatch, readQueue } from "@/lib/fullbay-edit-queue-store";
@@ -149,7 +151,45 @@ describe("fullbay edit queue mapping", () => {
   });
 });
 
-describe("fullbay edit queue file", () => {
+describe("submit lock", () => {
+  const tuesday = "2026-10-06";
+
+  function batch(shopId: FullbayEditBatch["shopId"], days: string[], id = "batch"): FullbayEditBatch {
+    return { id, submittedAt: "2026-10-07T12:00:00.000Z", shopId, days, edits: [] };
+  }
+
+  it("refuses a shop and day that is already submitted or signed off", () => {
+    const dayton = batch("dayton", [tuesday]);
+    assert.match(submitRefusal([dayton], [], { shopId: "dayton", days: [tuesday] }) ?? "", /Already submitted: Dayton 2026-10-06/);
+    assert.equal(submitRefusal([dayton], [], { shopId: "mobile", days: [tuesday] }), null);
+    assert.equal(submitRefusal([dayton], [], { shopId: "dayton", days: ["2026-10-05"] }), null);
+
+    const allShops = batch("all", [tuesday], "all-shops");
+    assert.match(submitRefusal([allShops], [], { shopId: "mobile", days: [tuesday] }) ?? "", /Already submitted: Mobile 2026-10-06/);
+    assert.match(submitRefusal([dayton], [], { shopId: "all", days: [tuesday] }) ?? "", /Already submitted: Dayton 2026-10-06/);
+
+    const signoffs = [{ day: tuesday, shopId: "dayton" as const, doneAt: "2026-10-07T15:00:00.000Z" }];
+    assert.match(submitRefusal([], signoffs, { shopId: "dayton", days: [tuesday] }) ?? "", /Already signed off: Dayton 2026-10-06/);
+    assert.match(
+      submitRefusal([dayton], signoffs, { shopId: "dayton", days: [tuesday] }) ?? "",
+      /Already signed off: Dayton 2026-10-06/,
+    );
+    assert.match(
+      submitRefusal([], signoffs, {
+        shopId: "mobile",
+        days: ["2026-10-05"],
+        edits: [{ day: tuesday, shopId: "dayton" }],
+      }) ?? "",
+      /Already signed off: Dayton 2026-10-06/,
+    );
+    assert.equal(shopDayLock([dayton], [], tuesday, "dayton"), "submitted");
+    assert.equal(shopDayLock([], signoffs, tuesday, "dayton"), "signed-off");
+    assert.equal(shopDayLock([dayton], signoffs, tuesday, "dayton"), "signed-off");
+    assert.equal(shopDayLock([], [], tuesday, "mobile"), "open");
+  });
+});
+
+describe("fullbay edit queue file", { concurrency: false }, () => {
   it("stores a pending batch and confirms one edit", async () => {
     const directory = mkdtempSync(join(tmpdir(), "fullbay-edit-queue-"));
     const previous = process.env.FULLBAY_EDIT_QUEUE_PATH;
@@ -188,6 +228,104 @@ describe("fullbay edit queue file", () => {
     } finally {
       if (previous === undefined) delete process.env.FULLBAY_EDIT_QUEUE_PATH;
       else process.env.FULLBAY_EDIT_QUEUE_PATH = previous;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a second submit for a shop day and a submit after sign-off", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "fullbay-submit-lock-"));
+    const previousQueue = process.env.FULLBAY_EDIT_QUEUE_PATH;
+    const previousSignoff = process.env.SHOP_DAY_SIGNOFF_PATH;
+    process.env.FULLBAY_EDIT_QUEUE_PATH = join(directory, "queue.json");
+    process.env.SHOP_DAY_SIGNOFF_PATH = join(directory, "signoffs.json");
+    const tuesday = "2026-10-06";
+    const monday = "2026-10-05";
+    try {
+      const { POST } = await import("@/app/api/fullbay-edits/route");
+      const { POST: postSignoff } = await import("@/app/api/signoffs/route");
+
+      function edit(findingId: string, day: string, shopId: string) {
+        return {
+          findingId,
+          day,
+          shopId,
+          techName: "Zach Spencer",
+          orderId: "D-100",
+          work: "Brakes",
+          decision: "accept",
+          newClockIn: "08:00",
+          newClockOut: "09:00",
+          minutes: 60,
+        };
+      }
+
+      async function submit(shopId: string, day: string, findingId: string) {
+        return POST(
+          new Request("http://127.0.0.1/api/fullbay-edits", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              submittedAt: "2026-10-07T15:00:00.000Z",
+              shopId,
+              days: [day],
+              edits: [edit(findingId, day, shopId === "all" ? "dayton" : shopId)],
+            }),
+          }),
+        );
+      }
+
+      const first = await submit("dayton", tuesday, "zach-1");
+      assert.equal(first.status, 200);
+      const again = await submit("dayton", tuesday, "zach-2");
+      assert.equal(again.status, 409);
+      const againBody = (await again.json()) as { error?: string };
+      assert.match(againBody.error ?? "", /Already submitted: Dayton 2026-10-06/);
+
+      const otherShop = await submit("mobile", tuesday, "zach-3");
+      assert.equal(otherShop.status, 200);
+      const otherDay = await submit("dayton", monday, "zach-4");
+      assert.equal(otherDay.status, 200);
+
+      const signed = await postSignoff(
+        new Request("http://127.0.0.1/api/signoffs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ day: monday, shopId: "covington" }),
+        }),
+      );
+      assert.equal(signed.status, 200);
+      const signedBody = (await signed.json()) as { signoff?: { doneAt: string } };
+      const repeat = await postSignoff(
+        new Request("http://127.0.0.1/api/signoffs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ day: monday, shopId: "covington" }),
+        }),
+      );
+      const repeatBody = (await repeat.json()) as { signoff?: { doneAt: string } };
+      assert.equal(repeatBody.signoff?.doneAt, signedBody.signoff?.doneAt);
+
+      const blocked = await submit("covington", monday, "zach-5");
+      assert.equal(blocked.status, 409);
+      const blockedBody = (await blocked.json()) as { error?: string };
+      assert.match(blockedBody.error ?? "", /Already signed off: Covington 2026-10-05/);
+
+      await postSignoff(
+        new Request("http://127.0.0.1/api/signoffs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ day: tuesday, shopId: "dayton" }),
+        }),
+      );
+      const signedAfterSubmit = await submit("dayton", tuesday, "zach-6");
+      assert.equal(signedAfterSubmit.status, 409);
+      const signedAfterBody = (await signedAfterSubmit.json()) as { error?: string };
+      assert.match(signedAfterBody.error ?? "", /Already signed off: Dayton 2026-10-06/);
+    } finally {
+      if (previousQueue === undefined) delete process.env.FULLBAY_EDIT_QUEUE_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_PATH = previousQueue;
+      if (previousSignoff === undefined) delete process.env.SHOP_DAY_SIGNOFF_PATH;
+      else process.env.SHOP_DAY_SIGNOFF_PATH = previousSignoff;
       rmSync(directory, { recursive: true, force: true });
     }
   });

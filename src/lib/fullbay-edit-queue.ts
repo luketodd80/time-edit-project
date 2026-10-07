@@ -239,3 +239,79 @@ function compareBatchDesc(a: FullbayEditBatch, b: FullbayEditBatch): number {
   if (a.submittedAt !== b.submittedAt) return a.submittedAt < b.submittedAt ? 1 : -1;
   return a.id < b.id ? 1 : -1;
 }
+
+export interface ShopDayRef {
+  day: string;
+  shopId: ShopId;
+}
+
+export interface RecordedSignoff extends ShopDayRef {
+  doneAt: string;
+}
+
+/** Shop/day pairs a submit covers. All shops expands to every shop. */
+export function shopDaysCovered(shopId: ShopFilter, days: string[]): ShopDayRef[] {
+  const shops = shopId === "all" ? SHOPS.map((shop) => shop.id) : [shopId];
+  const pairs: ShopDayRef[] = [];
+  for (const day of days) {
+    for (const id of shops) pairs.push({ day, shopId: id });
+  }
+  return pairs;
+}
+
+function pairKey(day: string, shopId: ShopId): string {
+  return `${day}|${shopId}`;
+}
+
+function labelPairs(pairs: ShopDayRef[]): string {
+  return pairs.map((pair) => `${shopName(pair.shopId)} ${pair.day}`).join(", ");
+}
+
+/**
+ * Refuse another submit when any covered shop and day is signed off or already queued.
+ * An all-shops batch counts as submitted for every shop on those days.
+ */
+export function submitRefusal(
+  batches: FullbayEditBatch[],
+  signoffs: RecordedSignoff[],
+  request: { shopId: ShopFilter; days: string[]; edits?: ShopDayRef[] },
+): string | null {
+  const pairs = shopDaysCovered(request.shopId, request.days);
+  const seen = new Set(pairs.map((pair) => pairKey(pair.day, pair.shopId)));
+  for (const edit of request.edits ?? []) {
+    const key = pairKey(edit.day, edit.shopId);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pairs.push({ day: edit.day, shopId: edit.shopId });
+  }
+
+  const signed = pairs.filter((pair) => signoffs.some((signoff) => signoff.day === pair.day && signoff.shopId === pair.shopId && signoff.doneAt));
+  if (signed.length > 0) {
+    return `Already signed off: ${labelPairs(signed)}. Submit is closed for a signed-off shop and day.`;
+  }
+
+  const submitted = new Set<string>();
+  for (const batch of batches) {
+    for (const pair of shopDaysCovered(batch.shopId, batch.days)) submitted.add(pairKey(pair.day, pair.shopId));
+  }
+  const again = pairs.filter((pair) => submitted.has(pairKey(pair.day, pair.shopId)));
+  if (again.length > 0) {
+    return `Already submitted: ${labelPairs(again)}. Submit is closed for a shop and day that was already submitted.`;
+  }
+  return null;
+}
+
+export type ShopDayLock = "open" | "signed-off" | "submitted";
+
+export function shopDayLock(
+  batches: FullbayEditBatch[],
+  signoffs: RecordedSignoff[],
+  day: string,
+  shopId: ShopId,
+): ShopDayLock {
+  if (signoffs.some((signoff) => signoff.day === day && signoff.shopId === shopId && signoff.doneAt)) return "signed-off";
+  const submitted = batches.some((batch) =>
+    shopDaysCovered(batch.shopId, batch.days).some((pair) => pair.day === day && pair.shopId === shopId),
+  );
+  return submitted ? "submitted" : "open";
+}

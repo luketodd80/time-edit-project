@@ -1,7 +1,14 @@
-/** Demo "today". Wednesday, so the default review day is Tuesday 2026-10-06. */
-export const DEMO_TODAY = "2026-10-07";
-
 export const REVIEW_LOOKBACK_DAYS = 14;
+
+/** Calendar date YYYY-MM-DD in Eastern time. The due day follows this, not a fixed demo date. */
+export function todayInNewYork(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
 
 /** First day shown on the day chips and the audit trail. */
 export const AUDIT_START = "2026-10-02";

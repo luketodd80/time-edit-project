@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { applyConfirmations, type FullbayConfirmResult, type FullbayEditBatch, type FullbayQueueRequest } from "@/lib/fullbay-edit-queue";
+import { applyConfirmations, submitRefusal, type FullbayConfirmResult, type FullbayEditBatch, type FullbayQueueRequest } from "@/lib/fullbay-edit-queue";
+import { readSignoffs } from "@/lib/signoff-store";
 
 let writeChain: Promise<unknown> = Promise.resolve();
 
@@ -34,6 +35,23 @@ export async function enqueueBatch(request: FullbayQueueRequest, id = crypto.ran
     await writeQueue(batches);
   });
   return batch;
+}
+
+/** Writes a batch only when none of its shop days are signed off or already queued. */
+export async function enqueueIfAllowed(
+  request: FullbayQueueRequest,
+  id = crypto.randomUUID(),
+): Promise<{ ok: true; batch: FullbayEditBatch } | { ok: false; error: string }> {
+  const batch: FullbayEditBatch = { id, ...request, days: [...request.days].sort() };
+  return withQueueLock(async () => {
+    const batches = await readQueue();
+    const signoffs = await readSignoffs();
+    const refusal = submitRefusal(batches, signoffs, batch);
+    if (refusal) return { ok: false, error: refusal };
+    batches.push(batch);
+    await writeQueue(batches);
+    return { ok: true, batch };
+  });
 }
 
 export async function confirmQueuedBatch(
