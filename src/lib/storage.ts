@@ -27,7 +27,8 @@ function isSignoff(value: unknown): value is Signoff {
 
 function cleanSignoff(signoff: Signoff): Signoff {
   if (!signoff.attested) return { attested: false, doneAt: null };
-  return signoff;
+  const note = typeof signoff.note === "string" && signoff.note.trim().length > 0 ? signoff.note.trim() : null;
+  return note ? { attested: true, doneAt: signoff.doneAt, note } : { attested: true, doneAt: signoff.doneAt };
 }
 
 export function parsePersistedState(raw: string): PersistedState {

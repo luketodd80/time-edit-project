@@ -77,6 +77,11 @@ interface Segment {
   title: string;
 }
 
+/** A service-order segment attributed to the shop in its SO prefix. */
+interface ShopSegment extends Segment {
+  shopId: ShopId;
+}
+
 const SHOP_PATTERNS: { id: ShopId; pattern: RegExp }[] = [
   { id: "dayton", pattern: /dayton/i },
   { id: "springfield", pattern: /springfield/i },
@@ -110,6 +115,28 @@ export function isForeman(name: string): boolean {
 export function shopIdForTimesheetShop(shop: string): ShopId | null {
   const match = SHOP_PATTERNS.find((entry) => entry.pattern.test(shop));
   return match?.id ?? null;
+}
+
+/**
+ * Service-order prefix → shop. Columbus is CL, so it is matched as a whole prefix
+ * rather than as Covington’s C.
+ */
+const ORDER_PREFIXES: { prefix: string; id: ShopId }[] = [
+  { prefix: "CL", id: "columbus" },
+  { prefix: "C", id: "covington" },
+  { prefix: "D", id: "dayton" },
+  { prefix: "G", id: "greenville" },
+  { prefix: "M", id: "mobile" },
+  { prefix: "S", id: "springfield" },
+];
+
+export function shopIdForOrderId(orderId: string): ShopId | null {
+  const prefix = orderId.trim().split("-")[0]?.toUpperCase() ?? "";
+  return ORDER_PREFIXES.find((entry) => entry.prefix === prefix)?.id ?? null;
+}
+
+function shopLabel(shopId: ShopId): string {
+  return SHOPS.find((shop) => shop.id === shopId)?.name ?? shopId;
 }
 
 function parseCsv(text: string): string[][] {
@@ -437,7 +464,14 @@ function isInactiveDayPlaceholder(row: FullbayTimesheetRow): boolean {
   return start === 0 && end === 0;
 }
 
-function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimesheetRow[], peers: PeerSegment[]): BuiltTech | null {
+function buildTech(
+  day: string,
+  shopId: ShopId,
+  name: string,
+  rows: FullbayTimesheetRow[],
+  peers: PeerSegment[],
+  foreignSegments: ShopSegment[],
+): BuiltTech | null {
   if (isForeman(name)) return null;
   const rules = suggestionRules(day);
 
@@ -506,10 +540,11 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
   }
 
   // A segment is attached to the punch where it starts, but a pencil edit can run that
-  // service order into the next clock punch. Time already on the order is not a gap.
-  function uncoveredByServiceOrders(startSeconds: number, endSeconds: number): Array<[number, number]> {
+  // service order into the next clock punch. Time already on an order is not a gap.
+  // Punches on another shop's service orders cover the same way. They are not this shop's hours.
+  function subtractSegments(startSeconds: number, endSeconds: number, covers: Segment[]): Array<[number, number]> {
     let pieces: Array<[number, number]> = [[startSeconds, endSeconds]];
-    for (const segment of segments) {
+    for (const segment of covers) {
       const segmentEnd = impliedEnd(segment.start, segment.end, segment.hours);
       const next: Array<[number, number]> = [];
       for (const [start, end] of pieces) {
@@ -527,6 +562,10 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     return pieces;
   }
 
+  function uncoveredByServiceOrders(startSeconds: number, endSeconds: number): Array<[number, number]> {
+    return subtractSegments(startSeconds, endSeconds, [...segments, ...foreignSegments]);
+  }
+
   function pushUncovered(
     startSeconds: number,
     endSeconds: number,
@@ -537,7 +576,10 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     wholePunch: boolean,
     nextIsAttendance: boolean,
   ) {
+    const basePieces = subtractSegments(startSeconds, endSeconds, segments);
     const pieces = uncoveredByServiceOrders(startSeconds, endSeconds);
+    const parentIsFull =
+      basePieces.length === 1 && basePieces[0][0] === startSeconds && basePieces[0][1] === endSeconds;
     for (const [start, end] of pieces) {
       const fullPiece = pieces.length === 1 && start === startSeconds && end === endSeconds;
       const reachesPunchEnd = end >= endSeconds - 5;
@@ -548,7 +590,7 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
         activity,
         comment,
         commentFromClockIn,
-        wholePunch && fullPiece,
+        wholePunch && (fullPiece || parentIsFull),
         nextIsAttendance && reachesPunchEnd,
       );
     }
@@ -723,8 +765,10 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
     }
 
     if (punch.end != null && next && next.start - punch.end >= 60) {
-      const window = windowOf(punch.end, next.start);
-      if (window) {
+      const pieces = subtractSegments(punch.end, next.start, foreignSegments);
+      for (const [start, end] of pieces) {
+        const window = windowOf(start, end);
+        if (!window) continue;
         push({
           kind: "off_clock",
           start: window.start,
@@ -739,6 +783,29 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
   }
 
   for (const segment of orphans) pushSegment(segment);
+
+  const foreignSorted = [...foreignSegments].sort(
+    (a, b) => a.start - b.start || a.orderId.localeCompare(b.orderId) || a.shopId.localeCompare(b.shopId),
+  );
+  for (const segment of foreignSorted) {
+    const endSeconds = impliedEnd(segment.start, segment.end, segment.hours);
+    const start = clockLabel(toMinute(segment.start));
+    const end = clockLabel(Math.max(toMinute(segment.start), toMinute(endSeconds)));
+    const shop = shopLabel(segment.shopId);
+    const label = segmentLabel(segment);
+    const open = segment.end == null;
+    const openNote = open ? ` ${OPEN_PUNCH_NOTE}` : "";
+    push({
+      kind: "as_is",
+      start,
+      end,
+      minutes: 0,
+      notAGap: true,
+      detail: `${shop} ${label}.${openNote} On that shop’s service order, so this stretch is not a gap here.`,
+      suggested: `No edit. Covered on the ${shop} shop.`,
+      recommendation: null,
+    });
+  }
 
   const clockedHours = round2(punches.reduce((sum, punch) => sum + punch.hours, 0) + orphans.reduce((sum, segment) => sum + segment.hours, 0));
   const orders: ServiceOrder[] = [];
@@ -766,6 +833,13 @@ function buildTech(day: string, shopId: ShopId, name: string, rows: FullbayTimes
 /**
  * Fullbay timesheet rows are two layers. Rows with no service order are the clock punches.
  * Rows with `so_complaint` are the service-order segments inside those punches.
+ * Each service order is attributed by its prefix (D Dayton, M Mobile, S Springfield,
+ * C Covington, G Greenville, CL Columbus). A tech with service-order time at more than
+ * one shop is listed on each of those shops, not on a single home shop. Clock rows
+ * with no service order stay on the timesheet Shop column.
+ * When gaps are built, that tech’s service-order punches on every shop count as covered.
+ * Another shop’s punch is timeline context only: not editable, and not added to this
+ * shop’s clocked hours or service-order hours.
  * Clocked hours are the punch hours, including elapsed hours already stored on an open punch.
  * Open findings say that end is elapsed scrape time. No clock-out is invented.
  * Service-order hours are the segment hours. A tech with none, and every named foreman, is omitted.
@@ -774,9 +848,12 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(file.date)) throw new Error("Timesheet date must be YYYY-MM-DD.");
   const grouped = new Map<string, { shopId: ShopId; name: string; rows: FullbayTimesheetRow[] }>();
   for (const row of file.rows) {
-    const shopId = shopIdForTimesheetShop(row.shop);
     const name = row.employee.trim().replace(/\s+/g, " ");
-    if (!shopId || !name) continue;
+    if (!name) continue;
+    const complaint = parseComplaint(row.so_complaint);
+    const shopFromOrder = complaint ? shopIdForOrderId(complaint.orderId) : null;
+    const shopId = shopFromOrder ?? shopIdForTimesheetShop(row.shop);
+    if (!shopId) continue;
     const key = `${shopId}\0${normalizePersonName(name)}`;
     const current = grouped.get(key);
     if (current) current.rows.push(row);
@@ -784,15 +861,31 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
   }
 
   const peersByShop = new Map<ShopId, PeerSegment[]>();
+  const segmentsByPerson = new Map<string, ShopSegment[]>();
   for (const group of grouped.values()) {
     const list = peersByShop.get(group.shopId) ?? [];
-    for (const segment of segmentsFromRows(group.rows)) list.push({ name: group.name, segment });
+    const personKey = normalizePersonName(group.name);
+    const personSegments = segmentsByPerson.get(personKey) ?? [];
+    for (const segment of segmentsFromRows(group.rows)) {
+      list.push({ name: group.name, segment });
+      personSegments.push({ ...segment, shopId: group.shopId });
+    }
     peersByShop.set(group.shopId, list);
+    segmentsByPerson.set(personKey, personSegments);
   }
 
   const byShop = new Map<ShopId, BuiltTech[]>();
   for (const group of grouped.values()) {
-    const built = buildTech(file.date, group.shopId, group.name, group.rows, peersByShop.get(group.shopId) ?? []);
+    const personSegments = segmentsByPerson.get(normalizePersonName(group.name)) ?? [];
+    const foreignSegments = personSegments.filter((segment) => segment.shopId !== group.shopId);
+    const built = buildTech(
+      file.date,
+      group.shopId,
+      group.name,
+      group.rows,
+      peersByShop.get(group.shopId) ?? [],
+      foreignSegments,
+    );
     if (!built) continue;
     const list = byShop.get(group.shopId) ?? [];
     list.push(built);

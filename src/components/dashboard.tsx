@@ -6,11 +6,22 @@ import { DayBar } from "@/components/day-bar";
 import { ReviewView } from "@/components/review-view";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { signoffApplyBlock, submissionToQueueRequest, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
+import { editsForSubmit, findingCanBeDecided, queueRequestForSubmit, shopDayLock, signoffApplyBlock, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { attest, buildPlan, buildSubmission, filterReports, markDone, signoffKey, submissionFingerprint, submitBlockers } from "@/lib/review";
 import { updateReview, useReviewSnapshot } from "@/lib/review-store";
 import { SEED } from "@/lib/seed";
-import type { Decision, ShopFilter, ShopId, ViewId } from "@/lib/types";
+import type { Decision, ShopFilter, ShopId, Signoff, ViewId } from "@/lib/types";
+
+function recordedSignoffs(signoffs: Record<string, Signoff>): RecordedSignoff[] {
+  const list: RecordedSignoff[] = [];
+  for (const [key, value] of Object.entries(signoffs)) {
+    if (!value.doneAt) continue;
+    const [day, shopId] = key.split("|");
+    if (!day || !shopId) continue;
+    list.push({ day, shopId: shopId as ShopId, doneAt: value.doneAt });
+  }
+  return list;
+}
 
 export function Dashboard() {
   const { state, loadError } = useReviewSnapshot();
@@ -19,6 +30,7 @@ export function Dashboard() {
   const [awaitingQueue, setAwaitingQueue] = useState(false);
   const [signoffError, setSignoffError] = useState<string | null>(null);
   const [queueBatches, setQueueBatches] = useState<FullbayEditBatch[] | null>(null);
+  const [serverSignoffs, setServerSignoffs] = useState<RecordedSignoff[] | null>(null);
 
   const reports = filterReports(SEED, state.shopId, state.days);
   const liveSubmission = buildSubmission(reports, state.decisions, state.shopId, state.days, state.submission?.submittedAt ?? "");
@@ -28,10 +40,16 @@ export function Dashboard() {
     let cancelled = false;
     async function loadQueue() {
       try {
-        const response = await fetch("/api/fullbay-edits/latest");
-        if (!response.ok) return;
-        const body = (await response.json()) as { batches?: FullbayEditBatch[] };
-        if (!cancelled) setQueueBatches(body.batches ?? []);
+        const [queueResponse, signoffResponse] = await Promise.all([fetch("/api/fullbay-edits/latest"), fetch("/api/signoffs")]);
+        if (cancelled) return;
+        if (queueResponse.ok) {
+          const body = (await queueResponse.json()) as { batches?: FullbayEditBatch[] };
+          setQueueBatches(body.batches ?? []);
+        }
+        if (signoffResponse.ok) {
+          const body = (await signoffResponse.json()) as { signoffs?: RecordedSignoff[] };
+          setServerSignoffs(body.signoffs ?? []);
+        }
       } catch {
         // The next poll retries. Mark-done fetches again before it writes a sign-off.
       }
@@ -44,24 +62,40 @@ export function Dashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!serverSignoffs) return;
+    updateReview((current) => {
+      let changed = false;
+      const signoffs = { ...current.signoffs };
+      for (const item of serverSignoffs) {
+        const key = signoffKey(item.day, item.shopId);
+        if (signoffs[key]?.doneAt) continue;
+        signoffs[key] = item.note ? { attested: true, doneAt: item.doneAt, note: item.note } : { attested: true, doneAt: item.doneAt };
+        changed = true;
+      }
+      return changed ? { ...current, signoffs } : current;
+    });
+  }, [serverSignoffs]);
+
   function setShop(shopId: ShopFilter) {
     setSubmitError(null);
     updateReview((current) => ({ ...current, shopId }));
   }
 
-  function toggleDay(day: string, checked: boolean) {
+  function selectDay(day: string) {
     setSubmitError(null);
-    updateReview((current) => {
-      const selected = current.days.includes(day);
-      if (checked && !selected) return { ...current, days: [...current.days, day].sort() };
-      if (!checked && selected && current.days.length > 1) {
-        return { ...current, days: current.days.filter((item) => item !== day) };
-      }
-      return current;
-    });
+    updateReview((current) => ({ ...current, days: [day], view: "review" }));
+  }
+
+  function openSummary(day: string) {
+    setSubmitError(null);
+    updateReview((current) => ({ ...current, days: [day], view: "summary" }));
   }
 
   function setDecision(findingId: string, decision: Decision | null) {
+    const finding = reports.flatMap((report) => report.findings).find((item) => item.id === findingId);
+    if (finding && !findingCanBeDecided(queueBatches ?? [], finding.id)) return;
+    if (finding && shopDayLock(queueBatches ?? [], recordedSignoffs(state.signoffs), finding.day, finding.shopId) === "signed-off") return;
     setSubmitError(null);
     updateReview((current) => {
       const decisions = { ...current.decisions };
@@ -76,8 +110,10 @@ export function Dashboard() {
   }
 
   function attestDay(day: string, shopId: ShopId, attestedValue: boolean) {
+    if (state.signoffs[signoffKey(day, shopId)]?.doneAt) return;
     setSignoffError(null);
     updateReview((current) => {
+      if (current.signoffs[signoffKey(day, shopId)]?.doneAt) return current;
       const key = signoffKey(day, shopId);
       return {
         ...current,
@@ -112,12 +148,38 @@ export function Dashboard() {
       setSignoffError(applyBlock);
       return;
     }
-    const next = markDone(state.signoffs[key], new Date().toISOString());
+    if (!state.signoffs[key]?.attested) {
+      setSignoffError("Check off the utilization numbers before marking the day done.");
+      return;
+    }
+    let recorded: RecordedSignoff;
+    try {
+      const response = await fetch("/api/signoffs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ day, shopId }),
+      });
+      const body = (await response.json()) as { error?: string; signoff?: RecordedSignoff };
+      if (!response.ok || !body.signoff) {
+        setSignoffError(body.error ?? "Could not record the sign-off. The day was not marked done.");
+        return;
+      }
+      recorded = body.signoff;
+    } catch {
+      setSignoffError("Could not record the sign-off. The day was not marked done.");
+      return;
+    }
+    const next = markDone(state.signoffs[key], recorded.doneAt);
     if (!next) {
       setSignoffError("Check off the utilization numbers before marking the day done.");
       return;
     }
     setSignoffError(null);
+    setServerSignoffs((current) => {
+      const list = current ?? [];
+      if (list.some((item) => item.day === recorded.day && item.shopId === recorded.shopId)) return list;
+      return [...list, recorded];
+    });
     updateReview((current) => ({
       ...current,
       signoffs: { ...current.signoffs, [key]: next },
@@ -132,27 +194,50 @@ export function Dashboard() {
       return;
     }
     const submission = buildSubmission(reports, state.decisions, state.shopId, state.days, new Date().toISOString());
+    const queuedRequest = queueRequestForSubmit(queueBatches ?? [], submission);
+    const queuedSubmission = { ...submission, edits: submission.edits.filter((edit) => queuedRequest.edits.some((queued) => queued.findingId === edit.findingId)) };
+    const refusal = submitRefusal(queueBatches ?? [], recordedSignoffs(state.signoffs), queuedRequest);
+    if (refusal) {
+      setSubmitError(refusal);
+      return;
+    }
     setSubmitError(null);
     setAwaitingQueue(true);
-    updateReview((current) => ({ ...current, submission, view: "confirm" }));
     try {
       const response = await fetch("/api/fullbay-edits", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(submissionToQueueRequest(submission)),
+        body: JSON.stringify(queuedRequest),
       });
-      if (!response.ok) {
-        setQueueError("Saved in this browser. The Fullbay apply queue did not accept the edits, so apply has not started.");
+      const body = (await response.json()) as { error?: string; autoSignedOff?: RecordedSignoff[] };
+      if (response.status === 409) {
+        setSubmitError(body.error ?? "Submit is closed for this shop and day.");
         return;
       }
+      if (!response.ok) {
+        setSubmitError("The Fullbay apply queue did not accept the edits, so nothing was submitted.");
+        return;
+      }
+      if (body.autoSignedOff && body.autoSignedOff.length > 0) {
+        setServerSignoffs((current) => {
+          const list = current ?? [];
+          const additions = body.autoSignedOff!.filter((item) => !list.some((existing) => existing.day === item.day && existing.shopId === item.shopId));
+          return additions.length > 0 ? [...list, ...additions] : list;
+        });
+      }
       setQueueError(null);
+      updateReview((current) => ({ ...current, submission: queuedSubmission, view: "confirm" }));
       await refreshQueue();
     } catch {
-      setQueueError("Saved in this browser. The Fullbay apply queue could not be reached, so apply has not started.");
+      setSubmitError("The Fullbay apply queue could not be reached, so nothing was submitted.");
     } finally {
       setAwaitingQueue(false);
     }
   }
+
+  const signoffRecords = recordedSignoffs(state.signoffs);
+  const submitEdits = editsForSubmit(queueBatches ?? [], buildPlan(reports, state.decisions).edits);
+  const submitLock = submitRefusal(queueBatches ?? [], signoffRecords, { shopId: state.shopId, days: state.days, edits: submitEdits });
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6">
@@ -178,7 +263,8 @@ export function Dashboard() {
         signoffError={signoffError}
         applyBlock={(day, shopId) => (queueBatches ? signoffApplyBlock(queueBatches, day, shopId) : null)}
         onShop={setShop}
-        onToggleDay={toggleDay}
+        onSelectDay={selectDay}
+        onOpenSummary={openSummary}
         onAttest={attestDay}
         onMarkDone={markDayDone}
       />
@@ -206,6 +292,9 @@ export function Dashboard() {
             reports={reports}
             decisions={state.decisions}
             submitError={submitError ?? queueError}
+            submitLock={submitLock}
+            isLocked={(day, shopId) => shopDayLock(queueBatches ?? [], signoffRecords, day, shopId) === "signed-off"}
+            batches={queueBatches ?? []}
             onDecision={setDecision}
             onSubmit={submit}
           />
@@ -228,6 +317,7 @@ export function Dashboard() {
             decisions={state.decisions}
             submission={state.submission}
             stale={stale}
+            batches={queueBatches ?? []}
           />
         </TabsContent>
       </Tabs>

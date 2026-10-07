@@ -1,5 +1,8 @@
-import type { FullbayConfirmResult } from "@/lib/fullbay-edit-queue";
-import { confirmQueuedBatch, queueAuthorized } from "@/lib/fullbay-edit-queue-store";
+import { AUTO_SIGNOFF_NOTE, shopDaysCovered, shopDaysToAutoSignOff, type FullbayConfirmResult } from "@/lib/fullbay-edit-queue";
+import { confirmQueuedBatch, queueAuthorized, readQueue } from "@/lib/fullbay-edit-queue-store";
+import { requiredDecisionFindingIds } from "@/lib/review";
+import { SEED } from "@/lib/seed";
+import { recordAutoSignoffs } from "@/lib/signoff-store";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -37,7 +40,13 @@ export async function POST(request: Request) {
       applyNote: typeof result.applyNote === "string" ? result.applyNote : null,
     });
   }
-  const confirmed = await confirmQueuedBatch(record.batchId.trim(), results, new Date().toISOString());
+  const now = new Date().toISOString();
+  const confirmed = await confirmQueuedBatch(record.batchId.trim(), results, now);
   if (!confirmed.ok) return NextResponse.json({ ok: false, error: confirmed.error }, { status: confirmed.status });
-  return NextResponse.json({ ok: true, batch: confirmed.batch });
+  const batches = await readQueue();
+  const ready = shopDaysToAutoSignOff(batches, shopDaysCovered(confirmed.batch.shopId, confirmed.batch.days), (pair) =>
+    requiredDecisionFindingIds(SEED, pair),
+  );
+  const autoSignedOff = await recordAutoSignoffs(ready, now, AUTO_SIGNOFF_NOTE);
+  return NextResponse.json({ ok: true, batch: confirmed.batch, autoSignedOff });
 }

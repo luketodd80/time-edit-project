@@ -1,11 +1,10 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { DEMO_TODAY, defaultPendingDays, formatDay, formatDayShort, formatTimestamp, reviewWindow } from "@/lib/dates";
-import { auditLabel, auditStatus, dayUtilization, shopName, shopsInScope, signoffKey } from "@/lib/review";
+import { defaultPendingDays, formatDay, formatDayShort, formatTimestamp, reviewWindow, todayInNewYork } from "@/lib/dates";
+import { auditLabel, auditStatus, dayChipState, dayUtilization, shopName, shopsInScope, signoffKey } from "@/lib/review";
 import { SEED } from "@/lib/seed";
 import type { Decision, ShopFilter, ShopId, Signoff } from "@/lib/types";
 import { formatPercent } from "@/lib/time";
@@ -22,7 +21,8 @@ export function DayBar({
   signoffError,
   applyBlock,
   onShop,
-  onToggleDay,
+  onSelectDay,
+  onOpenSummary,
   onAttest,
   onMarkDone,
 }: {
@@ -33,12 +33,14 @@ export function DayBar({
   signoffError: string | null;
   applyBlock?: (day: string, shopId: ShopId) => string | null;
   onShop: (shopId: ShopFilter) => void;
-  onToggleDay: (day: string, checked: boolean) => void;
+  onSelectDay: (day: string) => void;
+  onOpenSummary: (day: string) => void;
   onAttest: (day: string, shopId: ShopId, attested: boolean) => void;
   onMarkDone: (day: string, shopId: ShopId) => void;
 }) {
-  const windowDays = reviewWindow(DEMO_TODAY);
-  const dueDays = defaultPendingDays(DEMO_TODAY);
+  const today = todayInNewYork();
+  const windowDays = reviewWindow(today);
+  const dueDays = defaultPendingDays(today);
   const shops = shopsInScope(shopId, SEED);
   const loadedShops = shopsInScope("all", SEED);
 
@@ -67,34 +69,41 @@ export function DayBar({
         </p>
       </div>
 
-      <fieldset>
-        <legend className="text-sm font-medium">Days</legend>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Demo date is Wednesday, October 7, 2026, so Tuesday, October 6 is due. The trail starts Friday, October 2. Sundays stay off the chips.
+      <div>
+        <h2 className="text-sm font-medium">Days</h2>
+        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+          Today is {formatDay(today)} Eastern. One day is open at a time. Due is the day this review covers. A signed-off day says Done with the time it was approved, and choosing it opens that day&apos;s summary. Sundays stay off the chips.
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <ul className="mt-3 flex list-none flex-wrap gap-2 p-0">
           {windowDays.map((day) => {
             const selected = days.includes(day);
-            const due = dueDays.includes(day);
+            const chip = dayChipState(day, shops, signoffs, dueDays);
+            const tone =
+              chip.tone === "done"
+                ? "border-green-700 bg-green-50 text-green-950"
+                : chip.tone === "due"
+                  ? "border-amber-600 bg-amber-50 text-amber-950"
+                  : "border-border bg-background";
+            const status = chip.tone === "done" && chip.doneAt ? `Done ${formatTimestamp(chip.doneAt)}` : chip.tone === "due" ? "Due" : "Open";
+            const doneLabel = chip.note ? `${status}. ${chip.note}` : status;
             return (
-              <div
-                key={day}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${selected ? "border-foreground bg-background" : "border-border bg-muted/40"}`}
-              >
-                <Checkbox
-                  id={`day-${day}`}
-                  checked={selected}
-                  onCheckedChange={(checked) => onToggleDay(day, checked === true)}
-                />
-                <Label htmlFor={`day-${day}`} className="font-normal">
-                  {formatDayShort(day)}
-                </Label>
-                {due ? <Badge variant="outline">Due</Badge> : null}
-              </div>
+              <li key={day}>
+                <button
+                  type="button"
+                  aria-pressed={selected}
+                  aria-label={chip.tone === "done" ? `${formatDay(day)}, ${doneLabel}. Opens summary.` : `${formatDay(day)}, ${status}.`}
+                  onClick={() => (chip.tone === "done" ? onOpenSummary(day) : onSelectDay(day))}
+                  className={`flex min-w-36 flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left ${tone} ${selected ? "ring-2 ring-foreground" : ""}`}
+                >
+                  <span className="font-medium">{formatDayShort(day)}</span>
+                  <span className="text-xs">{status}</span>
+                  {chip.note ? <span className="text-xs">{chip.note}</span> : null}
+                </button>
+              </li>
             );
           })}
-        </div>
-      </fieldset>
+        </ul>
+      </div>
 
       <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
         <table className="w-full min-w-[52rem] border-collapse text-left text-sm">
@@ -123,14 +132,21 @@ export function DayBar({
                 <tr key={day} className={`border-b last:border-b-0 ${tone}`}>
                   <td className="px-4 py-2 whitespace-nowrap">
                     {formatDayShort(day)}
-                    {days.includes(day) ? <span className="ml-2 text-muted-foreground">In view</span> : null}
+                    {days.includes(day) ? <span className="ml-2 text-muted-foreground">Selected</span> : null}
                   </td>
                   <td className="px-4 py-2 font-medium whitespace-nowrap">{auditLabel(status)}</td>
                   {shops.map((id) => {
                     const signoff = signoffs[signoffKey(day, id)];
                     return (
                       <td key={id} className="px-4 py-2 whitespace-nowrap">
-                        {signoff?.doneAt ? `Approved ${formatTimestamp(signoff.doneAt)}` : "Not approved"}
+                        {signoff?.doneAt ? (
+                          <span className="flex flex-col">
+                            <span>Approved {formatTimestamp(signoff.doneAt)}</span>
+                            {signoff.note ? <span className="font-normal text-muted-foreground">{signoff.note}</span> : null}
+                          </span>
+                        ) : (
+                          "Not approved"
+                        )}
                       </td>
                     );
                   })}
@@ -146,7 +162,7 @@ export function DayBar({
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-medium">Sign-off</h2>
         <p className="text-sm text-muted-foreground">
-          Check that you approve the utilization numbers, then mark the day done. Accepted edits for that shop and day must be confirmed applied in Fullbay first. Rejected edits do not block sign-off. The day cannot be marked done without the utilization check. Uncheck to reopen it. Done days stay on the trail.
+          Check that you approve the utilization numbers, then mark the day done. Accepted edits for that shop and day must be confirmed applied in Fullbay first. Rejected edits do not block sign-off. The day cannot be marked done without the utilization check. When every finding has a decision and every accepted edit is applied, or the submit rejected every finding, the day is marked done on its own. A signed-off day stays locked: its decisions cannot be changed and it cannot be submitted again.
         </p>
         {signoffError ? (
           <p role="alert" className="text-sm text-destructive">
@@ -165,6 +181,7 @@ export function DayBar({
                     <Checkbox
                       id={inputId}
                       checked={signoff?.attested ?? false}
+                      disabled={Boolean(signoff?.doneAt)}
                       onCheckedChange={(checked) => onAttest(day, id, checked === true)}
                       className="mt-0.5"
                     />
@@ -176,7 +193,10 @@ export function DayBar({
                     </Label>
                   </div>
                   {signoff?.doneAt ? (
-                    <p className="text-sm text-green-800">Done {formatTimestamp(signoff.doneAt)}</p>
+                    <p className="text-sm text-green-800">
+                      Done {formatTimestamp(signoff.doneAt)}
+                      {signoff.note ? <span className="mt-1 block text-muted-foreground">{signoff.note}</span> : null}
+                    </p>
                   ) : (
                     <div className="flex max-w-md flex-col items-start gap-2">
                       <Button type="button" disabled={!signoff?.attested || blocked !== null} onClick={() => onMarkDone(day, id)}>

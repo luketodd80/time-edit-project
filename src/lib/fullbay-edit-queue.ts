@@ -21,12 +21,21 @@ export interface FullbayQueueEdit {
   applyNote: string | null;
 }
 
+/** A finding the manager accepted, overrode, or rejected. Undecided findings are omitted. */
+export interface DecidedFinding {
+  findingId: string;
+  day: string;
+  shopId: ShopId;
+}
+
 export interface FullbayEditBatch {
   id: string;
   submittedAt: string;
   shopId: ShopFilter;
   days: string[];
   edits: FullbayQueueEdit[];
+  /** Absent on batches stored before auto sign-off. Treat a missing list as empty. */
+  decided?: DecidedFinding[];
 }
 
 export interface FullbayQueueRequest {
@@ -34,7 +43,10 @@ export interface FullbayQueueRequest {
   shopId: ShopFilter;
   days: string[];
   edits: FullbayQueueEdit[];
+  decided?: DecidedFinding[];
 }
+
+export const AUTO_SIGNOFF_NOTE = "Auto-approved after all edits applied";
 
 export interface FullbayConfirmResult {
   findingId: string;
@@ -70,12 +82,25 @@ export function queueEditFromPlanned(edit: PlannedEdit): FullbayQueueEdit {
 }
 
 export function submissionToQueueRequest(submission: Submission): FullbayQueueRequest {
+  const decided = [...submission.edits, ...submission.rejected].map((edit) => ({
+    findingId: edit.findingId,
+    day: edit.day,
+    shopId: edit.shopId,
+  }));
   return {
     submittedAt: submission.submittedAt,
     shopId: submission.shopId,
     days: [...submission.days].sort(),
     edits: submission.edits.map(queueEditFromPlanned),
+    decided,
   };
+}
+
+/** Full decided list, with applied and pending edits removed. A failed finding stays so it can be pushed again. */
+export function queueRequestForSubmit(batches: FullbayEditBatch[], submission: Submission): FullbayQueueRequest {
+  const request = submissionToQueueRequest(submission);
+  const allowed = new Set(editsForSubmit(batches, submission.edits).map((edit) => edit.findingId));
+  return { ...request, edits: request.edits.filter((edit) => allowed.has(edit.findingId)) };
 }
 
 export function parseQueueRequest(body: unknown): { ok: true; value: FullbayQueueRequest } | { ok: false; error: string } {
@@ -94,6 +119,8 @@ export function parseQueueRequest(body: unknown): { ok: true; value: FullbayQueu
   }
   const days = (record.days as string[]).slice().sort();
   if (!Array.isArray(record.edits)) return { ok: false, error: "edits must be an array." };
+  const decided = parseDecided(record.decided);
+  if (!decided.ok) return decided;
 
   const edits: FullbayQueueEdit[] = [];
   const seen = new Set<string>();
@@ -112,8 +139,31 @@ export function parseQueueRequest(body: unknown): { ok: true; value: FullbayQueu
       shopId: shopId as ShopFilter,
       days,
       edits,
+      decided: decided.value,
     },
   };
+}
+
+function parseDecided(value: unknown): { ok: true; value: DecidedFinding[] } | { ok: false; error: string } {
+  if (value == null) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false, error: "decided must be an array." };
+  const decided: DecidedFinding[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object") return { ok: false, error: "Each decided finding must be an object." };
+    const record = item as Record<string, unknown>;
+    const findingId = requiredText(record.findingId, "decided findingId");
+    if (!findingId.ok) return findingId;
+    if (typeof record.day !== "string" || !DAY.test(record.day)) return { ok: false, error: "Each decided day must be YYYY-MM-DD." };
+    if (typeof record.shopId !== "string" || !SHOP_IDS.has(record.shopId)) {
+      return { ok: false, error: "Each decided shopId must be a known shop." };
+    }
+    const key = `${record.day}|${record.shopId}|${findingId.value}`;
+    if (seen.has(key)) return { ok: false, error: `Duplicate decided finding ${findingId.value}.` };
+    seen.add(key);
+    decided.push({ findingId: findingId.value, day: record.day, shopId: record.shopId as ShopId });
+  }
+  return { ok: true, value: decided };
 }
 
 function parseQueueEdit(item: unknown): { ok: true; value: FullbayQueueEdit } | { ok: false; error: string } {
@@ -238,4 +288,170 @@ export function applyConfirmations(
 function compareBatchDesc(a: FullbayEditBatch, b: FullbayEditBatch): number {
   if (a.submittedAt !== b.submittedAt) return a.submittedAt < b.submittedAt ? 1 : -1;
   return a.id < b.id ? 1 : -1;
+}
+
+/** Newest queued edit for a finding. A later confirm replaces an earlier one. */
+export function latestQueueEdit(batches: FullbayEditBatch[], findingId: string): FullbayQueueEdit | null {
+  const matches = batches.flatMap((batch) => batch.edits.filter((edit) => edit.findingId === findingId).map((edit) => ({ edit, batch })));
+  matches.sort((a, b) => compareBatchDesc(a.batch, b.batch));
+  return matches[0]?.edit ?? null;
+}
+
+/** Review copy for a queued finding. Applied and pending rows are not open actions. A failed row keeps its note. */
+export function reviewApplyText(edit: FullbayQueueEdit): string {
+  if (edit.status === "pending") return "Waiting on Fullbay.";
+  if (edit.status === "failed") return edit.applyNote ? `Fullbay apply failed. ${edit.applyNote}` : "Fullbay apply failed.";
+  return "Edits already updated";
+}
+
+/** Accept, Reject, and Override stay available only for a finding that was never pushed, or whose latest push failed. */
+export function findingCanBeDecided(batches: FullbayEditBatch[], findingId: string): boolean {
+  const latest = latestQueueEdit(batches, findingId);
+  return latest == null || latest.status === "failed";
+}
+
+/**
+ * Edits to send. Applied and pending findings stay out, so nothing is pushed twice.
+ * A finding that was never pushed, or whose latest push failed, can be sent even on a shop day
+ * that was already submitted (for example a line the manager left undecided on the first submit).
+ */
+export function editsForSubmit<T extends { findingId: string; day: string; shopId: ShopId }>(batches: FullbayEditBatch[], edits: T[]): T[] {
+  return edits.filter((edit) => {
+    const latest = latestQueueEdit(batches, edit.findingId);
+    return latest == null || latest.status === "failed";
+  });
+}
+
+export interface ShopDayRef {
+  day: string;
+  shopId: ShopId;
+}
+
+export interface RecordedSignoff extends ShopDayRef {
+  doneAt: string;
+  note?: string | null;
+}
+
+/** Shop/day pairs a submit covers. All shops expands to every shop. */
+export function shopDaysCovered(shopId: ShopFilter, days: string[]): ShopDayRef[] {
+  const shops = shopId === "all" ? SHOPS.map((shop) => shop.id) : [shopId];
+  const pairs: ShopDayRef[] = [];
+  for (const day of days) {
+    for (const id of shops) pairs.push({ day, shopId: id });
+  }
+  return pairs;
+}
+
+function pairKey(day: string, shopId: ShopId): string {
+  return `${day}|${shopId}`;
+}
+
+function labelPairs(pairs: ShopDayRef[]): string {
+  return pairs.map((pair) => `${shopName(pair.shopId)} ${pair.day}`).join(", ");
+}
+
+/**
+ * Refuse another submit when any covered shop and day is signed off, or when the request
+ * would push a shop day that was already submitted with nothing new: every edit on that
+ * day must be a never-pushed finding or a retry of a failed one. Applied or pending edits are refused.
+ * An all-shops batch counts as submitted for every shop on those days.
+ */
+export function submitRefusal(
+  batches: FullbayEditBatch[],
+  signoffs: RecordedSignoff[],
+  request: { shopId: ShopFilter; days: string[]; edits?: Array<ShopDayRef & { findingId?: string }> },
+): string | null {
+  const pairs = shopDaysCovered(request.shopId, request.days);
+  const seen = new Set(pairs.map((pair) => pairKey(pair.day, pair.shopId)));
+  for (const edit of request.edits ?? []) {
+    const key = pairKey(edit.day, edit.shopId);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pairs.push({ day: edit.day, shopId: edit.shopId });
+  }
+
+  const signed = pairs.filter((pair) => signoffs.some((signoff) => signoff.day === pair.day && signoff.shopId === pair.shopId && signoff.doneAt));
+  if (signed.length > 0) {
+    return `Already signed off: ${labelPairs(signed)}. Submit is closed for a signed-off shop and day.`;
+  }
+
+  const submitted = new Set<string>();
+  for (const batch of batches) {
+    for (const pair of shopDaysCovered(batch.shopId, batch.days)) submitted.add(pairKey(pair.day, pair.shopId));
+  }
+  const again = pairs.filter((pair) => submitted.has(pairKey(pair.day, pair.shopId)));
+  if (again.length === 0) return null;
+
+  const editsOnSubmitted = (request.edits ?? []).filter((edit) => submitted.has(pairKey(edit.day, edit.shopId)));
+  const onlyNewOrFailed =
+    editsOnSubmitted.length > 0 &&
+    editsOnSubmitted.every((edit) => {
+      if (edit.findingId == null) return false;
+      const latest = latestQueueEdit(batches, edit.findingId);
+      return latest == null || latest.status === "failed";
+    });
+  if (onlyNewOrFailed) return null;
+  return `Already submitted: ${labelPairs(again)}. Submit is closed for a shop and day that was already submitted.`;
+}
+
+export type ShopDayLock = "open" | "signed-off" | "submitted";
+
+/**
+ * Shop days in scope whose recommendations are all decided, whose accepted edits are applied,
+ * and which have nothing pending or failed. A shop with no recommendations is left out.
+ * An applied edit counts as a decision when an older batch has no decided list.
+ */
+export function shopDaysToAutoSignOff(
+  batches: FullbayEditBatch[],
+  scope: ShopDayRef[],
+  requiredFindingIds: (pair: ShopDayRef) => string[],
+): ShopDayRef[] {
+  return scope.filter((pair) => {
+    const required = requiredFindingIds(pair);
+    if (required.length === 0) return false;
+    const latest = latestEditsForShopDay(batches, pair.day, pair.shopId);
+    for (const edit of latest.values()) {
+      if (edit.status === "pending" || edit.status === "failed") return false;
+    }
+    const decided = decidedFindingIds(batches, pair.day, pair.shopId);
+    for (const [findingId, edit] of latest) {
+      if (edit.status === "applied") decided.add(findingId);
+    }
+    return required.every((findingId) => decided.has(findingId));
+  });
+}
+
+function decidedFindingIds(batches: FullbayEditBatch[], day: string, shopId: ShopId): Set<string> {
+  const ids = new Set<string>();
+  for (const batch of batches) {
+    for (const item of batch.decided ?? []) {
+      if (item.day === day && item.shopId === shopId) ids.add(item.findingId);
+    }
+  }
+  return ids;
+}
+
+function latestEditsForShopDay(batches: FullbayEditBatch[], day: string, shopId: ShopId): Map<string, FullbayQueueEdit> {
+  const latest = new Map<string, { edit: FullbayQueueEdit; batch: FullbayEditBatch }>();
+  for (const batch of batches) {
+    for (const edit of batch.edits) {
+      if (edit.day !== day || edit.shopId !== shopId) continue;
+      const current = latest.get(edit.findingId);
+      if (!current || compareBatchDesc(batch, current.batch) < 0) latest.set(edit.findingId, { edit, batch });
+    }
+  }
+  return new Map([...latest.entries()].map(([findingId, value]) => [findingId, value.edit]));
+}
+
+export function shopDayLock(
+  batches: FullbayEditBatch[],
+  signoffs: RecordedSignoff[],
+  day: string,
+  shopId: ShopId,
+): ShopDayLock {
+  if (signoffs.some((signoff) => signoff.day === day && signoff.shopId === shopId && signoff.doneAt)) return "signed-off";
+  const submitted = batches.some((batch) =>
+    shopDaysCovered(batch.shopId, batch.days).some((pair) => pair.day === day && pair.shopId === shopId),
+  );
+  return submitted ? "submitted" : "open";
 }

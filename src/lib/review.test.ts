@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CURATED_FRIDAY } from "@/lib/curated-friday";
-import { AUDIT_START, DEMO_TODAY, defaultPendingDays, reviewWindow } from "@/lib/dates";
+import { AUDIT_START, defaultPendingDays, reviewWindow, todayInNewYork } from "@/lib/dates";
 import { SEED } from "@/lib/seed";
 import { parsePersistedState } from "@/lib/storage";
 import { appliedWindow, formatPercent } from "@/lib/time";
@@ -10,6 +10,7 @@ import {
   auditLabel,
   auditStatus,
   buildPlan,
+  dayChipState,
   dayUtilization,
   buildSubmission,
   filterReports,
@@ -35,9 +36,11 @@ function recommendation(id: string) {
 }
 
 describe("review days", () => {
-  it("opens on Wednesday October 7 so Tuesday October 6 is due", () => {
-    assert.equal(DEMO_TODAY, "2026-10-07");
-    assert.deepEqual(defaultPendingDays(DEMO_TODAY), ["2026-10-06"]);
+  it("uses the America/New_York calendar date, including across midnight", () => {
+    assert.equal(todayInNewYork(new Date("2026-10-07T20:00:00Z")), "2026-10-07");
+    assert.equal(todayInNewYork(new Date("2026-10-08T03:30:00Z")), "2026-10-07");
+    assert.equal(todayInNewYork(new Date("2026-10-08T04:30:00Z")), "2026-10-08");
+    assert.deepEqual(defaultPendingDays(todayInNewYork(new Date("2026-10-07T20:00:00Z"))), ["2026-10-06"]);
     assert.deepEqual(defaultPendingDays("2026-10-05"), [friday, saturday]);
   });
 
@@ -47,7 +50,7 @@ describe("review days", () => {
   });
 
   it("starts the trail on Friday October 2 and drops Sunday", () => {
-    assert.deepEqual(reviewWindow(DEMO_TODAY), [friday, saturday, "2026-10-05", "2026-10-06"]);
+    assert.deepEqual(reviewWindow("2026-10-07"), [friday, saturday, "2026-10-05", "2026-10-06"]);
     assert.deepEqual(reviewWindow("2026-10-06"), [friday, saturday, "2026-10-05"]);
     const later = reviewWindow("2026-10-20", 30);
     assert.equal(later[0], AUDIT_START);
@@ -55,6 +58,29 @@ describe("review days", () => {
     assert.equal(later.includes("2026-09-22"), false);
     assert.ok(later.includes("2026-10-19"));
     assert.equal(later.some((day) => new Date(`${day}T12:00:00Z`).getUTCDay() === 0), false);
+  });
+
+  it("shows a signed-off day as done and keeps a due day distinct", () => {
+    const signed = { attested: true, doneAt: "2026-10-06T12:43:00.000Z" };
+    const signoffs = { [`${friday}|dayton`]: signed };
+    assert.deepEqual(dayChipState(friday, ["dayton"], signoffs, ["2026-10-06"]), {
+      tone: "done",
+      doneAt: "2026-10-06T12:43:00.000Z",
+      note: null,
+    });
+    assert.deepEqual(dayChipState("2026-10-06", ["dayton"], signoffs, ["2026-10-06"]), { tone: "due", doneAt: null, note: null });
+    assert.deepEqual(dayChipState(saturday, ["dayton"], {}, []), { tone: "open", doneAt: null, note: null });
+    assert.equal(dayChipState(friday, ["dayton", "mobile"], signoffs, []).tone, "open");
+    const autoNote = "Auto-approved after all edits applied";
+    const auto = {
+      [`${friday}|dayton`]: { attested: true, doneAt: "2026-10-06T12:43:00.000Z", note: autoNote },
+      [`${friday}|mobile`]: { attested: true, doneAt: "2026-10-06T12:50:00.000Z", note: autoNote },
+    };
+    assert.equal(dayChipState(friday, ["dayton", "mobile"], auto, []).note, autoNote);
+    assert.equal(
+      dayChipState(friday, ["dayton", "mobile"], { ...auto, [`${friday}|mobile`]: { attested: true, doneAt: "2026-10-06T12:50:00.000Z" } }, []).note,
+      null,
+    );
   });
 });
 

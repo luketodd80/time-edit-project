@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { DEMO_TODAY, defaultPendingDays, reviewWindow } from "@/lib/dates";
+import { defaultPendingDays, reviewWindow, todayInNewYork } from "@/lib/dates";
 import { shopsWithData } from "@/lib/review";
 import { SEED } from "@/lib/seed";
 import { clearState, loadState, saveState } from "@/lib/storage";
@@ -13,9 +13,11 @@ export interface ReviewSnapshot {
 }
 
 function emptyState(): PersistedState {
+  const today = todayInNewYork();
+  const due = defaultPendingDays(today);
   return {
     shopId: "all",
-    days: defaultPendingDays(DEMO_TODAY),
+    days: due.length > 0 ? [due[due.length - 1]] : [],
     view: "review",
     decisions: {},
     signoffs: {},
@@ -24,14 +26,17 @@ function emptyState(): PersistedState {
 }
 
 function sanitize(saved: PersistedState): PersistedState {
+  const today = todayInNewYork();
   const loaded = shopsWithData(SEED);
   const shopId = saved.shopId === "all" || loaded.includes(saved.shopId) ? saved.shopId : "all";
-  const allowed = new Set(reviewWindow(DEMO_TODAY));
-  const days = saved.days.filter((day) => allowed.has(day));
+  const allowed = new Set(reviewWindow(today));
+  const days = saved.days.filter((day) => allowed.has(day)).sort();
+  const due = defaultPendingDays(today);
+  const selected = days.at(-1) ?? due.at(-1);
   return {
     ...saved,
     shopId,
-    days: days.length > 0 ? days : defaultPendingDays(DEMO_TODAY),
+    days: selected ? [selected] : [],
   };
 }
 

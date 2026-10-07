@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay } from "@/lib/dates";
+import { latestQueueEdit, reviewApplyText, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
 import {
   buildPlan,
   isEligible,
@@ -27,6 +28,9 @@ export function ReviewView({
   reports,
   decisions,
   submitError,
+  submitLock,
+  isLocked,
+  batches,
   onDecision,
   onSubmit,
 }: {
@@ -34,6 +38,9 @@ export function ReviewView({
   reports: DayReport[];
   decisions: Record<string, Decision>;
   submitError: string | null;
+  submitLock: string | null;
+  isLocked: (day: string, shopId: DayReport["shopId"]) => boolean;
+  batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
   onSubmit: () => void;
 }) {
@@ -53,16 +60,19 @@ export function ReviewView({
                 No findings for this selection. The day stays on the audit trail until it is signed off.
               </p>
             ) : (
-              dayReports.map((report) => <ShopDay key={report.shopId} report={report} decisions={decisions} onDecision={onDecision} />)
+              dayReports.map((report) => (
+                <ShopDay key={report.shopId} report={report} decisions={decisions} isLocked={isLocked} batches={batches} onDecision={onDecision} />
+              ))
             )}
           </section>
         );
       })}
 
       <div className="flex flex-col items-start gap-3 border-t pt-6">
-        <Button type="button" size="lg" disabled={nothingToDecide} onClick={onSubmit}>
+        <Button type="button" size="lg" disabled={nothingToDecide || submitLock != null} onClick={onSubmit}>
           Submit decisions
         </Button>
+        {submitLock ? <p className="max-w-2xl text-sm text-destructive">{submitLock}</p> : null}
         <p className="max-w-2xl text-sm text-muted-foreground">
           Saves this confirmation in the browser and queues accepted and overridden edits for Fullbay Time Stamp apply. Rejected edits are not queued.
         </p>
@@ -81,10 +91,14 @@ export function ReviewView({
 function ShopDay({
   report,
   decisions,
+  isLocked,
+  batches,
   onDecision,
 }: {
   report: DayReport;
   decisions: Record<string, Decision>;
+  isLocked: (day: string, shopId: DayReport["shopId"]) => boolean;
+  batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
 }) {
   const active = techsWithFindings(report);
@@ -102,12 +116,12 @@ function ShopDay({
           Only time inside a clocked window counts. Off-the-clock stretches are in the table so the day reads straight through, and they are not gaps. Times are Eastern. Yellow is missed time. Orange is billable work with no service order.
         </p>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-          These rows come from the Fullbay timesheet. A gap with no Clock In Comment is aimed at the nearest service order for that tech. A Clock In Comment that names a coworker, such as “Help Nick”, is aimed at that person’s overlapping service order on the same shop day. Orders are marked open on priorities.
+          These rows come from the Fullbay timesheet. A gap with no Clock In Comment is aimed at the nearest service order for that tech. A Clock In Comment that names a coworker, such as “Help Nick”, is aimed at that person’s overlapping service order on the same shop day. Time on another shop’s service order is covered: it is labeled with that shop, it is not a gap, and it is not an edit. Orders are marked open on priorities.
         </p>
       </div>
 
       {active.map((tech) => (
-        <TechDay key={tech.id} report={report} tech={tech} decisions={decisions} onDecision={onDecision} />
+        <TechDay key={tech.id} report={report} tech={tech} decisions={decisions} locked={isLocked(report.day, report.shopId)} batches={batches} onDecision={onDecision} />
       ))}
 
       {quiet.length > 0 ? (
@@ -145,11 +159,15 @@ function TechDay({
   report,
   tech,
   decisions,
+  locked,
+  batches,
   onDecision,
 }: {
   report: DayReport;
   tech: Technician;
   decisions: Record<string, Decision>;
+  locked: boolean;
+  batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
 }) {
   const outlook = techOutlook(report, tech);
@@ -183,6 +201,8 @@ function TechDay({
                 tech={tech}
                 finding={finding}
                 decision={decisions[finding.id]}
+                locked={locked}
+                queued={latestQueueEdit(batches, finding.id)}
                 onDecision={onDecision}
               />
             ))}
@@ -249,19 +269,25 @@ function DayRows({
   tech,
   finding,
   decision,
+  locked,
+  queued,
   onDecision,
 }: {
   report: DayReport;
   tech: Technician;
   finding: Finding;
   decision: Decision | undefined;
+  locked: boolean;
+  queued: ReturnType<typeof latestQueueEdit>;
   onDecision: (findingId: string, decision: Decision | null) => void;
 }) {
   const recommendation = finding.recommendation;
   const order = recommendation ? report.orders.find((item) => item.id === recommendation.orderId) : undefined;
   const eligible = isEligible(report, finding);
   const preview = recommendation && decision ? appliedWindow(recommendation, decision) : null;
-  const tone = finding.kind === "flag" ? "bg-orange-200" : finding.kind === "gap" ? "bg-yellow-100" : "bg-card";
+  const canDecide = !locked && (queued == null || queued.status === "failed");
+  const tone =
+    queued?.status === "applied" ? "bg-green-50" : queued?.status === "failed" ? "bg-red-50" : finding.kind === "flag" ? "bg-orange-200" : finding.kind === "gap" ? "bg-yellow-100" : "bg-card";
 
   function choose(kind: DecisionKind) {
     if (!recommendation) return;
@@ -286,14 +312,18 @@ function DayRows({
         <td className="px-3 py-3 whitespace-nowrap">{missedText(finding)}</td>
         <td className="px-3 py-3 leading-6">
           <p>{suggestedText(finding)}</p>
-          {recommendation?.optional ? <Badge variant="outline" className="mt-2">Optional</Badge> : null}
-          {order ? (
+          {queued ? (
+            <p className={`mt-3 ${queued.status === "failed" ? "text-destructive" : "font-medium"}`}>{reviewApplyText(queued)}</p>
+          ) : null}
+          {recommendation?.optional && canDecide ? <Badge variant="outline" className="mt-2">Optional</Badge> : null}
+          {order && canDecide ? (
             <p className="mt-2 flex flex-wrap items-center gap-2">
               <OrderStatusBadge status={order.status} />
               <span className="text-muted-foreground">{eligible ? "Eligible for a time edit." : `${statusLabel(order.status)}. Not eligible.`}</span>
             </p>
           ) : null}
-          {eligible && recommendation ? (
+          {locked && recommendation && !queued ? <p className="mt-3 text-muted-foreground">Signed off. This decision is locked.</p> : null}
+          {eligible && recommendation && canDecide ? (
             <div className="mt-3 flex flex-col gap-2">
               <div className="flex flex-wrap gap-2" role="group" aria-label={`Decision for ${tech.name} ${recommendation.orderId}`}>
                 <Button type="button" size="sm" variant={decision?.kind === "accept" ? "default" : "outline"} aria-pressed={decision?.kind === "accept"} onClick={() => choose("accept")}>
@@ -312,7 +342,7 @@ function DayRows({
           ) : null}
         </td>
       </tr>
-      {eligible && recommendation && decision?.kind === "override" && preview ? (
+      {eligible && recommendation && canDecide && decision?.kind === "override" && preview ? (
         <tr className={`border-b ${tone}`}>
           <td colSpan={4} className="px-3 py-3">
             <div className="grid gap-3 sm:grid-cols-2">
