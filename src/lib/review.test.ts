@@ -85,7 +85,7 @@ describe("review days", () => {
 });
 
 describe("shop scope", () => {
-  it("lists every shop and loads Friday through Tuesday", () => {
+  it("lists every shop and loads Friday through Wednesday", () => {
     assert.deepEqual(
       SHOPS.map((shop) => shop.name),
       ["Dayton", "Covington", "Greenville", "Springfield", "Mobile", "Columbus"],
@@ -96,6 +96,7 @@ describe("shop scope", () => {
     assert.ok(filterReports(SEED, "all", [saturday]).length > 0);
     assert.ok(filterReports(SEED, "all", ["2026-10-05"]).length > 0);
     assert.ok(filterReports(SEED, "all", ["2026-10-06"]).length > 0);
+    assert.ok(filterReports(SEED, "all", ["2026-10-07"]).length > 0);
   });
 
   it("does not treat All shops and Dayton as the same Friday", () => {
