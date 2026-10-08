@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ConfirmView } from "@/components/confirm-view";
 import { DayBar } from "@/components/day-bar";
 import { ReviewView } from "@/components/review-view";
+import { SubmitConfirmDialog } from "@/components/submit-confirm-dialog";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { editsForSubmit, findingCanBeDecided, queueRequestForSubmit, shopDayLock, signoffApplyBlock, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
@@ -26,6 +27,7 @@ function recordedSignoffs(signoffs: Record<string, Signoff>): RecordedSignoff[] 
 export function Dashboard() {
   const { state, loadError } = useReviewSnapshot();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitConfirmCount, setSubmitConfirmCount] = useState<number | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [awaitingQueue, setAwaitingQueue] = useState(false);
   const [signoffError, setSignoffError] = useState<string | null>(null);
@@ -186,12 +188,12 @@ export function Dashboard() {
     }));
   }
 
-  async function submit() {
+  function buildQueuedSubmit() {
     const plan = buildPlan(reports, state.decisions);
     const blockers = submitBlockers(plan);
     if (blockers.length > 0) {
       setSubmitError(blockers.join(" "));
-      return;
+      return null;
     }
     const submission = buildSubmission(reports, state.decisions, state.shopId, state.days, new Date().toISOString());
     const queuedRequest = queueRequestForSubmit(queueBatches ?? [], submission);
@@ -199,8 +201,30 @@ export function Dashboard() {
     const refusal = submitRefusal(queueBatches ?? [], recordedSignoffs(state.signoffs), queuedRequest);
     if (refusal) {
       setSubmitError(refusal);
+      return null;
+    }
+    return { queuedRequest, queuedSubmission };
+  }
+
+  function openSubmitConfirm() {
+    const queued = buildQueuedSubmit();
+    if (!queued) return;
+    setSubmitError(null);
+    setSubmitConfirmCount(queued.queuedRequest.edits.length);
+  }
+
+  function cancelSubmitConfirm() {
+    setSubmitConfirmCount(null);
+  }
+
+  async function submit() {
+    const queued = buildQueuedSubmit();
+    if (!queued) {
+      setSubmitConfirmCount(null);
       return;
     }
+    const { queuedRequest, queuedSubmission } = queued;
+    setSubmitConfirmCount(null);
     setSubmitError(null);
     setAwaitingQueue(true);
     try {
@@ -296,7 +320,7 @@ export function Dashboard() {
             isLocked={(day, shopId) => shopDayLock(queueBatches ?? [], signoffRecords, day, shopId) === "signed-off"}
             batches={queueBatches ?? []}
             onDecision={setDecision}
-            onSubmit={submit}
+            onSubmit={openSubmitConfirm}
           />
         </TabsContent>
         <TabsContent value="confirm" className="pt-4 text-base">
@@ -321,6 +345,9 @@ export function Dashboard() {
           />
         </TabsContent>
       </Tabs>
+      {submitConfirmCount != null ? (
+        <SubmitConfirmDialog acceptedCount={submitConfirmCount} onConfirm={() => void submit()} onCancel={cancelSubmitConfirm} />
+      ) : null}
     </main>
   );
 }

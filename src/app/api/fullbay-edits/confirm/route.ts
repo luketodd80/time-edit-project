@@ -1,4 +1,4 @@
-import { AUTO_SIGNOFF_NOTE, shopDaysCovered, shopDaysToAutoSignOff, type FullbayConfirmResult } from "@/lib/fullbay-edit-queue";
+import { AUTO_SIGNOFF_NOTE, isClockTime, shopDaysCovered, shopDaysToAutoSignOff, type FullbayConfirmResult } from "@/lib/fullbay-edit-queue";
 import { confirmQueuedBatch, queueAuthorized, readQueue } from "@/lib/fullbay-edit-queue-store";
 import { requiredDecisionFindingIds } from "@/lib/review";
 import { SEED } from "@/lib/seed";
@@ -28,16 +28,22 @@ export async function POST(request: Request) {
   for (const item of record.results) {
     if (!item || typeof item !== "object") return NextResponse.json({ ok: false, error: "Each result must be an object." }, { status: 400 });
     const result = item as Record<string, unknown>;
-    if (typeof result.findingId !== "string" || (result.status !== "applied" && result.status !== "failed")) {
-      return NextResponse.json({ ok: false, error: "Each result needs a findingId and status applied or failed." }, { status: 400 });
+    if (typeof result.findingId !== "string" || (result.status !== "applied" && result.status !== "failed" && result.status !== "already_done")) {
+      return NextResponse.json({ ok: false, error: "Each result needs a findingId and status applied, failed, or already_done." }, { status: 400 });
     }
     if (result.applyNote != null && typeof result.applyNote !== "string") {
       return NextResponse.json({ ok: false, error: "applyNote must be a string." }, { status: 400 });
     }
+    const currentClockIn = optionalClock(result.currentClockIn, "currentClockIn");
+    if (!currentClockIn.ok) return NextResponse.json({ ok: false, error: currentClockIn.error }, { status: 400 });
+    const currentClockOut = optionalClock(result.currentClockOut, "currentClockOut");
+    if (!currentClockOut.ok) return NextResponse.json({ ok: false, error: currentClockOut.error }, { status: 400 });
     results.push({
       findingId: result.findingId,
       status: result.status,
       applyNote: typeof result.applyNote === "string" ? result.applyNote : null,
+      currentClockIn: result.status === "already_done" ? currentClockIn.value : null,
+      currentClockOut: result.status === "already_done" ? currentClockOut.value : null,
     });
   }
   const now = new Date().toISOString();
@@ -49,4 +55,10 @@ export async function POST(request: Request) {
   );
   const autoSignedOff = await recordAutoSignoffs(ready, now, AUTO_SIGNOFF_NOTE);
   return NextResponse.json({ ok: true, batch: confirmed.batch, autoSignedOff });
+}
+
+function optionalClock(value: unknown, label: string): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (value == null || value === "") return { ok: true, value: null };
+  if (typeof value !== "string" || !isClockTime(value)) return { ok: false, error: `${label} must be HH:MM.` };
+  return { ok: true, value };
 }
