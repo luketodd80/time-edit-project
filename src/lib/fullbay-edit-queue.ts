@@ -335,12 +335,16 @@ export function alreadyDoneText(edit: {
   currentClockIn?: string | null;
   currentClockOut?: string | null;
 }): string {
-  const parts = ["Already updated in Fullbay (edited manually)"];
+  let text = "Already updated in Fullbay (edited manually)";
   const note = edit.applyNote?.trim() ?? "";
-  if (note.length > 0) parts.push(note);
+  if (note.length > 0) text = appendSentence(text, note);
   const times = currentTimesText(edit.currentClockIn, edit.currentClockOut);
-  if (times) parts.push(times);
-  return parts.join(". ");
+  if (times) text = appendSentence(text, times);
+  return text;
+}
+
+function appendSentence(base: string, extra: string): string {
+  return `${base}${/[.!?]$/.test(base) ? " " : ". "}${extra}`;
 }
 
 function currentTimesText(clockIn: string | null | undefined, clockOut: string | null | undefined): string | null {

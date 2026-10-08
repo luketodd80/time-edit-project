@@ -173,6 +173,11 @@ describe("fullbay edit queue mapping", () => {
       reviewApplyText(bothResolved.batch.edits.find((edit) => edit.findingId === "john-1")!),
       "Already updated in Fullbay (edited manually). False gap. Time is on another shop's SO.",
     );
+    const punctuated = { ...bothResolved.batch.edits.find((edit) => edit.findingId === "gary-1")!, applyNote: "No edit made." };
+    assert.equal(
+      reviewApplyText(punctuated),
+      "Already updated in Fullbay (edited manually). No edit made. Current times 6:54 AM–8:12 AM",
+    );
     assert.equal(findingCanBeDecided([bothResolved.batch], "gary-1"), false);
   });
 
