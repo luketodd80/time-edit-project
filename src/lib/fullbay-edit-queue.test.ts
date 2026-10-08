@@ -136,6 +136,44 @@ describe("fullbay edit queue mapping", () => {
     assert.equal(signoffApplyBlock([appliedOnly.batch], friday, "springfield"), null);
     const unknown = applyConfirmations(batch, [{ findingId: "missing", status: "applied" }], "2026-10-05T16:00:00.000Z");
     assert.equal(unknown.ok, false);
+
+    const already = applyConfirmations(
+      batch,
+      [{
+        findingId: "gary-1",
+        status: "already_done",
+        applyNote: " Andy closed this gap ",
+        currentClockIn: "06:54",
+        currentClockOut: "08:12",
+      }],
+      "2026-10-05T18:00:00.000Z",
+    );
+    assert.equal(already.ok, true);
+    if (!already.ok) return;
+    const closed = already.batch.edits.find((edit) => edit.findingId === "gary-1");
+    assert.equal(closed?.status, "already_done");
+    assert.equal(closed?.appliedAt, "2026-10-05T18:00:00.000Z");
+    assert.equal(closed?.applyNote, "Andy closed this gap");
+    assert.equal(closed?.currentClockIn, "06:54");
+    assert.equal(closed?.currentClockOut, "08:12");
+    assert.equal(signoffApplyBlock([already.batch], friday, "springfield")?.includes("John Spichty"), true);
+    const bothResolved = applyConfirmations(
+      already.batch,
+      [{ findingId: "john-1", status: "already_done", applyNote: "False gap. Time is on another shop's SO." }],
+      "2026-10-05T18:05:00.000Z",
+    );
+    assert.equal(bothResolved.ok, true);
+    if (!bothResolved.ok) return;
+    assert.equal(signoffApplyBlock([bothResolved.batch], friday, "springfield"), null);
+    assert.equal(
+      reviewApplyText(bothResolved.batch.edits.find((edit) => edit.findingId === "gary-1")!),
+      "Already updated in Fullbay (edited manually). Andy closed this gap. Current times 6:54 AM–8:12 AM",
+    );
+    assert.equal(
+      reviewApplyText(bothResolved.batch.edits.find((edit) => edit.findingId === "john-1")!),
+      "Already updated in Fullbay (edited manually). False gap. Time is on another shop's SO.",
+    );
+    assert.equal(findingCanBeDecided([bothResolved.batch], "gary-1"), false);
   });
 
   it("blocks sign-off on the latest batch for that shop day and ignores an older pending batch", () => {
@@ -267,6 +305,18 @@ describe("submit lock", () => {
       `${findingId},never-pushed`,
     );
     assert.equal(editsForSubmit([applied], [{ findingId, day: tuesday, shopId: "mobile" }]).length, 0);
+
+    const doneAlready = edit("already_done", "Closed in Fullbay");
+    doneAlready.currentClockIn = "11:40";
+    const alreadyBatch = batch("mobile", [tuesday], "already");
+    alreadyBatch.edits = [doneAlready];
+    assert.equal(findingCanBeDecided([alreadyBatch], findingId), false);
+    assert.equal(editsForSubmit([alreadyBatch], [retry]).length, 0);
+    assert.match(
+      submitRefusal([alreadyBatch], [], { shopId: "mobile", days: [tuesday], edits: [retry] }) ?? "",
+      /Already submitted: Mobile 2026-10-06/,
+    );
+    assert.equal(reviewApplyText(doneAlready), "Already updated in Fullbay (edited manually). Closed in Fullbay. Current clock-in 11:40 AM");
   });
 });
 
@@ -312,6 +362,15 @@ describe("auto sign-off", () => {
     { findingId: "a", day: friday, shopId: "dayton" as const },
     { findingId: "b", day: friday, shopId: "dayton" as const },
   ];
+
+  it("signs off when accepted edits are applied or already done", () => {
+    const ready = shopDaysToAutoSignOff(
+      [batch("1", [sampleEdit("a", friday, "dayton", "applied"), sampleEdit("b", friday, "dayton", "already_done")], decided)],
+      scope,
+      required,
+    );
+    assert.deepEqual(ready, scope);
+  });
 
   it("signs off when every finding is decided and every accepted edit is applied", () => {
     const ready = shopDaysToAutoSignOff(
@@ -848,6 +907,81 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
       assert.equal(stored.length, 1);
       assert.equal(stored[0]?.doneAt, manual.doneAt);
       assert.equal(stored[0]?.note, null);
+    });
+  });
+
+  it("signs off when a confirm marks the edits already done", async () => {
+    await withStores(async () => {
+      const pair = seededPair(2);
+      const { POST } = await import("@/app/api/fullbay-edits/route");
+      const { POST: confirm } = await import("@/app/api/fullbay-edits/confirm/route");
+      const submitted = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            submittedAt: "2026-10-07T18:00:00.000Z",
+            shopId: pair.shopId,
+            days: [pair.day],
+            edits: [acceptedEdit(pair.ids[0]!, pair.day, pair.shopId), acceptedEdit(pair.ids[1]!, pair.day, pair.shopId)],
+            decided: decidedRows(pair.day, pair.shopId, pair.ids),
+          }),
+        }),
+      );
+      const submittedBody = (await submitted.json()) as { id?: string };
+      const badClock = await confirm(
+        new Request("http://127.0.0.1/api/fullbay-edits/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            batchId: submittedBody.id,
+            results: [{ findingId: pair.ids[0], status: "already_done", currentClockIn: "8am" }],
+          }),
+        }),
+      );
+      assert.equal(badClock.status, 400);
+      const badBody = (await badClock.json()) as { error?: string };
+      assert.match(badBody.error ?? "", /currentClockIn must be HH:MM/);
+      const untouched = (await readQueue()).find((batch) => batch.id === submittedBody.id);
+      assert.equal(untouched?.edits.every((edit) => edit.status === "pending"), true);
+
+      const done = await confirm(
+        new Request("http://127.0.0.1/api/fullbay-edits/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            batchId: submittedBody.id,
+            results: [
+              {
+                findingId: pair.ids[0],
+                status: "already_done",
+                applyNote: "Andy closed this gap.",
+                currentClockIn: "06:54",
+                currentClockOut: "08:12",
+              },
+              { findingId: pair.ids[1], status: "applied", currentClockIn: "09:00" },
+            ],
+          }),
+        }),
+      );
+      assert.equal(done.status, 200);
+      const doneBody = (await done.json()) as {
+        autoSignedOff?: { day: string; shopId: string; note: string | null }[];
+        batch?: { edits: { findingId: string; status: string; applyNote: string | null; currentClockIn: string | null; currentClockOut: string | null; appliedAt: string | null }[] };
+      };
+      assert.equal(doneBody.autoSignedOff?.length, 1);
+      assert.equal(doneBody.autoSignedOff?.[0]?.note, AUTO_SIGNOFF_NOTE);
+      const closed = doneBody.batch?.edits.find((edit) => edit.findingId === pair.ids[0]);
+      const applied = doneBody.batch?.edits.find((edit) => edit.findingId === pair.ids[1]);
+      assert.equal(closed?.status, "already_done");
+      assert.equal(closed?.applyNote, "Andy closed this gap.");
+      assert.equal(closed?.currentClockIn, "06:54");
+      assert.equal(closed?.currentClockOut, "08:12");
+      assert.equal(typeof closed?.appliedAt, "string");
+      assert.equal(applied?.status, "applied");
+      assert.equal(applied?.currentClockIn, null);
+      assert.equal(signoffApplyBlock(await readQueue(), pair.day, pair.shopId), null);
+      assert.equal(findingCanBeDecided(await readQueue(), pair.ids[0]!), false);
     });
   });
 

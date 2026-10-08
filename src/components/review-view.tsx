@@ -287,7 +287,15 @@ function DayRows({
   const preview = recommendation && decision ? appliedWindow(recommendation, decision) : null;
   const canDecide = !locked && (queued == null || queued.status === "failed");
   const tone =
-    queued?.status === "applied" ? "bg-green-50" : queued?.status === "failed" ? "bg-red-50" : finding.kind === "flag" ? "bg-orange-200" : finding.kind === "gap" ? "bg-yellow-100" : "bg-card";
+    queued?.status === "applied" || queued?.status === "already_done"
+      ? "bg-green-50"
+      : queued?.status === "failed"
+        ? "bg-red-50"
+        : finding.kind === "flag"
+          ? "bg-orange-200"
+          : finding.kind === "gap"
+            ? "bg-yellow-100"
+            : "bg-card";
 
   function choose(kind: DecisionKind) {
     if (!recommendation) return;
@@ -313,7 +321,7 @@ function DayRows({
         <td className="px-3 py-3 leading-6">
           <p>{suggestedText(finding)}</p>
           {queued ? (
-            <p className={`mt-3 ${queued.status === "failed" ? "text-destructive" : "font-medium"}`}>{reviewApplyText(queued)}</p>
+            <p className={`mt-3 ${queued.status === "failed" ? "text-destructive" : queued.status === "already_done" ? "font-medium text-green-950" : "font-medium"}`}>{reviewApplyText(queued)}</p>
           ) : null}
           {recommendation?.optional && canDecide ? <Badge variant="outline" className="mt-2">Optional</Badge> : null}
           {order && canDecide ? (

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { dayPunches, type DayPunch } from "@/lib/day-punches";
 import { formatDay, formatTimestamp } from "@/lib/dates";
-import type { FullbayEditBatch } from "@/lib/fullbay-edit-queue";
+import { alreadyDoneText, latestQueueEdit, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
 import {
   buildPlan,
   goalText,
@@ -96,11 +96,15 @@ export function SummaryView({
           <p className="text-sm text-muted-foreground">No accepted or overridden edits in this selection.</p>
         ) : (
           <ul className="flex flex-col gap-2 text-sm">
-            {plan.edits.map((edit) => (
-              <li key={edit.findingId}>
-                {edit.techName} · {edit.orderId} {edit.work} · {formatClock(edit.start)}–{formatClock(edit.end)} · {formatDuration(edit.minutes)}
-              </li>
-            ))}
+            {plan.edits.map((edit) => {
+              const queued = latestQueueEdit(batches, edit.findingId);
+              return (
+                <li key={edit.findingId}>
+                  {edit.techName} · {edit.orderId} {edit.work} · {formatClock(edit.start)}–{formatClock(edit.end)} · {formatDuration(edit.minutes)}
+                  {queued?.status === "already_done" ? <span className="mt-1 block text-green-950">{alreadyDoneText(queued)}</span> : null}
+                </li>
+              );
+            })}
           </ul>
         )}
         {plan.rejected.length > 0 ? (
@@ -294,6 +298,7 @@ function clockText(punch: DayPunch, side: "in" | "out"): string {
 
 function editText(punch: DayPunch): string {
   if (punch.contextShop) return "Context. Not an edit.";
+  if (punch.editStatus === "already_done") return alreadyDoneText(punch);
   if (punch.editStatus === "applied") return "Applied in Fullbay";
   if (punch.editStatus === "accepted") return "Accepted, not applied in Fullbay";
   if (punch.editStatus === "rejected") return "Rejected. Clock stays at the original time.";

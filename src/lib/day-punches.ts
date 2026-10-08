@@ -1,9 +1,9 @@
-import type { FullbayEditBatch, FullbayApplyStatus } from "@/lib/fullbay-edit-queue";
+import { latestQueueEdit, type FullbayEditBatch, type FullbayApplyStatus } from "@/lib/fullbay-edit-queue";
 import { SHOPS } from "@/lib/types";
 import type { DayReport, Decision, Finding } from "@/lib/types";
 import { appliedWindow } from "@/lib/time";
 
-export type PunchEditStatus = "applied" | "accepted" | "rejected";
+export type PunchEditStatus = "applied" | "accepted" | "rejected" | "already_done";
 
 /** One service-order punch on the summary, after the decisions for that day. */
 export interface DayPunch {
@@ -20,6 +20,10 @@ export interface DayPunch {
   editStatus: PunchEditStatus | null;
   /** Shop name when this punch belongs to another shop and is context only. */
   contextShop: string | null;
+  /** Set when this punch was already correct in Fullbay. */
+  applyNote: string | null;
+  currentClockIn: string | null;
+  currentClockOut: string | null;
 }
 
 const SHOP_NAMES = SHOPS.map((shop) => shop.name).join("|");
@@ -52,14 +56,30 @@ function latestApplyStatus(batches: FullbayEditBatch[], findingId: string): Full
 
 function statusFor(decision: Decision, batches: FullbayEditBatch[], findingId: string): PunchEditStatus {
   if (decision.kind === "reject") return "rejected";
-  return latestApplyStatus(batches, findingId) === "applied" ? "applied" : "accepted";
+  const status = latestApplyStatus(batches, findingId);
+  if (status === "applied") return "applied";
+  if (status === "already_done") return "already_done";
+  return "accepted";
+}
+
+function alreadyDoneDetail(batches: FullbayEditBatch[], findingId: string): Pick<DayPunch, "applyNote" | "currentClockIn" | "currentClockOut"> {
+  const edit = latestQueueEdit(batches, findingId);
+  if (edit?.status !== "already_done") return { applyNote: null, currentClockIn: null, currentClockOut: null };
+  return {
+    applyNote: edit.applyNote,
+    currentClockIn: edit.currentClockIn ?? null,
+    currentClockOut: edit.currentClockOut ?? null,
+  };
 }
 
 function preferStatus(current: PunchEditStatus | null, next: PunchEditStatus): PunchEditStatus {
   if (current === "rejected" || next === "rejected") return "rejected";
   if (current === "accepted" || next === "accepted") return "accepted";
+  if (current === "already_done" || next === "already_done") return "already_done";
   return "applied";
 }
+
+const NO_ALREADY_DONE = { applyNote: null, currentClockIn: null, currentClockOut: null };
 
 /**
  * Service-order punches for one tech on one shop day.
@@ -93,6 +113,7 @@ export function dayPunches(
         suggestedClockOut: null,
         editStatus: null,
         contextShop: foreign[1],
+        ...NO_ALREADY_DONE,
       });
       continue;
     }
@@ -109,6 +130,7 @@ export function dayPunches(
       suggestedClockOut: null,
       editStatus: null,
       contextShop: null,
+      ...NO_ALREADY_DONE,
     });
   }
 
@@ -121,24 +143,27 @@ export function dayPunches(
     const kind = editKind(recommendation.summary);
     if (!kind) continue;
     const status = statusFor(decision, batches, finding.id);
+    const detail = status === "already_done" ? alreadyDoneDetail(batches, finding.id) : NO_ALREADY_DONE;
+    const keepLoadedTimes = status === "rejected" || status === "already_done";
     const nextIn = decision.kind === "reject" ? recommendation.start : window.start;
     const nextOut = decision.kind === "reject" ? recommendation.end : window.end;
     if (kind === "assign") {
       punches.push({
         orderId: recommendation.orderId,
         work: recommendation.work,
-        clockIn: status === "rejected" ? finding.start : nextIn,
-        clockOut: status === "rejected" ? finding.end : nextOut,
+        clockIn: keepLoadedTimes ? finding.start : nextIn,
+        clockOut: keepLoadedTimes ? finding.end : nextOut,
         originalClockIn: null,
         originalClockOut: null,
         suggestedClockIn: status === "rejected" ? nextIn : null,
         suggestedClockOut: status === "rejected" ? nextOut : null,
         editStatus: status,
         contextShop: null,
+        ...detail,
       });
       continue;
     }
-    applyBoundary(punches, finding, recommendation.orderId, recommendation.work, kind, nextIn, nextOut, status);
+    applyBoundary(punches, finding, recommendation.orderId, recommendation.work, kind, nextIn, nextOut, status, detail);
   }
 
   return punches.sort((a, b) => a.clockIn.localeCompare(b.clockIn) || a.clockOut.localeCompare(b.clockOut) || a.orderId.localeCompare(b.orderId));
@@ -153,6 +178,7 @@ function applyBoundary(
   nextIn: string,
   nextOut: string,
   status: PunchEditStatus,
+  detail: Pick<DayPunch, "applyNote" | "currentClockIn" | "currentClockOut">,
 ) {
   const local = punches.filter((punch) => punch.contextShop == null && punch.orderId === orderId);
   const match =
@@ -163,29 +189,35 @@ function applyBoundary(
     punches.push({
       orderId,
       work,
-      clockIn: status === "rejected" ? finding.start : nextIn,
-      clockOut: status === "rejected" ? finding.end : nextOut,
+      clockIn: status === "rejected" || status === "already_done" ? finding.start : nextIn,
+      clockOut: status === "rejected" || status === "already_done" ? finding.end : nextOut,
       originalClockIn: null,
       originalClockOut: null,
       suggestedClockIn: status === "rejected" ? nextIn : null,
       suggestedClockOut: status === "rejected" ? nextOut : null,
       editStatus: status,
       contextShop: null,
+      ...detail,
     });
     return;
   }
   match.editStatus = preferStatus(match.editStatus, status);
+  if (status === "already_done") {
+    match.applyNote = detail.applyNote;
+    match.currentClockIn = detail.currentClockIn;
+    match.currentClockOut = detail.currentClockOut;
+  }
   if (kind === "start") {
-    if (status === "rejected") {
-      match.suggestedClockIn = nextIn;
+    if (status === "rejected" || status === "already_done") {
+      if (status === "rejected") match.suggestedClockIn = nextIn;
       return;
     }
     if (match.originalClockIn == null) match.originalClockIn = match.clockIn;
     match.clockIn = nextIn;
     return;
   }
-  if (status === "rejected") {
-    match.suggestedClockOut = nextOut;
+  if (status === "rejected" || status === "already_done") {
+    if (status === "rejected") match.suggestedClockOut = nextOut;
     return;
   }
   if (match.originalClockOut == null) match.originalClockOut = match.clockOut;

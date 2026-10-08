@@ -117,5 +117,26 @@ describe("day punches after edits", () => {
     assert.equal(stayed.suggestedClockOut, "14:17");
     assert.equal(stayed.editStatus, "rejected");
     assert.equal(rejected.find((punch) => punch.orderId === "D-90273")?.contextShop, "Dayton");
+
+    const alreadyBatch: FullbayEditBatch = {
+      ...appliedBatch,
+      id: "batch-2",
+      edits: [{
+        ...appliedBatch.edits[0]!,
+        status: "already_done",
+        applyNote: "False gap. Time is on another shop's SO.",
+        currentClockIn: "14:09",
+        currentClockOut: "14:17",
+      }],
+    };
+    const already = dayPunches(report(), "chris-clark", { [findingId]: accept }, [alreadyBatch]);
+    const unchanged = already.find((punch) => punch.orderId === "M-90534");
+    assert.ok(unchanged);
+    assert.equal(unchanged.clockOut, "14:09");
+    assert.equal(unchanged.originalClockOut, null);
+    assert.equal(unchanged.editStatus, "already_done");
+    assert.equal(unchanged.applyNote, "False gap. Time is on another shop's SO.");
+    assert.equal(unchanged.currentClockIn, "14:09");
+    assert.equal(unchanged.currentClockOut, "14:17");
   });
 });

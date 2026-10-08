@@ -1,7 +1,8 @@
 import { shopName } from "@/lib/review";
 import { SHOPS, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
+import { formatClock } from "@/lib/time";
 
-export type FullbayApplyStatus = "pending" | "applied" | "failed";
+export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done";
 
 /** One accepted or overridden clock edit waiting for a Fullbay Time Stamp apply. */
 export interface FullbayQueueEdit {
@@ -19,6 +20,12 @@ export interface FullbayQueueEdit {
   status: FullbayApplyStatus;
   appliedAt: string | null;
   applyNote: string | null;
+  /**
+   * Clock times already on the Fullbay row when status is `already_done`.
+   * Older saved rows omit these.
+   */
+  currentClockIn?: string | null;
+  currentClockOut?: string | null;
 }
 
 /** A finding the manager accepted, overrode, or rejected. Undecided findings are omitted. */
@@ -50,12 +57,26 @@ export const AUTO_SIGNOFF_NOTE = "Auto-approved after all edits applied";
 
 export interface FullbayConfirmResult {
   findingId: string;
-  status: "applied" | "failed";
+  /** `already_done` means Fullbay is already correct, so the line is resolved rather than failed. */
+  status: "applied" | "failed" | "already_done";
   applyNote?: string | null;
+  /** Optional HH:MM times currently in Fullbay. Used when status is `already_done`. */
+  currentClockIn?: string | null;
+  currentClockOut?: string | null;
 }
 
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isClockTime(value: string): boolean {
+  return CLOCK.test(value);
+}
+
+/** Applied and already-done edits are finished. Pending and failed still block sign-off. */
+export function editIsResolved(status: FullbayApplyStatus): boolean {
+  return status === "applied" || status === "already_done";
+}
+
 const SHOP_IDS = new Set<string>(SHOPS.map((shop) => shop.id));
 
 /** Accepted and overridden plan rows only. Rejected rows stay out of the apply queue. */
@@ -240,7 +261,7 @@ export function unappliedEditsForShopDay(batches: FullbayEditBatch[], day: strin
   const matching = batches.filter((batch) => batch.days.includes(day) && (batch.shopId === "all" || batch.shopId === shopId));
   const latest = matching.sort(compareBatchDesc)[0];
   if (!latest) return [];
-  return latest.edits.filter((edit) => edit.day === day && edit.shopId === shopId && edit.status !== "applied");
+  return latest.edits.filter((edit) => edit.day === day && edit.shopId === shopId && !editIsResolved(edit.status));
 }
 
 export function signoffApplyBlock(batches: FullbayEditBatch[], day: string, shopId: ShopId): string | null {
@@ -261,8 +282,8 @@ export function applyConfirmations(
     if (!result || typeof result.findingId !== "string" || !ids.has(result.findingId)) {
       return { ok: false, error: `Unknown finding ${result?.findingId ?? ""}.` };
     }
-    if (result.status !== "applied" && result.status !== "failed") {
-      return { ok: false, error: "Status must be applied or failed." };
+    if (result.status !== "applied" && result.status !== "failed" && result.status !== "already_done") {
+      return { ok: false, error: "Status must be applied, failed, or already_done." };
     }
   }
   const byId = new Map(results.map((result) => [result.findingId, result]));
@@ -274,11 +295,14 @@ export function applyConfirmations(
         const result = byId.get(edit.findingId);
         if (!result) return edit;
         const note = typeof result.applyNote === "string" && result.applyNote.trim().length > 0 ? result.applyNote.trim() : null;
+        const resolved = editIsResolved(result.status);
         return {
           ...edit,
           status: result.status,
-          appliedAt: result.status === "applied" ? now : null,
+          appliedAt: resolved ? now : null,
           applyNote: note,
+          currentClockIn: result.status === "already_done" ? result.currentClockIn ?? null : null,
+          currentClockOut: result.status === "already_done" ? result.currentClockOut ?? null : null,
         };
       }),
     },
@@ -297,11 +321,35 @@ export function latestQueueEdit(batches: FullbayEditBatch[], findingId: string):
   return matches[0]?.edit ?? null;
 }
 
-/** Review copy for a queued finding. Applied and pending rows are not open actions. A failed row keeps its note. */
+/** Review copy for a queued finding. Resolved and pending rows are not open actions. A failed row keeps its note. */
 export function reviewApplyText(edit: FullbayQueueEdit): string {
   if (edit.status === "pending") return "Waiting on Fullbay.";
   if (edit.status === "failed") return edit.applyNote ? `Fullbay apply failed. ${edit.applyNote}` : "Fullbay apply failed.";
+  if (edit.status === "already_done") return alreadyDoneText(edit);
   return "Edits already updated";
+}
+
+/** Label for a line Fullbay already had right, including a manual edit or a false gap. */
+export function alreadyDoneText(edit: {
+  applyNote?: string | null;
+  currentClockIn?: string | null;
+  currentClockOut?: string | null;
+}): string {
+  const parts = ["Already updated in Fullbay (edited manually)"];
+  const note = edit.applyNote?.trim() ?? "";
+  if (note.length > 0) parts.push(note);
+  const times = currentTimesText(edit.currentClockIn, edit.currentClockOut);
+  if (times) parts.push(times);
+  return parts.join(". ");
+}
+
+function currentTimesText(clockIn: string | null | undefined, clockOut: string | null | undefined): string | null {
+  const start = clockIn?.trim() ?? "";
+  const end = clockOut?.trim() ?? "";
+  if (start.length > 0 && end.length > 0) return `Current times ${formatClock(start)}–${formatClock(end)}`;
+  if (start.length > 0) return `Current clock-in ${formatClock(start)}`;
+  if (end.length > 0) return `Current clock-out ${formatClock(end)}`;
+  return null;
 }
 
 /** Accept, Reject, and Override stay available only for a finding that was never pushed, or whose latest push failed. */
@@ -353,7 +401,7 @@ function labelPairs(pairs: ShopDayRef[]): string {
 /**
  * Refuse another submit when any covered shop and day is signed off, or when the request
  * would push a shop day that was already submitted with nothing new: every edit on that
- * day must be a never-pushed finding or a retry of a failed one. Applied or pending edits are refused.
+ * day must be a never-pushed finding or a retry of a failed one. Applied, already_done, or pending edits are refused.
  * An all-shops batch counts as submitted for every shop on those days.
  */
 export function submitRefusal(
@@ -397,9 +445,9 @@ export function submitRefusal(
 export type ShopDayLock = "open" | "signed-off" | "submitted";
 
 /**
- * Shop days in scope whose recommendations are all decided, whose accepted edits are applied,
- * and which have nothing pending or failed. A shop with no recommendations is left out.
- * An applied edit counts as a decision when an older batch has no decided list.
+ * Shop days in scope whose recommendations are all decided, whose accepted edits are applied
+ * or already_done, and which have nothing pending or failed. A shop with no recommendations is left out.
+ * An applied or already_done edit counts as a decision when an older batch has no decided list.
  */
 export function shopDaysToAutoSignOff(
   batches: FullbayEditBatch[],
@@ -415,7 +463,7 @@ export function shopDaysToAutoSignOff(
     }
     const decided = decidedFindingIds(batches, pair.day, pair.shopId);
     for (const [findingId, edit] of latest) {
-      if (edit.status === "applied") decided.add(findingId);
+      if (editIsResolved(edit.status)) decided.add(findingId);
     }
     return required.every((findingId) => decided.has(findingId));
   });
