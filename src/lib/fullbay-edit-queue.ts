@@ -244,7 +244,7 @@ function parseQueueEdit(item: unknown): { ok: true; value: FullbayQueueEdit } | 
   };
 }
 
-const NON_PRO_TYPES = new Set<NonProEditType>(["extend_prev_out", "move_next_in", "split", "move_to_so", "keep"]);
+const NON_PRO_TYPES = new Set<NonProEditType>(["extend_prev_out", "move_next_in", "split", "move_to_so", "partial", "keep"]);
 
 function parseNonPro(value: unknown): { ok: true; value: NonProEditPayload | undefined } | { ok: false; error: string } {
   if (value == null) return { ok: true, value: undefined };
@@ -252,7 +252,7 @@ function parseNonPro(value: unknown): { ok: true; value: NonProEditPayload | und
   const record = value as Record<string, unknown>;
   const editType = record.editType;
   if (typeof editType !== "string" || !NON_PRO_TYPES.has(editType as NonProEditType)) {
-    return { ok: false, error: "nonPro.editType must be extend_prev_out, move_next_in, split, move_to_so, or keep." };
+    return { ok: false, error: "nonPro.editType must be extend_prev_out, move_next_in, split, move_to_so, partial, or keep." };
   }
   if (editType === "keep") return { ok: false, error: "A keep decision is not a Fullbay edit." };
   const queuedType = editType as Exclude<NonProEditType, "keep">;
@@ -284,6 +284,11 @@ function parseNonPro(value: unknown): { ok: true; value: NonProEditPayload | und
       newClockOut: row.newClockOut as string,
     });
   }
+  const kept = parseKeptNonPro(record.keptClockIn, record.keptClockOut);
+  if (!kept.ok) return kept;
+  if (queuedType === "partial" && !kept.value) {
+    return { ok: false, error: "A partial Non-Pro edit needs keptClockIn and keptClockOut." };
+  }
   return {
     ok: true,
     value: {
@@ -291,8 +296,20 @@ function parseNonPro(value: unknown): { ok: true; value: NonProEditPayload | und
       originalClockIn: record.originalClockIn,
       originalClockOut: record.originalClockOut,
       rows,
+      ...(kept.value ?? {}),
     },
   };
+}
+
+function parseKeptNonPro(
+  clockIn: unknown,
+  clockOut: unknown,
+): { ok: true; value: { keptClockIn: string; keptClockOut: string } | undefined } | { ok: false; error: string } {
+  if (clockIn == null && clockOut == null) return { ok: true, value: undefined };
+  if (typeof clockIn !== "string" || !CLOCK.test(clockIn)) return { ok: false, error: "nonPro.keptClockIn must be HH:MM." };
+  if (typeof clockOut !== "string" || !CLOCK.test(clockOut)) return { ok: false, error: "nonPro.keptClockOut must be HH:MM." };
+  if (clockOut <= clockIn) return { ok: false, error: "nonPro.keptClockOut must be after keptClockIn." };
+  return { ok: true, value: { keptClockIn: clockIn, keptClockOut: clockOut } };
 }
 
 function requiredText(value: unknown, label: string): { ok: true; value: string } | { ok: false; error: string } {

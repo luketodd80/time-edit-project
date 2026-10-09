@@ -1,4 +1,4 @@
-import type { DayReport, Finding, NonProOrderOption, NonProReview, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
+import type { DayReport, Finding, NonProNeighbor, NonProOrderOption, NonProReview, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
 import { SHOPS } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 import { FRIDAY_DETAILS_CSV } from "@/lib/friday-details-csv";
@@ -509,6 +509,7 @@ function buildNonProReview(
     next: nextOk && next ? neighborOf(next) : null,
     canSplit: Boolean(previousOk && nextOk && spanMinutes >= 2),
     orders: orderOptions(punches, startSeconds, endSeconds),
+    punches: punches.map(neighborOf),
   };
 }
 
@@ -529,7 +530,7 @@ function samePunch(punch: TimedOrder, other: TimedOrder): boolean {
   return punch.orderId === other.orderId && punch.shopId === other.shopId && punch.start === other.start && punch.end === other.end;
 }
 
-function neighborOf(punch: TimedOrder): NonProReview["previous"] {
+function neighborOf(punch: TimedOrder): NonProNeighbor {
   return { orderId: punch.orderId, work: punch.work, shopId: punch.shopId, clockIn: punch.clockIn, clockOut: punch.clockOut };
 }
 

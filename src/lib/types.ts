@@ -88,7 +88,10 @@ export interface Finding {
 }
 
 /** How a Non-Pro attendance row is applied in Fullbay. `keep` changes nothing. */
-export type NonProEditType = "extend_prev_out" | "move_next_in" | "split" | "move_to_so" | "keep";
+export type NonProEditType = "extend_prev_out" | "move_next_in" | "split" | "move_to_so" | "partial" | "keep";
+
+/** Which side of a shortened Non-Pro row receives the rest of the span. */
+export type NonProRemainder = "previous" | "next" | "both";
 
 /** A neighboring service-order punch the Non-Pro span can be given to. */
 export interface NonProNeighbor {
@@ -118,6 +121,8 @@ export interface NonProReview {
   /** Both neighbors are available and the span is long enough to split. */
   canSplit: boolean;
   orders: NonProOrderOption[];
+  /** Every service-order punch for this tech that day, on any shop. */
+  punches: NonProNeighbor[];
 }
 
 /** One service-order row a Non-Pro choice changes, with the times before and after. */
@@ -133,9 +138,10 @@ export interface NonProAffectedRow {
 
 /**
  * Everything the Fullbay applier needs for a Non-Pro decision.
- * `rows` is empty for `keep`. For `move_to_so`, the row's clock times are the Non-Pro times
- * (there is no earlier punch on that order; the times are kept).
- * For `split`, `rows` has the previous order first and the next order second.
+ * `rows` is empty for `keep`. For `move_to_so`, the row's clock times are the window moved
+ * onto that order (the whole span, unless the manager shortens it).
+ * For `split` and `partial` with both neighbors, `rows` has the previous order first and the next order second.
+ * `keptClockIn` and `keptClockOut` are the shortened Non-Pro row that stays. They are omitted when the whole span is given away.
  */
 export interface NonProEditPayload {
   editType: NonProEditType;
@@ -143,6 +149,9 @@ export interface NonProEditPayload {
   originalClockIn: string;
   originalClockOut: string;
   rows: NonProAffectedRow[];
+  /** Shortened Non-Pro row that stays on the timesheet. */
+  keptClockIn?: string;
+  keptClockOut?: string;
 }
 
 /** One shop's loaded day. Days with no report are simply absent. */
@@ -160,7 +169,7 @@ export interface Decision {
   kind: DecisionKind;
   /**
    * Override fields. Empty string means that side stays as recommended.
-   * Ignored for accept and reject.
+   * A Non-Pro choice also stores its edited clock times here.
    */
   start: string;
   end: string;
@@ -169,10 +178,16 @@ export interface Decision {
    * `keep` is stored with kind `reject` and is not queued.
    */
   nonProEditType?: NonProEditType;
-  /** Split clock time, HH:MM, when `nonProEditType` is `split`. */
+  /** Split clock time, HH:MM, when `nonProEditType` is `split`. The previous order's new clock-out. */
   split?: string;
   /** Service order number when `nonProEditType` is `move_to_so`. */
   targetOrderId?: string;
+  /**
+   * Where the rest of a `partial` row goes.
+   * `start` and `end` are the Non-Pro window that stays.
+   * On the other choices, `start` and `end` are the adjusted service-order times when the manager edits them.
+   */
+  nonProRemainder?: NonProRemainder;
 }
 
 export interface Signoff {

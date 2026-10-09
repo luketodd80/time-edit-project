@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay } from "@/lib/dates";
 import { latestQueueEdit, reviewApplyText, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
-import { buildNonProEdit, clampSplitTime, describeNonProEdit, splitMidpoint } from "@/lib/nonpro";
+import { buildNonProEdit, clampSplitTime, defaultKeptWindow, defaultPartialChoice, describeNonProEdit, splitMidpoint } from "@/lib/nonpro";
 import {
   buildPlan,
   isEligible,
@@ -21,7 +21,7 @@ import {
   utilization,
   type TechOutlook,
 } from "@/lib/review";
-import type { DayReport, Decision, DecisionKind, Finding, NonProEditType, Technician } from "@/lib/types";
+import type { DayReport, Decision, DecisionKind, Finding, NonProEditType, NonProRemainder, Technician } from "@/lib/types";
 import { appliedWindow, formatClock, formatDuration, formatPercent } from "@/lib/time";
 
 export function ReviewView({
@@ -117,7 +117,7 @@ function ShopDay({
           Only time inside a clocked window counts. Off-the-clock stretches are in the table so the day reads straight through, and they are not gaps. Times are Eastern. Yellow is missed time. Orange is billable work with no service order.
         </p>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-          These rows come from the Fullbay timesheet. A gap with no Clock In Comment is aimed at the nearest service order for that tech. A Clock In Comment that names a coworker, such as “Help Nick”, is aimed at that person’s overlapping service order on the same shop day. Time on another shop’s service order is covered: it is labeled with that shop, it is not a gap, and it is not an edit. A Non-Pro attendance row is marked Review. Keep it, give the span to the service order before or after it, split it, or move it onto another service order. Orders are marked open on priorities.
+          These rows come from the Fullbay timesheet. A gap with no Clock In Comment is aimed at the nearest service order for that tech. A Clock In Comment that names a coworker, such as “Help Nick”, is aimed at that person’s overlapping service order on the same shop day. Time on another shop’s service order is covered: it is labeled with that shop, it is not a gap, and it is not an edit. A Non-Pro attendance row is marked Review. Keep it, keep part of it and give the rest to the service order before or after it, give the span to either neighbor, split it, or move it onto another service order. Each of those choices has editable times. Orders are marked open on priorities.
         </p>
       </div>
 
@@ -449,9 +449,11 @@ function NonProChoices({
   const selected = decision?.nonProEditType;
   const built = decision ? buildNonProEdit(finding, decision) : null;
   const described = built?.ok ? describeNonProEdit(built.payload) : null;
+  const partialDefault = defaultPartialChoice(finding.start, finding.end, review);
+  const spanLabel = `${formatClock(finding.start)}–${formatClock(finding.end)}`;
 
   function choose(editType: NonProEditType) {
-    if (selected === editType && editType !== "split" && editType !== "move_to_so") {
+    if (selected === editType && editType !== "split" && editType !== "move_to_so" && editType !== "partial") {
       onDecision(finding.id, null);
       return;
     }
@@ -459,27 +461,46 @@ function NonProChoices({
       onDecision(finding.id, { kind: "reject", start: "", end: "", nonProEditType: "keep" });
       return;
     }
+    if (editType === "extend_prev_out") {
+      onDecision(finding.id, { kind: "accept", start: "", end: finding.end, nonProEditType: "extend_prev_out" });
+      return;
+    }
+    if (editType === "move_next_in") {
+      onDecision(finding.id, { kind: "accept", start: finding.start, end: "", nonProEditType: "move_next_in" });
+      return;
+    }
     if (editType === "split") {
+      const staying = selected === "split";
+      const mid = staying ? decision?.split || splitMidpoint(finding.start, finding.end) || "" : splitMidpoint(finding.start, finding.end) || "";
+      onDecision(finding.id, { kind: "accept", start: "", end: staying ? decision?.end || mid : mid, nonProEditType: "split", split: mid });
+      return;
+    }
+    if (editType === "partial" && partialDefault) {
+      if (selected === "partial") return;
       onDecision(finding.id, {
         kind: "accept",
-        start: "",
-        end: "",
-        nonProEditType: "split",
-        split: decision?.split || splitMidpoint(finding.start, finding.end) || "",
+        start: partialDefault.start,
+        end: partialDefault.end,
+        nonProEditType: "partial",
+        nonProRemainder: partialDefault.remainder,
       });
       return;
     }
     if (editType === "move_to_so") {
+      const staying = selected === "move_to_so";
       onDecision(finding.id, {
         kind: "accept",
-        start: "",
-        end: "",
+        start: staying ? decision?.start || finding.start : finding.start,
+        end: staying ? decision?.end || finding.end : finding.end,
         nonProEditType: "move_to_so",
         targetOrderId: decision?.targetOrderId ?? "",
       });
-      return;
     }
-    onDecision(finding.id, { kind: "accept", start: "", end: "", nonProEditType: editType });
+  }
+
+  function patch(next: Partial<Decision>) {
+    if (!decision) return;
+    onDecision(finding.id, { ...decision, ...next });
   }
 
   return (
@@ -489,14 +510,19 @@ function NonProChoices({
           <Button type="button" size="sm" className="h-auto whitespace-normal py-1.5 text-left" variant={selected === "keep" ? "destructive" : "outline"} aria-pressed={selected === "keep"} onClick={() => choose("keep")}>
             Keep as Non-Pro
           </Button>
+          {partialDefault ? (
+            <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={selected === "partial" ? "default" : "outline"} aria-pressed={selected === "partial"} onClick={() => choose("partial")}>
+              Keep part as Non-Pro and give the rest to a service order
+            </Button>
+          ) : null}
           {review.previous ? (
             <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={selected === "extend_prev_out" ? "default" : "outline"} aria-pressed={selected === "extend_prev_out"} onClick={() => choose("extend_prev_out")}>
-              Give the whole span to {neighborLabel(review.previous)} — extend clock-out to {formatClock(finding.end)}
+              Give the whole span to {neighborLabel(review.previous)} — extend its clock-out
             </Button>
           ) : null}
           {review.next ? (
             <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={selected === "move_next_in" ? "default" : "outline"} aria-pressed={selected === "move_next_in"} onClick={() => choose("move_next_in")}>
-              Give the whole span to {neighborLabel(review.next)} — move clock-in back to {formatClock(finding.start)}
+              Give the whole span to {neighborLabel(review.next)} — move its clock-in back
             </Button>
           ) : null}
           {review.canSplit && review.previous && review.next ? (
@@ -505,32 +531,49 @@ function NonProChoices({
             </Button>
           ) : null}
           <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={selected === "move_to_so" ? "default" : "outline"} aria-pressed={selected === "move_to_so"} onClick={() => choose("move_to_so")}>
-            Move onto another service order, keeping {formatClock(finding.start)}–{formatClock(finding.end)}
+            Move onto another service order
           </Button>
         </div>
       ) : null}
+      {canDecide && selected === "partial" && decision ? (
+        <PartialTimes finding={finding} decision={decision} onDecision={onDecision} />
+      ) : null}
+      {canDecide && selected === "extend_prev_out" && decision && review.previous ? (
+        <ClockField
+          id={`${finding.id}-extend`}
+          label={`New clock-out for ${review.previous.orderId}`}
+          value={decision.end || finding.end}
+          onChange={(end) => patch({ end })}
+          hint={`Inside ${spanLabel}. An earlier time leaves the rest as Non-Pro, starting one minute later.`}
+        />
+      ) : null}
+      {canDecide && selected === "move_next_in" && decision && review.next ? (
+        <ClockField
+          id={`${finding.id}-move`}
+          label={`New clock-in for ${review.next.orderId}`}
+          value={decision.start || finding.start}
+          onChange={(start) => patch({ start })}
+          hint={`Inside ${spanLabel}. A later time leaves the beginning as Non-Pro, ending one minute earlier.`}
+        />
+      ) : null}
       {canDecide && selected === "split" && decision ? (
         <div className="flex flex-col gap-2">
-          <Label htmlFor={`${finding.id}-split`}>Split time</Label>
-          <Input
+          <ClockField
             id={`${finding.id}-split`}
-            type="time"
-            step={60}
+            label={`Clock-out for ${review.previous?.orderId ?? "the previous service order"}`}
             value={decision.split ?? ""}
-            onChange={(event) =>
-              onDecision(finding.id, {
-                kind: "accept",
-                start: "",
-                end: "",
-                nonProEditType: "split",
-                split: clampSplitTime(event.target.value, finding.start, finding.end) ?? event.target.value,
-              })
+            onChange={(split) =>
+              patch({ split: clampSplitTime(split, finding.start, finding.end) ?? split, end: decision.end || split })
             }
-            className="h-10 max-w-40 bg-white text-base md:text-base"
+            hint={`Inside ${spanLabel}. The earlier part goes to ${neighborLabel(review.previous)}.`}
           />
-          <p className="text-muted-foreground">
-            Inside {formatClock(finding.start)}–{formatClock(finding.end)}. The earlier part goes to {neighborLabel(review.previous)} and the later part to {neighborLabel(review.next)}.
-          </p>
+          <ClockField
+            id={`${finding.id}-split-next`}
+            label={`Clock-in for ${review.next?.orderId ?? "the next service order"}`}
+            value={decision.end || decision.split || ""}
+            onChange={(end) => patch({ end })}
+            hint="Use the same minute to hand the span straight across. Set this one minute later so the punches do not share a minute. A wider gap stays Non-Pro."
+          />
         </div>
       ) : null}
       {canDecide && selected === "move_to_so" && decision ? (
@@ -546,6 +589,110 @@ function NonProChoices({
   );
 }
 
+function PartialTimes({
+  finding,
+  decision,
+  onDecision,
+}: {
+  finding: Finding;
+  decision: Decision;
+  onDecision: (findingId: string, decision: Decision | null) => void;
+}) {
+  const review = finding.nonPro;
+  if (!review) return null;
+  const remainder = decision.nonProRemainder;
+  function setRemainder(nextRemainder: NonProRemainder) {
+    if (nextRemainder === decision.nonProRemainder) return;
+    const window = defaultKeptWindow(finding.start, finding.end, nextRemainder);
+    onDecision(finding.id, {
+      ...decision,
+      nonProRemainder: nextRemainder,
+      start: window?.start ?? decision.start,
+      end: window?.end ?? decision.end,
+    });
+  }
+  const nextStarts = decision.end ? clockPlusOne(decision.end) : "";
+  const prevEnds = decision.start ? clockMinusOne(decision.start) : "";
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-3">
+        <ClockField
+          id={`${finding.id}-kept-start`}
+          label="Non-Pro stays from"
+          value={decision.start}
+          onChange={(start) => onDecision(finding.id, { ...decision, start })}
+        />
+        <ClockField
+          id={`${finding.id}-kept-end`}
+          label="until"
+          value={decision.end}
+          onChange={(end) => onDecision(finding.id, { ...decision, end })}
+        />
+      </div>
+      <p className="text-muted-foreground">Inside {formatClock(finding.start)}–{formatClock(finding.end)}. The service order starts or ends one minute away so the punches do not overlap.</p>
+      {review.previous && review.next ? (
+        <div className="flex flex-col items-start gap-2" role="group" aria-label="Where the rest of the span goes">
+          <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={remainder === "previous" ? "default" : "outline"} aria-pressed={remainder === "previous"} onClick={() => setRemainder("previous")}>
+            Give the earlier rest to {neighborLabel(review.previous)}
+            {remainder === "previous" && prevEnds ? ` — clock-out ${prevEnds}` : ""}
+          </Button>
+          <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={remainder === "next" ? "default" : "outline"} aria-pressed={remainder === "next"} onClick={() => setRemainder("next")}>
+            Give the later rest to {neighborLabel(review.next)}
+            {remainder === "next" && nextStarts ? ` — clock-in ${nextStarts}` : ""}
+          </Button>
+          <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={remainder === "both" ? "default" : "outline"} aria-pressed={remainder === "both"} onClick={() => setRemainder("both")}>
+            Give the earlier rest to {neighborLabel(review.previous)} and the later rest to {neighborLabel(review.next)}
+          </Button>
+        </div>
+      ) : (
+        <p>
+          {review.next
+            ? `The rest goes to ${neighborLabel(review.next)}. Its clock-in moves back to ${nextStarts || "one minute after the Non-Pro end"}.`
+            : `The rest goes to ${neighborLabel(review.previous)}. Its clock-out moves to ${prevEnds || "one minute before the Non-Pro start"}.`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ClockField({
+  id,
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hint?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} type="time" step={60} value={value} onChange={(event) => onChange(event.target.value)} className="h-10 max-w-40 bg-white text-base md:text-base" />
+      {hint ? <p className="text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
+
+function clockPlusOne(value: string): string {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return "";
+  const total = Number(match[1]) * 60 + Number(match[2]) + 1;
+  if (total >= 24 * 60) return "";
+  return formatClock(`${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`);
+}
+
+function clockMinusOne(value: string): string {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return "";
+  const total = Number(match[1]) * 60 + Number(match[2]) - 1;
+  if (total < 0) return "";
+  return formatClock(`${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`);
+}
+
 function MoveToOrder({
   finding,
   decision,
@@ -557,10 +704,27 @@ function MoveToOrder({
 }) {
   const orders = finding.nonPro?.orders ?? [];
   function setOrder(targetOrderId: string) {
-    onDecision(finding.id, { kind: "accept", start: "", end: "", nonProEditType: "move_to_so", targetOrderId });
+    onDecision(finding.id, { ...decision, kind: "accept", nonProEditType: "move_to_so", targetOrderId });
   }
   return (
     <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-3">
+        <ClockField
+          id={`${finding.id}-move-start`}
+          label="Clock-in"
+          value={decision.start || finding.start}
+          onChange={(start) => onDecision(finding.id, { ...decision, start })}
+        />
+        <ClockField
+          id={`${finding.id}-move-end`}
+          label="Clock-out"
+          value={decision.end || finding.end}
+          onChange={(end) => onDecision(finding.id, { ...decision, end })}
+        />
+      </div>
+      <p className="text-muted-foreground">
+        Inside {formatClock(finding.start)}–{formatClock(finding.end)}. Time left off this window stays Non-Pro, one minute away from the moved block.
+      </p>
       {orders.length > 0 ? (
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${finding.id}-order`}>Service order</Label>

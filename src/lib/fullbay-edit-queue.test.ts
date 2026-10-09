@@ -542,6 +542,87 @@ describe("auto sign-off", () => {
       assert.equal(split.value.edits[0]?.nonPro?.originalClockIn, "08:00");
     }
 
+    const partial = parseQueueRequest({
+      submittedAt: "2026-10-08T15:00:00.000Z",
+      shopId: "dayton",
+      days: ["2026-10-08"],
+      edits: [
+        {
+          findingId: "meeting",
+          day: "2026-10-08",
+          shopId: "dayton",
+          techName: "Chris Clark",
+          orderId: "M-90566",
+          work: "Onsite Travel",
+          decision: "accept",
+          newClockIn: "07:11",
+          newClockOut: "07:50",
+          minutes: 7,
+          nonPro: {
+            editType: "partial",
+            originalClockIn: "07:00",
+            originalClockOut: "07:18",
+            keptClockIn: "07:00",
+            keptClockOut: "07:10",
+            rows: [
+              {
+                orderId: "M-90566",
+                work: "Onsite Travel",
+                shopId: "mobile",
+                clockIn: "07:18",
+                clockOut: "07:50",
+                newClockIn: "07:11",
+                newClockOut: "07:50",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(partial.ok, true);
+    if (partial.ok) {
+      assert.equal(partial.value.edits[0]?.nonPro?.editType, "partial");
+      assert.equal(partial.value.edits[0]?.nonPro?.keptClockIn, "07:00");
+      assert.equal(partial.value.edits[0]?.nonPro?.keptClockOut, "07:10");
+      assert.equal(partial.value.edits[0]?.nonPro?.rows[0]?.newClockIn, "07:11");
+    }
+    const partialMissingKept = parseQueueRequest({
+      submittedAt: "2026-10-08T15:00:00.000Z",
+      shopId: "dayton",
+      days: ["2026-10-08"],
+      edits: [
+        {
+          findingId: "meeting",
+          day: "2026-10-08",
+          shopId: "dayton",
+          techName: "Chris Clark",
+          orderId: "M-90566",
+          work: "Onsite Travel",
+          decision: "accept",
+          newClockIn: "07:11",
+          newClockOut: "07:50",
+          minutes: 7,
+          nonPro: {
+            editType: "partial",
+            originalClockIn: "07:00",
+            originalClockOut: "07:18",
+            rows: [
+              {
+                orderId: "M-90566",
+                work: "Onsite Travel",
+                shopId: "mobile",
+                clockIn: "07:18",
+                clockOut: "07:50",
+                newClockIn: "07:11",
+                newClockOut: "07:50",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(partialMissingKept.ok, false);
+
     const kept = parseQueueRequest({
       submittedAt: "2026-10-08T15:00:00.000Z",
       shopId: "dayton",
