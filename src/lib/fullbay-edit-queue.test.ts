@@ -15,8 +15,11 @@ import {
   shopDaysCovered,
   shopDaysToAutoSignOff,
   editsForSubmit,
+  editAddsNoJobTime,
+  editIsResolved,
   findingCanBeDecided,
   latestQueueEdit,
+  minutesPickedUp,
   reviewApplyText,
   signoffApplyBlock,
   submissionToQueueRequest,
@@ -1085,6 +1088,103 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
       assert.equal(signoffApplyBlock(await readQueue(), pair.day, pair.shopId), null);
       assert.equal(findingCanBeDecided(await readQueue(), pair.ids[0]!), false);
     });
+  });
+
+  it("keeps the earliest sign-off time when a restore sends an older doneAt", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "fullbay-signoff-earliest-"));
+    const previousSignoff = process.env.SHOP_DAY_SIGNOFF_PATH;
+    process.env.SHOP_DAY_SIGNOFF_PATH = join(directory, "signoffs.json");
+    try {
+      const { POST: postSignoff } = await import("@/app/api/signoffs/route");
+      const first = await postSignoff(
+        new Request("http://127.0.0.1/api/signoffs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ day: friday, shopId: "dayton", doneAt: "2026-10-07T16:00:00.000Z" }),
+        }),
+      );
+      assert.equal(first.status, 200);
+      const restored = await postSignoff(
+        new Request("http://127.0.0.1/api/signoffs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ day: friday, shopId: "dayton", doneAt: "2026-10-06T12:43:00.000Z" }),
+        }),
+      );
+      const restoredBody = (await restored.json()) as { signoff?: { doneAt: string } };
+      assert.equal(restored.status, 200);
+      assert.equal(restoredBody.signoff?.doneAt, "2026-10-06T12:43:00.000Z");
+      const later = await postSignoff(
+        new Request("http://127.0.0.1/api/signoffs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ day: friday, shopId: "dayton", doneAt: "2026-10-08T09:00:00.000Z" }),
+        }),
+      );
+      const laterBody = (await later.json()) as { signoff?: { doneAt: string } };
+      assert.equal(laterBody.signoff?.doneAt, "2026-10-06T12:43:00.000Z");
+      const invalid = await postSignoff(
+        new Request("http://127.0.0.1/api/signoffs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ day: friday, shopId: "mobile", doneAt: "yesterday" }),
+        }),
+      );
+      assert.equal(invalid.status, 400);
+      assert.equal((await readSignoffs()).find((signoff) => signoff.shopId === "dayton")?.doneAt, "2026-10-06T12:43:00.000Z");
+    } finally {
+      if (previousSignoff === undefined) delete process.env.SHOP_DAY_SIGNOFF_PATH;
+      else process.env.SHOP_DAY_SIGNOFF_PATH = previousSignoff;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("adds no job time for a false gap, a not-applied note, or not_a_gap", () => {
+    const counted = { status: "applied" as const, applyNote: "Saved.", minutes: 12 };
+    const reapplied = { status: "applied" as const, applyNote: "Resubmission; already handled, not re-applied.", minutes: 8 };
+    const falseGap = { status: "applied" as const, applyNote: "Not applied: false gap. Time was on Dayton D-89514.", minutes: 339 };
+    const alreadyFalse = { status: "already_done" as const, applyNote: "False gap. Time is on another shop's SO.", minutes: 4 };
+    const explicit = { status: "not_a_gap" as const, applyNote: "Already correct.", minutes: 15 };
+    assert.equal(minutesPickedUp(counted), 12);
+    assert.equal(minutesPickedUp(reapplied), 8);
+    assert.equal(editAddsNoJobTime(reapplied), false);
+    assert.equal(minutesPickedUp(falseGap), 0);
+    assert.equal(minutesPickedUp(alreadyFalse), 0);
+    assert.equal(minutesPickedUp(explicit), 0);
+    assert.equal(minutesPickedUp({ status: "failed", applyNote: null, minutes: 7 }), 0);
+    assert.equal(editIsResolved("not_a_gap"), true);
+    assert.equal(editIsResolved("failed"), false);
+    const batch = {
+      id: "batch-1",
+      submittedAt: "2026-10-06T15:00:00.000Z",
+      shopId: "springfield" as const,
+      days: [friday],
+      edits: [
+        {
+          findingId: "mike-1",
+          day: friday,
+          shopId: "springfield" as const,
+          shopName: "Springfield",
+          techName: "Mike Wooten",
+          orderId: "S-90640",
+          work: "Gap",
+          decision: "accept" as const,
+          newClockIn: "11:31",
+          newClockOut: "17:10",
+          minutes: 339,
+          status: "pending" as const,
+          appliedAt: null,
+          applyNote: null,
+        },
+      ],
+    };
+    const confirmed = applyConfirmations(batch, [{ findingId: "mike-1", status: "not_a_gap", applyNote: "Not applied: false gap." }], "2026-10-08T12:00:00.000Z");
+    assert.equal(confirmed.ok, true);
+    if (!confirmed.ok) return;
+    assert.equal(confirmed.batch.edits[0]?.status, "not_a_gap");
+    assert.equal(minutesPickedUp(confirmed.batch.edits[0]!), 0);
+    assert.equal(signoffApplyBlock([confirmed.batch], friday, "springfield"), null);
+    assert.equal(findingCanBeDecided([confirmed.batch], "mike-1"), false);
   });
 
   it("does not report a shop day that recordAutoSignoffs already stored", async () => {

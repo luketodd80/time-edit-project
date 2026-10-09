@@ -59,7 +59,7 @@ function statusFor(decision: Decision, batches: FullbayEditBatch[], findingId: s
   if (decision.kind === "reject") return "rejected";
   const status = latestApplyStatus(batches, findingId);
   if (status === "applied") return "applied";
-  if (status === "already_done") return "already_done";
+  if (status === "already_done" || status === "not_a_gap") return "already_done";
   return "accepted";
 }
 

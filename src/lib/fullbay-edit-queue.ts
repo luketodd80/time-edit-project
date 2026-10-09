@@ -2,7 +2,7 @@ import { shopName } from "@/lib/review";
 import { SHOPS, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 
-export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done";
+export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done" | "not_a_gap";
 
 /** One accepted or overridden clock edit waiting for a Fullbay Time Stamp apply. */
 export interface FullbayQueueEdit {
@@ -62,12 +62,22 @@ export const AUTO_SIGNOFF_NOTE = "Auto-approved after all edits applied";
 
 export interface FullbayConfirmResult {
   findingId: string;
-  /** `already_done` means Fullbay is already correct, so the line is resolved rather than failed. */
-  status: "applied" | "failed" | "already_done";
+  /**
+   * `already_done` means Fullbay is already correct, so the line is resolved rather than failed.
+   * `not_a_gap` means the line was not a real gap (already correct, nothing to add). It is resolved
+   * and contributes no job-time minutes.
+   */
+  status: "applied" | "failed" | "already_done" | "not_a_gap";
   applyNote?: string | null;
   /** Optional HH:MM times currently in Fullbay. Used when status is `already_done`. */
   currentClockIn?: string | null;
   currentClockOut?: string | null;
+}
+
+const CONFIRM_STATUSES = new Set<FullbayConfirmResult["status"]>(["applied", "failed", "already_done", "not_a_gap"]);
+
+export function isConfirmStatus(value: unknown): value is FullbayConfirmResult["status"] {
+  return typeof value === "string" && CONFIRM_STATUSES.has(value as FullbayConfirmResult["status"]);
 }
 
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -77,9 +87,29 @@ export function isClockTime(value: string): boolean {
   return CLOCK.test(value);
 }
 
-/** Applied and already-done edits are finished. Pending and failed still block sign-off. */
+/** Applied, already-done, and not-a-gap edits are finished. Pending and failed still block sign-off. */
 export function editIsResolved(status: FullbayApplyStatus): boolean {
-  return status === "applied" || status === "already_done";
+  return status === "applied" || status === "already_done" || status === "not_a_gap";
+}
+
+/**
+ * True when this line must not add job time.
+ * `not_a_gap` is explicit. A note that says the edit was not applied, or that it was a false gap, is the same outcome.
+ * "not re-applied" is a duplicate of a real apply and does not match.
+ */
+export function editAddsNoJobTime(edit: { status: string; applyNote?: string | null }): boolean {
+  if (edit.status === "not_a_gap") return true;
+  const note = edit.applyNote ?? "";
+  if (/false gap/i.test(note)) return true;
+  return /\bnot applied\b/i.test(note);
+}
+
+/** Minutes of job time a confirmed edit adds. Pending, failed, not-a-gap, and false-gap notes add none. */
+export function minutesPickedUp(edit: Pick<FullbayQueueEdit, "status" | "applyNote" | "minutes">): number {
+  if (edit.status !== "applied" && edit.status !== "already_done") return 0;
+  if (editAddsNoJobTime(edit)) return 0;
+  if (!Number.isFinite(edit.minutes) || edit.minutes <= 0) return 0;
+  return edit.minutes;
 }
 
 const SHOP_IDS = new Set<string>(SHOPS.map((shop) => shop.id));
@@ -343,8 +373,8 @@ export function applyConfirmations(
     if (!result || typeof result.findingId !== "string" || !ids.has(result.findingId)) {
       return { ok: false, error: `Unknown finding ${result?.findingId ?? ""}.` };
     }
-    if (result.status !== "applied" && result.status !== "failed" && result.status !== "already_done") {
-      return { ok: false, error: "Status must be applied, failed, or already_done." };
+    if (!isConfirmStatus(result.status)) {
+      return { ok: false, error: "Status must be applied, failed, already_done, or not_a_gap." };
     }
   }
   const byId = new Map(results.map((result) => [result.findingId, result]));
@@ -386,8 +416,16 @@ export function latestQueueEdit(batches: FullbayEditBatch[], findingId: string):
 export function reviewApplyText(edit: FullbayQueueEdit): string {
   if (edit.status === "pending") return "Waiting on Fullbay.";
   if (edit.status === "failed") return edit.applyNote ? `Fullbay apply failed. ${edit.applyNote}` : "Fullbay apply failed.";
+  if (edit.status === "not_a_gap") return notAGapText(edit);
   if (edit.status === "already_done") return alreadyDoneText(edit);
   return "Edits already updated";
+}
+
+/** Label for a line that was not a real gap, so it adds no job time. */
+export function notAGapText(edit: { applyNote?: string | null }): string {
+  const base = "Not a gap. Fullbay was already correct, so this line adds no job time.";
+  const note = edit.applyNote?.trim() ?? "";
+  return note.length > 0 ? appendSentence(base, note) : base;
 }
 
 /** Label for a line Fullbay already had right, including a manual edit or a false gap. */
@@ -510,9 +548,9 @@ export function submitRefusal(
 export type ShopDayLock = "open" | "signed-off" | "submitted";
 
 /**
- * Shop days in scope whose recommendations are all decided, whose accepted edits are applied
- * or already_done, and which have nothing pending or failed. A shop with no recommendations is left out.
- * An applied or already_done edit counts as a decision when an older batch has no decided list.
+ * Shop days in scope whose recommendations are all decided, whose accepted edits are applied,
+ * already_done, or not_a_gap, and which have nothing pending or failed. A shop with no recommendations is left out.
+ * A resolved edit counts as a decision when an older batch has no decided list.
  */
 export function shopDaysToAutoSignOff(
   batches: FullbayEditBatch[],
@@ -544,7 +582,8 @@ function decidedFindingIds(batches: FullbayEditBatch[], day: string, shopId: Sho
   return ids;
 }
 
-function latestEditsForShopDay(batches: FullbayEditBatch[], day: string, shopId: ShopId): Map<string, FullbayQueueEdit> {
+/** Newest queued edit for each finding on one shop day. A later batch replaces an earlier one. */
+export function latestEditsForShopDay(batches: FullbayEditBatch[], day: string, shopId: ShopId): Map<string, FullbayQueueEdit> {
   const latest = new Map<string, { edit: FullbayQueueEdit; batch: FullbayEditBatch }>();
   for (const batch of batches) {
     for (const edit of batch.edits) {

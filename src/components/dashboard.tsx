@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ConfirmView } from "@/components/confirm-view";
 import { DayBar } from "@/components/day-bar";
@@ -266,7 +267,12 @@ export function Dashboard() {
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-2">
-        <p className="text-sm font-medium text-muted-foreground">The Service Company</p>
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm font-medium text-muted-foreground">The Service Company</p>
+          <Link href="/admin" className="text-sm font-medium underline-offset-4 hover:underline">
+            Admin
+          </Link>
+        </div>
         <h1 className="text-3xl font-medium tracking-tight">Time gap review</h1>
         <p className="max-w-3xl leading-6 text-muted-foreground">
           Review missed time inside a clocked window, off-the-clock stretches, and the edit suggested for each gap. Accept, reject, or type a different start or end, then submit. The confirmation stays in this browser, and accepted edits are queued for Fullbay Time Stamp apply. This screen does not log into Fullbay.

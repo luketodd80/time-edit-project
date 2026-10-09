@@ -1,4 +1,4 @@
-import { AUTO_SIGNOFF_NOTE, isClockTime, shopDaysCovered, shopDaysToAutoSignOff, type FullbayConfirmResult } from "@/lib/fullbay-edit-queue";
+import { AUTO_SIGNOFF_NOTE, isClockTime, isConfirmStatus, shopDaysCovered, shopDaysToAutoSignOff, type FullbayConfirmResult } from "@/lib/fullbay-edit-queue";
 import { confirmQueuedBatch, queueAuthorized, readQueue } from "@/lib/fullbay-edit-queue-store";
 import { requiredDecisionFindingIds } from "@/lib/review";
 import { SEED } from "@/lib/seed";
@@ -28,8 +28,8 @@ export async function POST(request: Request) {
   for (const item of record.results) {
     if (!item || typeof item !== "object") return NextResponse.json({ ok: false, error: "Each result must be an object." }, { status: 400 });
     const result = item as Record<string, unknown>;
-    if (typeof result.findingId !== "string" || (result.status !== "applied" && result.status !== "failed" && result.status !== "already_done")) {
-      return NextResponse.json({ ok: false, error: "Each result needs a findingId and status applied, failed, or already_done." }, { status: 400 });
+    if (typeof result.findingId !== "string" || !isConfirmStatus(result.status)) {
+      return NextResponse.json({ ok: false, error: "Each result needs a findingId and status applied, failed, already_done, or not_a_gap." }, { status: 400 });
     }
     if (result.applyNote != null && typeof result.applyNote !== "string") {
       return NextResponse.json({ ok: false, error: "applyNote must be a string." }, { status: 400 });

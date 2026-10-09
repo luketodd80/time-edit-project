@@ -34,6 +34,17 @@ export async function POST(request: Request) {
   if (typeof record.shopId !== "string" || !SHOPS.some((shop) => shop.id === record.shopId)) {
     return NextResponse.json({ ok: false, error: "shopId must be a known shop." }, { status: 400 });
   }
-  const signoff = await recordSignoff(record.day, record.shopId as ShopId, new Date().toISOString());
+  const doneAt = parseDoneAt(record.doneAt);
+  if (!doneAt.ok) return NextResponse.json({ ok: false, error: doneAt.error }, { status: 400 });
+  const signoff = await recordSignoff(record.day, record.shopId as ShopId, doneAt.value);
   return NextResponse.json({ ok: true, signoff });
+}
+
+/** Optional restore timestamp. Omitted means now. The store keeps the earliest time for that shop and day. */
+function parseDoneAt(value: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  if (value == null || value === "") return { ok: true, value: new Date().toISOString() };
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
+    return { ok: false, error: "doneAt must be an ISO timestamp." };
+  }
+  return { ok: true, value: new Date(value).toISOString() };
 }

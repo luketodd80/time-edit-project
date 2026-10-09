@@ -298,7 +298,7 @@ function DayRows({
   const preview = recommendation && decision ? appliedWindow(recommendation, decision) : null;
   const canDecide = !locked && (queued == null || queued.status === "failed");
   const tone =
-    queued?.status === "applied" || queued?.status === "already_done"
+    queued?.status === "applied" || queued?.status === "already_done" || queued?.status === "not_a_gap"
       ? "bg-green-50"
       : queued?.status === "failed"
         ? "bg-red-50"
