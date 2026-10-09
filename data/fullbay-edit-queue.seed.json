@@ -1923,9 +1923,11 @@
           "newClockIn": "07:02",
           "newClockOut": "07:10",
           "minutes": 8,
-          "status": "failed",
-          "appliedAt": null,
-          "applyNote": "No edit needed; the gap was already closed. Andy Nelson edited this S-90638 Check brakes row at 7:14 AM on 10/8, during the apply, to 7:01:52AM-7:17:39AM, which starts at shift clock-in (earlier than the approved 07:02). Left as is. Andy also edited two other Chris Queary S-90638 rows around 7:15 AM (screw in tire, Driver door hinge)."
+          "status": "already_done",
+          "appliedAt": "2026-10-08T17:34:22.293Z",
+          "applyNote": "Gap already closed in Fullbay by Andy Nelson at 7:14 AM 10/8. No edit made.",
+          "currentClockIn": "07:01",
+          "currentClockOut": "07:17"
         },
         {
           "findingId": "2026-10-07-springfield-chris-queary-10",
