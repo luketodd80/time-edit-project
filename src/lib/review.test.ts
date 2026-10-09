@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CURATED_FRIDAY } from "@/lib/curated-friday";
+import { timesheetToDayReports, type FullbayTimesheetRow } from "@/lib/fullbay-timesheet";
+import { submissionToQueueRequest } from "@/lib/fullbay-edit-queue";
 import { AUDIT_START, defaultPendingDays, reviewWindow, todayInNewYork } from "@/lib/dates";
 import { SEED } from "@/lib/seed";
 import { parsePersistedState } from "@/lib/storage";
@@ -22,7 +24,8 @@ import {
   techTotals,
   utilization,
 } from "@/lib/review";
-import { SHOPS, type DayReport, type Decision } from "@/lib/types";
+import { SHOPS, type DayReport, type Decision, type Finding } from "@/lib/types";
+import { dayPunches } from "@/lib/day-punches";
 
 const friday = "2026-10-02";
 const saturday = "2026-10-03";
@@ -328,5 +331,190 @@ describe("submit plan", () => {
     assert.equal(submission.edits.length, 1);
     assert.equal(submission.shopId, "dayton");
     assert.equal(submission.skipped.length, 2);
+  });
+
+  it("keeps an older saved decision and a Non-Pro choice", () => {
+    const state = parsePersistedState(
+      JSON.stringify({
+        shopId: "dayton",
+        days: [friday],
+        view: "review",
+        decisions: {
+          "zach-0629": accept,
+          "meeting": { kind: "accept", start: "", end: "", nonProEditType: "split", split: "07:09", targetOrderId: " D-1 " },
+          "bad": { kind: "accept", start: "", end: "", nonProEditType: "nope" },
+        },
+        signoffs: {},
+        submission: null,
+      }),
+    );
+    assert.deepEqual(state.decisions["zach-0629"], accept);
+    assert.equal(state.decisions.meeting?.nonProEditType, "split");
+    assert.equal(state.decisions.meeting?.split, "07:09");
+    assert.equal(state.decisions.meeting?.targetOrderId, "D-1");
+    assert.equal(state.decisions.bad?.nonProEditType, undefined);
+  });
+});
+
+function sampleRow(overrides: Partial<FullbayTimesheetRow> & Pick<FullbayTimesheetRow, "employee">): FullbayTimesheetRow {
+  return {
+    shop: "The Service Company - Dayton (D)",
+    clock_in: "8:00:00AM 10/8/2026",
+    clock_in_activity: "Inactive",
+    clock_out: "9:00:00AM 10/8/2026",
+    hours: 1,
+    so_complaint: "",
+    comment: "",
+    open_punch: false,
+    ...overrides,
+  };
+}
+
+function nonProDay(): { report: DayReport; finding: Finding } {
+  const reports = timesheetToDayReports({
+    date: "2026-10-08",
+    rows: [
+      sampleRow({
+        employee: "Review Tech",
+        clock_in: "7:00:00AM 10/8/2026",
+        clock_out: "8:00:00AM 10/8/2026",
+        hours: 1,
+        so_complaint: "D-10 / Brakes",
+      }),
+      sampleRow({
+        employee: "Review Tech",
+        clock_in: "8:00:00AM 10/8/2026",
+        clock_out: "9:00:00AM 10/8/2026",
+        clock_in_activity: "Shop Meeting",
+        hours: 1,
+      }),
+      sampleRow({
+        employee: "Review Tech",
+        shop: "The Service Company-Mobile Units (M)",
+        clock_in: "9:00:00AM 10/8/2026",
+        clock_out: "10:00:00AM 10/8/2026",
+        hours: 1,
+        so_complaint: "M-20 / Onsite",
+      }),
+    ],
+  });
+  const report = reports.find((item) => item.shopId === "dayton");
+  const finding = report?.findings.find((item) => item.detail.includes("Shop Meeting"));
+  assert.ok(report && finding);
+  return { report, finding };
+}
+
+describe("Non-Pro edit payload", () => {
+  it("builds extend, move, split, move-to-so, and keep, and clamps a split", () => {
+    const { report, finding } = nonProDay();
+    assert.equal(finding.nonPro?.previous?.orderId, "D-10");
+    assert.equal(finding.nonPro?.previous?.work, "Brakes");
+    assert.equal(finding.nonPro?.next?.orderId, "M-20");
+    assert.equal(finding.nonPro?.next?.shopId, "mobile");
+    assert.equal(finding.nonPro?.canSplit, true);
+
+    const keep = buildPlan([report], { [finding.id]: { kind: "reject", start: "", end: "", nonProEditType: "keep" } });
+    assert.equal(keep.edits.length, 0);
+    assert.equal(keep.rejected[0]?.nonPro?.editType, "keep");
+    assert.equal(keep.rejected[0]?.minutes, 0);
+    assert.deepEqual(keep.rejected[0]?.nonPro?.rows, []);
+
+    const extend = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "extend_prev_out" } });
+    const extendRow = extend.edits[0]?.nonPro?.rows[0];
+    assert.equal(extend.edits[0]?.nonPro?.editType, "extend_prev_out");
+    assert.equal(extend.edits[0]?.nonPro?.originalClockIn, "08:00");
+    assert.equal(extend.edits[0]?.nonPro?.originalClockOut, "09:00");
+    assert.equal(extendRow?.orderId, "D-10");
+    assert.equal(extendRow?.work, "Brakes");
+    assert.equal(extendRow?.clockIn, "07:00");
+    assert.equal(extendRow?.clockOut, "08:00");
+    assert.equal(extendRow?.newClockIn, "07:00");
+    assert.equal(extendRow?.newClockOut, "09:00");
+    assert.equal(extend.edits[0]?.minutes, 60);
+
+    const move = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "move_next_in" } });
+    const moveRow = move.edits[0]?.nonPro?.rows[0];
+    assert.equal(moveRow?.orderId, "M-20");
+    assert.equal(moveRow?.shopId, "mobile");
+    assert.equal(moveRow?.clockIn, "09:00");
+    assert.equal(moveRow?.clockOut, "10:00");
+    assert.equal(moveRow?.newClockIn, "08:00");
+    assert.equal(moveRow?.newClockOut, "10:00");
+
+    const split = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "split", split: "06:15" } });
+    assert.equal(split.invalid.length, 0);
+    assert.equal(split.edits[0]?.nonPro?.rows[0]?.newClockOut, "08:01");
+    assert.equal(split.edits[0]?.nonPro?.rows[1]?.newClockIn, "08:01");
+    assert.equal(split.edits[0]?.nonPro?.rows[1]?.orderId, "M-20");
+    assert.equal(split.edits[0]?.minutes, 60);
+
+    const inside = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "split", split: "08:30" } });
+    assert.equal(inside.edits[0]?.nonPro?.rows[0]?.newClockOut, "08:30");
+    assert.equal(inside.edits[0]?.nonPro?.rows[1]?.newClockIn, "08:30");
+
+    const moved = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "move_to_so", targetOrderId: "m-20" } });
+    const movedRow = moved.edits[0]?.nonPro?.rows[0];
+    assert.equal(moved.edits[0]?.nonPro?.editType, "move_to_so");
+    assert.equal(movedRow?.orderId, "M-20");
+    assert.equal(movedRow?.work, "Onsite");
+    assert.equal(movedRow?.newClockIn, "08:00");
+    assert.equal(movedRow?.newClockOut, "09:00");
+    assert.equal(movedRow?.clockIn, "08:00");
+
+    const typed = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "move_to_so", targetOrderId: "S-55" } });
+    assert.equal(typed.edits[0]?.nonPro?.rows[0]?.orderId, "S-55");
+    assert.equal(typed.edits[0]?.nonPro?.rows[0]?.work, "");
+    assert.equal(typed.edits[0]?.nonPro?.rows[0]?.shopId, "springfield");
+
+    const bad = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "move_to_so", targetOrderId: "brakes" } });
+    assert.equal(bad.invalid.length, 1);
+
+    const queued = submissionToQueueRequest(buildSubmission([report], {
+      [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "extend_prev_out" },
+    }, "dayton", ["2026-10-08"], "2026-10-09T12:00:00.000Z"));
+    assert.equal(queued.edits.length, 1);
+    assert.equal(queued.edits[0]?.nonPro?.editType, "extend_prev_out");
+    assert.equal(queued.edits[0]?.newClockIn, "07:00");
+    assert.equal(queued.edits[0]?.newClockOut, "09:00");
+    const kept = submissionToQueueRequest(buildSubmission([report], {
+      [finding.id]: { kind: "reject", start: "", end: "", nonProEditType: "keep" },
+    }, "dayton", ["2026-10-08"], "2026-10-09T12:00:00.000Z"));
+    assert.equal(kept.edits.length, 0);
+    assert.equal(kept.decided?.[0]?.findingId, finding.id);
+  });
+
+  it("adds assigned Non-Pro time to the projection and leaves keep at zero", () => {
+    const { report, finding } = nonProDay();
+    const tech = report.technicians[0];
+    assert.ok(tech);
+    const before = techOutlook(report, tech);
+    const kept = techOutlook(report, tech, { [finding.id]: { kind: "reject", start: "", end: "", nonProEditType: "keep" } });
+    const assigned = techOutlook(report, tech, { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "move_next_in" } });
+    assert.equal(before.choiceMinutes, 0);
+    assert.equal(kept.choiceMinutes, 0);
+    assert.equal(kept.ifAll, before.ifAll);
+    assert.equal(assigned.choiceMinutes, 60);
+    assert.ok((assigned.ifAll ?? 0) > (before.ifAll ?? 0));
+    const totals = techTotals([report], { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "extend_prev_out" } });
+    assert.equal(totals[0]?.addedMinutes, 60);
+    const punches = dayPunches(report, tech.id, { [finding.id]: { kind: "accept", start: "", end: "", nonProEditType: "extend_prev_out" } }, []);
+    const brakes = punches.find((punch) => punch.orderId === "D-10");
+    assert.equal(brakes?.clockOut, "09:00");
+    assert.equal(brakes?.originalClockOut, "08:00");
+  });
+
+  it("uses Chris Clark’s scoped Thursday hours for the 98% line", () => {
+    const report = SEED.find((item) => item.day === "2026-10-08" && item.shopId === "dayton");
+    const tech = report?.technicians.find((item) => item.id === "chris-clark");
+    assert.ok(report && tech);
+    const outlook = techOutlook(report, tech);
+    assert.equal(formatPercent(utilization(tech.soHours, tech.clockedHours) ?? 0), "76.4%");
+    assert.equal(outlook.minutesToGoal, 32);
+    assert.equal(formatPercent(outlook.ifAll ?? 0), "86.6%");
+    const allShops = SHOPS.map((shop) => shop.id);
+    const day = dayUtilization(SEED, "2026-10-08", allShops, {});
+    const daytonOnly = dayUtilization(SEED, "2026-10-08", ["dayton"], {});
+    assert.ok(day.original != null && daytonOnly.original != null);
+    assert.ok(daytonOnly.original > 0.15);
   });
 });

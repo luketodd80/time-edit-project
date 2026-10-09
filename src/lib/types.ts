@@ -31,6 +31,11 @@ export interface Technician {
   clockedHours: number;
   /** Decimal service-order hours that day, before any decision. */
   soHours: number;
+  /**
+   * Hours inside this shop's clock punches that are already on another shop's service order.
+   * Those hours are omitted from `clockedHours` so this shop's percentage stays in scope.
+   */
+  foreignCoveredHours?: number;
   /** Day-sheet header after the name, when the report states one. */
   sheetLine?: string;
   /** Second line under that header. */
@@ -74,7 +79,70 @@ export interface Finding {
   suggested?: string;
   /** Missed column says "Not a gap" even though the tech was clocked. */
   notAGap?: boolean;
+  /**
+   * Set on a Non-Pro attendance punch the manager must review.
+   * `recommendation` stays null so this is not a one-click time suggestion.
+   */
+  nonPro?: NonProReview;
   recommendation: Recommendation | null;
+}
+
+/** How a Non-Pro attendance row is applied in Fullbay. `keep` changes nothing. */
+export type NonProEditType = "extend_prev_out" | "move_next_in" | "split" | "move_to_so" | "keep";
+
+/** A neighboring service-order punch the Non-Pro span can be given to. */
+export interface NonProNeighbor {
+  orderId: string;
+  /** Action item on that punch. */
+  work: string;
+  shopId: ShopId;
+  /** Clock times currently on that service-order row. */
+  clockIn: string;
+  clockOut: string;
+}
+
+/** A service order the manager can move the Non-Pro span onto, keeping its times. */
+export interface NonProOrderOption {
+  orderId: string;
+  work: string;
+  shopId: ShopId;
+}
+
+/**
+ * Choices for one Non-Pro attendance row.
+ * `previous` and `next` are set only when giving that neighbor the span would not overlap another punch.
+ */
+export interface NonProReview {
+  previous: NonProNeighbor | null;
+  next: NonProNeighbor | null;
+  /** Both neighbors are available and the span is long enough to split. */
+  canSplit: boolean;
+  orders: NonProOrderOption[];
+}
+
+/** One service-order row a Non-Pro choice changes, with the times before and after. */
+export interface NonProAffectedRow {
+  orderId: string;
+  work: string;
+  shopId: ShopId;
+  clockIn: string;
+  clockOut: string;
+  newClockIn: string;
+  newClockOut: string;
+}
+
+/**
+ * Everything the Fullbay applier needs for a Non-Pro decision.
+ * `rows` is empty for `keep`. For `move_to_so`, the row's clock times are the Non-Pro times
+ * (there is no earlier punch on that order; the times are kept).
+ * For `split`, `rows` has the previous order first and the next order second.
+ */
+export interface NonProEditPayload {
+  editType: NonProEditType;
+  /** Clock times of the original Non-Pro row. */
+  originalClockIn: string;
+  originalClockOut: string;
+  rows: NonProAffectedRow[];
 }
 
 /** One shop's loaded day. Days with no report are simply absent. */
@@ -96,6 +164,15 @@ export interface Decision {
    */
   start: string;
   end: string;
+  /**
+   * Set when this decision is for a Non-Pro review.
+   * `keep` is stored with kind `reject` and is not queued.
+   */
+  nonProEditType?: NonProEditType;
+  /** Split clock time, HH:MM, when `nonProEditType` is `split`. */
+  split?: string;
+  /** Service order number when `nonProEditType` is `move_to_so`. */
+  targetOrderId?: string;
 }
 
 export interface Signoff {
@@ -120,6 +197,8 @@ export interface PlannedEdit {
   end: string;
   minutes: number;
   error: string | null;
+  /** Present for a Non-Pro review decision, including keep. */
+  nonPro?: NonProEditPayload;
 }
 
 export interface SkippedOrder {

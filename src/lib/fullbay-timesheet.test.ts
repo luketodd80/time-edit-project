@@ -24,6 +24,7 @@ import {
   type FullbayTimesheetRow,
 } from "@/lib/fullbay-timesheet";
 import { SEED } from "@/lib/seed";
+import { formatPercent } from "@/lib/time";
 import type { DayReport } from "@/lib/types";
 
 const monday = "2026-10-05";
@@ -510,18 +511,22 @@ describe("October 6 download", () => {
     assert.match(beforeClean?.recommendation?.summary ?? "", /8:04 AM/);
     const clean = mike?.find((finding) => finding.detail.includes("clean, pick up shop"));
     assert.equal(clean?.recommendation, null);
-    assert.match(clean?.suggested ?? "", /Do not move a clock-in/);
+    assert.equal(clean?.nonPro != null, true);
+    assert.match(clean?.suggested ?? "", /Review/);
 
     const meeting = OCTOBER_6_REPORTS.find((report) => report.shopId === "mobile")?.findings.find(
       (finding) => finding.techId === "jeff-haney" && finding.detail.includes("Shop Meeting"),
     );
     assert.equal(meeting?.recommendation, null);
+    assert.equal(meeting?.nonPro != null, true);
     assert.equal((meeting?.suggested ?? "").includes("Start "), false);
 
     const help = OCTOBER_6_REPORTS.find((report) => report.shopId === "dayton")?.findings.find(
       (finding) => finding.techId === "tanveer-dhaliwal" && finding.detail.includes("helping cole"),
     );
-    assert.equal(help?.recommendation?.orderId, "D-90354");
+    assert.equal(help?.id, "2026-10-06-dayton-tanveer-dhaliwal-17");
+    assert.equal(help?.recommendation, null);
+    assert.equal(help?.nonPro != null, true);
   });
 
   it("extends the earlier service order up to a following Non-Pro punch", () => {
@@ -582,6 +587,11 @@ describe("October 6 download", () => {
     assert.equal((gap?.recommendation?.summary ?? "").startsWith("Start "), false);
     const meeting = reports[0]?.findings.find((finding) => finding.detail.includes("Shop Meeting"));
     assert.equal(meeting?.recommendation, null);
+    assert.equal(meeting?.nonPro?.previous?.orderId, "S-1");
+    assert.equal(meeting?.nonPro?.previous?.work, "Brakes");
+    assert.equal(meeting?.nonPro?.next?.orderId, "S-2");
+    assert.equal(meeting?.nonPro?.canSplit, true);
+    assert.equal(gap?.nonPro, undefined);
   });
 });
 
@@ -709,7 +719,8 @@ describe("October 7 download", () => {
     assert.match(beforeTrash?.recommendation?.summary ?? "", /4:29 PM/);
     const trash = john?.find((finding) => finding.detail.includes("taking out trash putting brass away"));
     assert.equal(trash?.recommendation, null);
-    assert.match(trash?.suggested ?? "", /Do not move a clock-in/);
+    assert.equal(trash?.nonPro != null, true);
+    assert.match(trash?.suggested ?? "", /Review/);
 
     const jeff = OCTOBER_7_REPORTS.find((report) => report.shopId === "mobile")?.findings.filter(
       (finding) => finding.techId === "jeff-haney",
@@ -719,7 +730,8 @@ describe("October 7 download", () => {
     assert.match(beforeMeeting?.recommendation?.summary ?? "", /7:22 AM/);
     const meeting = jeff?.find((finding) => finding.detail.includes("Shop Meeting") && finding.start === "07:22");
     assert.equal(meeting?.recommendation, null);
-    assert.match(meeting?.suggested ?? "", /Do not move a clock-in/);
+    assert.equal(meeting?.nonPro != null, true);
+    assert.match(meeting?.suggested ?? "", /Review/);
   });
 });
 
@@ -851,7 +863,8 @@ describe("October 8 download", () => {
     assert.match(beforeCleanup?.recommendation?.summary ?? "", /10:21 AM/);
     const cleanup = john?.find((finding) => finding.detail.includes("cleaning up moving parts"));
     assert.equal(cleanup?.recommendation, null);
-    assert.match(cleanup?.suggested ?? "", /Do not move a clock-in/);
+    assert.equal(cleanup?.nonPro != null, true);
+    assert.match(cleanup?.suggested ?? "", /Review/);
     const beforeFirstNonPro = john?.find((finding) => finding.start === "07:01" && finding.end === "07:23");
     assert.equal(beforeFirstNonPro?.recommendation, null);
     assert.match(beforeFirstNonPro?.suggested ?? "", /no earlier service order/);
@@ -1182,9 +1195,11 @@ describe("cross-shop service orders", () => {
     assert.ok(mobileTech);
     assert.ok(daytonTech);
     assert.equal(mobileTech?.soHours, 2);
-    assert.equal(mobileTech?.clockedHours, 4);
+    assert.equal(mobileTech?.clockedHours, 2);
+    assert.equal(mobileTech?.foreignCoveredHours, 2);
     assert.equal(daytonTech?.soHours, 8);
     assert.equal(daytonTech?.clockedHours, 8);
+    assert.equal(daytonTech?.foreignCoveredHours, undefined);
     assert.deepEqual(mobile?.orders.map((order) => order.id), ["M-10"]);
     assert.deepEqual(dayton?.orders.map((order) => order.id), ["D-80"]);
 
@@ -1234,9 +1249,11 @@ describe("cross-shop service orders", () => {
     assert.ok(springfield?.technicians.some((tech) => tech.name === "Mike Wooten"));
     assert.ok(dayton?.technicians.some((tech) => tech.name === "Mike Wooten"));
     assert.equal(mobile?.technicians.find((tech) => tech.id === "chris-clark")?.soHours, 7.33);
-    assert.equal(mobile?.technicians.find((tech) => tech.id === "chris-clark")?.clockedHours, 9.49);
+    assert.equal(mobile?.technicians.find((tech) => tech.id === "chris-clark")?.clockedHours, 8.43);
+    assert.equal(mobile?.technicians.find((tech) => tech.id === "chris-clark")?.foreignCoveredHours, 1.06);
     assert.equal(dayton?.technicians.find((tech) => tech.id === "chris-clark")?.soHours, 1.05);
     assert.equal(dayton?.technicians.find((tech) => tech.id === "chris-clark")?.clockedHours, 1.05);
+    assert.equal(dayton?.technicians.find((tech) => tech.id === "chris-clark")?.foreignCoveredHours, undefined);
     assert.equal(springfield?.technicians.find((tech) => tech.id === "mike-wooten")?.soHours, 2.16);
     assert.equal(dayton?.technicians.find((tech) => tech.id === "mike-wooten")?.soHours, 5.63);
 
@@ -1295,5 +1312,87 @@ describe("cross-shop service orders", () => {
         }
       }
     }
+  });
+});
+
+describe("Non-Pro review and cross-shop utilization", () => {
+  it("scopes Chris Clark’s Thursday Dayton percentage to this shop and does not double-count the day", () => {
+    const dayton = OCTOBER_8_REPORTS.find((report) => report.shopId === "dayton");
+    const mobile = OCTOBER_8_REPORTS.find((report) => report.shopId === "mobile");
+    const daytonTech = dayton?.technicians.find((tech) => tech.id === "chris-clark");
+    const mobileTech = mobile?.technicians.find((tech) => tech.id === "chris-clark");
+    assert.ok(daytonTech && mobileTech);
+    assert.equal(daytonTech.soHours, 1.88);
+    assert.equal(daytonTech.clockedHours, 2.46);
+    assert.equal(daytonTech.foreignCoveredHours, 10.1);
+    assert.equal(formatPercent(daytonTech.soHours / daytonTech.clockedHours), "76.4%");
+    assert.equal(mobileTech.soHours, 10.63);
+    assert.equal(mobileTech.clockedHours, 11.38);
+    assert.equal(mobileTech.foreignCoveredHours, undefined);
+    assert.equal(Math.round((daytonTech.clockedHours + mobileTech.clockedHours) * 100) / 100, 13.84);
+
+    const review = dayton?.findings.find((finding) => finding.id === "2026-10-08-dayton-chris-clark-01");
+    const unchanged = dayton?.findings.find((finding) => finding.id === "2026-10-08-dayton-chris-clark-04");
+    assert.equal(review?.start, "07:00");
+    assert.equal(review?.end, "07:18");
+    assert.equal(review?.recommendation, null);
+    assert.equal(review?.nonPro?.previous, null);
+    assert.equal(review?.nonPro?.next?.orderId, "M-90566");
+    assert.equal(review?.nonPro?.canSplit, false);
+    assert.equal(unchanged?.start, "09:22");
+    assert.equal(unchanged?.recommendation?.orderId, "D-90151");
+    assert.equal(unchanged?.nonPro, undefined);
+
+    const meeting = mobile?.findings.find((finding) => finding.id === "2026-10-08-mobile-chris-clark-02");
+    assert.equal(meeting?.start, "07:50");
+    assert.equal(meeting?.nonPro?.canSplit, true);
+    assert.equal(meeting?.nonPro?.previous?.orderId, "M-90566");
+    assert.equal(meeting?.nonPro?.next?.orderId, "D-90273");
+    assert.match(meeting?.nonPro?.next?.work ?? "", /Remove and replace broken/);
+  });
+
+  it("offers only the neighbors that exist and hides a side that would overlap", () => {
+    const reports = timesheetToDayReports({
+      date: thursday,
+      rows: [
+        row({
+          employee: "Overlap Tech",
+          shop: "The Service Company - Dayton (D)",
+          clock_in: "6:50:00AM 10/8/2026",
+          clock_out: "7:30:00AM 10/8/2026",
+          hours: 0.67,
+          so_complaint: "D-1 / Early",
+        }),
+        row({
+          employee: "Overlap Tech",
+          shop: "The Service Company - Dayton (D)",
+          clock_in: "7:00:00AM 10/8/2026",
+          clock_out: "8:00:00AM 10/8/2026",
+          hours: 1,
+          so_complaint: "D-2 / Brakes",
+        }),
+        row({
+          employee: "Overlap Tech",
+          shop: "The Service Company - Dayton (D)",
+          clock_in: "8:00:00AM 10/8/2026",
+          clock_out: "8:50:00AM 10/8/2026",
+          clock_in_activity: "Normal Non Pro",
+          hours: 0.83,
+        }),
+        row({
+          employee: "Overlap Tech",
+          shop: "The Service Company - Dayton (D)",
+          clock_in: "9:00:00AM 10/8/2026",
+          clock_out: "10:00:00AM 10/8/2026",
+          hours: 1,
+          so_complaint: "D-3 / QC",
+        }),
+      ],
+    });
+    const review = reports[0]?.findings.find((finding) => finding.detail.includes("Normal Non Pro"));
+    assert.equal(review?.nonPro?.previous, null);
+    assert.equal(review?.nonPro?.next?.orderId, "D-3");
+    assert.equal(review?.nonPro?.canSplit, false);
+    assert.ok(review?.nonPro?.orders.some((order) => order.orderId === "D-2"));
   });
 });

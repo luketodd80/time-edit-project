@@ -1,6 +1,7 @@
 import { latestQueueEdit, type FullbayEditBatch, type FullbayApplyStatus } from "@/lib/fullbay-edit-queue";
+import { buildNonProEdit } from "@/lib/nonpro";
 import { SHOPS } from "@/lib/types";
-import type { DayReport, Decision, Finding } from "@/lib/types";
+import type { DayReport, Decision, Finding, NonProAffectedRow, ShopId } from "@/lib/types";
 import { appliedWindow } from "@/lib/time";
 
 export type PunchEditStatus = "applied" | "accepted" | "rejected" | "already_done";
@@ -166,7 +167,69 @@ export function dayPunches(
     applyBoundary(punches, finding, recommendation.orderId, recommendation.work, kind, nextIn, nextOut, status, detail);
   }
 
+  for (const finding of findings) {
+    if (!finding.nonPro) continue;
+    const decision = decisions[finding.id];
+    if (!decision) continue;
+    const built = buildNonProEdit(finding, decision);
+    if (!built.ok || built.payload.editType === "keep") continue;
+    const status = statusFor(decision, batches, finding.id);
+    const detail = status === "already_done" ? alreadyDoneDetail(batches, finding.id) : NO_ALREADY_DONE;
+    for (const row of built.payload.rows) applyNonProRow(punches, row, report.shopId, status, detail);
+  }
+
   return punches.sort((a, b) => a.clockIn.localeCompare(b.clockIn) || a.clockOut.localeCompare(b.clockOut) || a.orderId.localeCompare(b.orderId));
+}
+
+function applyNonProRow(
+  punches: DayPunch[],
+  row: NonProAffectedRow,
+  reportShopId: ShopId,
+  status: PunchEditStatus,
+  detail: Pick<DayPunch, "applyNote" | "currentClockIn" | "currentClockOut">,
+) {
+  const keepLoaded = status === "rejected" || status === "already_done";
+  const match = punches.find((punch) => punch.orderId === row.orderId && punch.clockIn === row.clockIn && punch.clockOut === row.clockOut);
+  if (!match || (row.newClockIn === row.clockIn && row.newClockOut === row.clockOut)) {
+    if (match && keepLoaded) return;
+    if (match) return;
+    const shop = SHOPS.find((item) => item.id === row.shopId);
+    punches.push({
+      orderId: row.orderId,
+      work: row.work,
+      clockIn: keepLoaded ? row.clockIn : row.newClockIn,
+      clockOut: keepLoaded ? row.clockOut : row.newClockOut,
+      originalClockIn: null,
+      originalClockOut: null,
+      suggestedClockIn: status === "rejected" ? row.newClockIn : null,
+      suggestedClockOut: status === "rejected" ? row.newClockOut : null,
+      editStatus: status,
+      contextShop: row.shopId === reportShopId ? null : shop?.name ?? null,
+      ...detail,
+    });
+    return;
+  }
+  match.editStatus = preferStatus(match.editStatus, status);
+  if (status === "already_done") {
+    match.applyNote = detail.applyNote;
+    match.currentClockIn = detail.currentClockIn;
+    match.currentClockOut = detail.currentClockOut;
+  }
+  if (keepLoaded) {
+    if (status === "rejected") {
+      if (row.newClockIn !== row.clockIn) match.suggestedClockIn = row.newClockIn;
+      if (row.newClockOut !== row.clockOut) match.suggestedClockOut = row.newClockOut;
+    }
+    return;
+  }
+  if (row.newClockIn !== row.clockIn) {
+    if (match.originalClockIn == null) match.originalClockIn = match.clockIn;
+    match.clockIn = row.newClockIn;
+  }
+  if (row.newClockOut !== row.clockOut) {
+    if (match.originalClockOut == null) match.originalClockOut = match.clockOut;
+    match.clockOut = row.newClockOut;
+  }
 }
 
 function applyBoundary(

@@ -1,4 +1,4 @@
-import type { DayReport, Finding, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
+import type { DayReport, Finding, NonProOrderOption, NonProReview, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
 import { SHOPS } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 import { FRIDAY_DETAILS_CSV } from "@/lib/friday-details-csv";
@@ -452,6 +452,153 @@ function suggestionRules(day: string): boolean {
   return day >= SUGGESTION_RULES_FROM;
 }
 
+interface TimedOrder {
+  orderId: string;
+  work: string;
+  shopId: ShopId;
+  clockIn: string;
+  clockOut: string;
+  start: number;
+  end: number;
+}
+
+function windowsOverlap(start: number, end: number, otherStart: number, otherEnd: number): boolean {
+  return start < otherEnd && otherStart < end;
+}
+
+/**
+ * Neighbors are this tech's service-order punches on any shop.
+ * A side is offered only when the new clock window does not overlap a different punch.
+ */
+function buildNonProReview(
+  startSeconds: number,
+  endSeconds: number,
+  segments: Segment[],
+  foreignSegments: ShopSegment[],
+  shopId: ShopId,
+): NonProReview {
+  const punches: TimedOrder[] = [];
+  for (const segment of segments) punches.push(timedOrder(segment, shopId));
+  for (const segment of foreignSegments) punches.push(timedOrder(segment, segment.shopId));
+
+  let previous: TimedOrder | null = null;
+  let next: TimedOrder | null = null;
+  for (const punch of punches) {
+    if (punch.end <= startSeconds + 5) {
+      const later = previous == null || punch.end > previous.end || (punch.end === previous.end && punch.start >= previous.start);
+      if (later) previous = punch;
+    }
+    if (punch.start >= endSeconds - 5) {
+      const earlier = next == null || punch.start < next.start || (punch.start === next.start && punch.orderId < next.orderId);
+      if (earlier) next = punch;
+    }
+  }
+
+  function blocked(start: number, end: number, self: TimedOrder | null): boolean {
+    return punches.some((punch) => {
+      if (self && samePunch(punch, self)) return false;
+      return windowsOverlap(start, end, punch.start, punch.end);
+    });
+  }
+
+  const previousOk = previous != null && !blocked(previous.start, endSeconds, previous);
+  const nextOk = next != null && !blocked(startSeconds, next.end, next);
+  const spanMinutes = toMinute(endSeconds) - toMinute(startSeconds);
+  return {
+    previous: previousOk && previous ? neighborOf(previous) : null,
+    next: nextOk && next ? neighborOf(next) : null,
+    canSplit: Boolean(previousOk && nextOk && spanMinutes >= 2),
+    orders: orderOptions(punches, startSeconds, endSeconds),
+  };
+}
+
+function timedOrder(segment: Segment, shopId: ShopId): TimedOrder {
+  const end = impliedEnd(segment.start, segment.end, segment.hours);
+  return {
+    orderId: segment.orderId,
+    work: segment.title,
+    shopId,
+    clockIn: clockLabel(toMinute(segment.start)),
+    clockOut: clockLabel(Math.max(toMinute(segment.start), toMinute(end))),
+    start: segment.start,
+    end,
+  };
+}
+
+function samePunch(punch: TimedOrder, other: TimedOrder): boolean {
+  return punch.orderId === other.orderId && punch.shopId === other.shopId && punch.start === other.start && punch.end === other.end;
+}
+
+function neighborOf(punch: TimedOrder): NonProReview["previous"] {
+  return { orderId: punch.orderId, work: punch.work, shopId: punch.shopId, clockIn: punch.clockIn, clockOut: punch.clockOut };
+}
+
+function orderOptions(punches: TimedOrder[], startSeconds: number, endSeconds: number): NonProOrderOption[] {
+  const byId = new Map<string, NonProOrderOption & { distance: number }>();
+  for (const punch of punches) {
+    const distance = punch.end <= startSeconds ? startSeconds - punch.end : punch.start >= endSeconds ? punch.start - endSeconds : 0;
+    const current = byId.get(punch.orderId);
+    const closer = current == null || distance < current.distance || (distance === current.distance && punch.work.length > current.work.length);
+    if (closer) byId.set(punch.orderId, { orderId: punch.orderId, work: punch.work, shopId: punch.shopId, distance });
+  }
+  return [...byId.values()]
+    .sort((a, b) => a.orderId.localeCompare(b.orderId))
+    .map(({ orderId, work, shopId: id }) => ({ orderId, work, shopId: id }));
+}
+
+/** Seconds of [start, end] covered by the union of these segments. */
+function coveredSeconds(start: number, end: number, covers: Segment[]): number {
+  const pieces: Array<[number, number]> = [];
+  for (const segment of covers) {
+    const segmentEnd = impliedEnd(segment.start, segment.end, segment.hours);
+    const from = Math.max(start, segment.start);
+    const to = Math.min(end, segmentEnd);
+    if (to > from) pieces.push([from, to]);
+  }
+  pieces.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let total = 0;
+  let cursor = start;
+  for (const [from, to] of pieces) {
+    const begin = Math.max(from, cursor);
+    if (to > begin) total += to - begin;
+    cursor = Math.max(cursor, to);
+  }
+  return total;
+}
+
+/**
+ * Hours of this shop's clock punches that are already on another shop's service order.
+ * Own service-order time stays in the clocked total. The fraction uses each punch's Hours column.
+ */
+function foreignHoursInsidePunches(punches: Punch[], local: Segment[], foreign: Segment[]): number {
+  let covered = 0;
+  for (const punch of punches) {
+    const punchEnd = impliedEnd(punch.start, punch.end, punch.hours);
+    const span = punchEnd - punch.start;
+    if (!(span > 0) || !(punch.hours > 0)) continue;
+    let foreignSeconds = 0;
+    let pieces: Array<[number, number]> = [[punch.start, punchEnd]];
+    for (const segment of local) {
+      const segmentEnd = impliedEnd(segment.start, segment.end, segment.hours);
+      const next: Array<[number, number]> = [];
+      for (const [start, end] of pieces) {
+        const coverStart = Math.max(start, segment.start);
+        const coverEnd = Math.min(end, segmentEnd);
+        if (coverEnd <= coverStart) {
+          next.push([start, end]);
+          continue;
+        }
+        if (start < coverStart) next.push([start, coverStart]);
+        if (coverEnd < end) next.push([coverEnd, end]);
+      }
+      pieces = next;
+    }
+    for (const [start, end] of pieces) foreignSeconds += coveredSeconds(start, end, foreign);
+    covered += punch.hours * (foreignSeconds / span);
+  }
+  return covered;
+}
+
 function isAttendanceActivity(activity: string): boolean {
   return ATTENDANCE_ACTIVITY.test(activity.trim());
 }
@@ -635,6 +782,19 @@ function buildTech(
       });
       return;
     }
+    if (rules && attendance) {
+      push({
+        kind: "gap",
+        start: window.start,
+        end: window.end,
+        minutes: window.minutes,
+        detail,
+        suggested: "Review. Non-Pro attendance may or may not be valid.",
+        nonPro: buildNonProReview(startSeconds, endSeconds, segments, foreignSegments, shopId),
+        recommendation: null,
+      });
+      return;
+    }
     const peer = commentFromClockIn ? overlappingHelp(comment, startSeconds, endSeconds, name, peers) : null;
     if (peer) {
       const span = segmentSpan(peer.segment);
@@ -647,18 +807,6 @@ function buildTech(
         minutes: window.minutes,
         detail,
         recommendation: recommendationForPeer(window.start, window.end, window.minutes, peer, comment, open),
-      });
-      return;
-    }
-    if (rules && attendance) {
-      push({
-        kind: "gap",
-        start: window.start,
-        end: window.end,
-        minutes: window.minutes,
-        detail,
-        suggested: "Non-Pro attendance. Do not move a clock-in onto this row.",
-        recommendation: null,
       });
       return;
     }
@@ -809,7 +957,11 @@ function buildTech(
     });
   }
 
-  const clockedHours = round2(punches.reduce((sum, punch) => sum + punch.hours, 0) + orphans.reduce((sum, segment) => sum + segment.hours, 0));
+  const rawClocked = round2(punches.reduce((sum, punch) => sum + punch.hours, 0) + orphans.reduce((sum, segment) => sum + segment.hours, 0));
+  const coveredByOtherShops = foreignHoursInsidePunches(punches, segments, foreignSegments);
+  let clockedHours = round2(Math.max(0, rawClocked - coveredByOtherShops));
+  if (soHours - clockedHours > 0.05) clockedHours = soHours;
+  const foreignCoveredHours = round2(rawClocked - clockedHours);
   const orders: ServiceOrder[] = [];
   const seen = new Set<string>();
   for (const segment of segments) {
@@ -825,7 +977,14 @@ function buildTech(
   }
 
   return {
-    technician: { id: techId, shopId, name: name.trim().replace(/\s+/g, " "), clockedHours, soHours },
+    technician: {
+      id: techId,
+      shopId,
+      name: name.trim().replace(/\s+/g, " "),
+      clockedHours,
+      soHours,
+      ...(foreignCoveredHours > 0 ? { foreignCoveredHours } : {}),
+    },
     findings,
     orders,
     firstStart: punches[0]?.start ?? segments[0]?.start ?? 0,
@@ -841,7 +1000,8 @@ function buildTech(
  * with no service order stay on the timesheet Shop column.
  * When gaps are built, that tech’s service-order punches on every shop count as covered.
  * Another shop’s punch is timeline context only: not editable, and not added to this
- * shop’s clocked hours or service-order hours.
+ * shop’s service-order hours. Clocked hours for the shop leave out the part of a clock
+ * punch already covered by another shop’s service order, so utilization stays in scope.
  * Clocked hours are the punch hours, including elapsed hours already stored on an open punch.
  * Open findings say that end is elapsed scrape time. No clock-out is invented.
  * Service-order hours are the segment hours. A tech with none, and every named foreman, is omitted.
