@@ -2,7 +2,7 @@ import { shopName } from "@/lib/review";
 import { SHOPS, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 
-export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done" | "not_a_gap";
+export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done" | "not_a_gap" | "rejected";
 
 /** One accepted or overridden clock edit waiting for a Fullbay Time Stamp apply. */
 export interface FullbayQueueEdit {
@@ -27,6 +27,12 @@ export interface FullbayQueueEdit {
   currentClockIn?: string | null;
   currentClockOut?: string | null;
   /**
+   * Set when a manager rejects this failed line and leaves Fullbay unchanged.
+   * Older rows omit these. `applyNote` stays the original failure note.
+   */
+  failureRejectedAt?: string | null;
+  failureRejectedBy?: string | null;
+  /**
    * Non-Pro attendance choice. Absent on older queue rows and on ordinary gap edits.
    * `keep` is not queued. `rows` lists every service-order punch this choice changes.
    */
@@ -48,6 +54,18 @@ export interface FullbayEditBatch {
   edits: FullbayQueueEdit[];
   /** Absent on batches stored before auto sign-off. Treat a missing list as empty. */
   decided?: DecidedFinding[];
+  /** Absent on older batches. A failed line rejected in the app is recorded here. */
+  audit?: QueueAuditEvent[];
+}
+
+/** Who rejected a failed Fullbay line, and when. */
+export interface QueueAuditEvent {
+  at: string;
+  by: string;
+  action: "reject_failure";
+  findingId: string;
+  /** Original Fullbay failure note. */
+  note: string | null;
 }
 
 export interface FullbayQueueRequest {
@@ -87,9 +105,14 @@ export function isClockTime(value: string): boolean {
   return CLOCK.test(value);
 }
 
-/** Applied, already-done, and not-a-gap edits are finished. Pending and failed still block sign-off. */
+/** Applied, already-done, and not-a-gap edits are finished. A rejection after failure is finished too. Pending and failed still block sign-off. */
 export function editIsResolved(status: FullbayApplyStatus): boolean {
-  return status === "applied" || status === "already_done" || status === "not_a_gap";
+  return status === "applied" || status === "already_done" || status === "not_a_gap" || status === "rejected";
+}
+
+/** Pending and failed lines still need a Fullbay result. A rejection after failure does not. */
+export function editBlocksSignoff(status: FullbayApplyStatus): boolean {
+  return status === "pending" || status === "failed";
 }
 
 /**
@@ -274,7 +297,7 @@ function parseQueueEdit(item: unknown): { ok: true; value: FullbayQueueEdit } | 
   };
 }
 
-const NON_PRO_TYPES = new Set<NonProEditType>(["extend_prev_out", "move_next_in", "split", "move_to_so", "keep"]);
+const NON_PRO_TYPES = new Set<NonProEditType>(["extend_prev_out", "move_next_in", "split", "move_to_so", "partial", "keep"]);
 
 function parseNonPro(value: unknown): { ok: true; value: NonProEditPayload | undefined } | { ok: false; error: string } {
   if (value == null) return { ok: true, value: undefined };
@@ -282,7 +305,7 @@ function parseNonPro(value: unknown): { ok: true; value: NonProEditPayload | und
   const record = value as Record<string, unknown>;
   const editType = record.editType;
   if (typeof editType !== "string" || !NON_PRO_TYPES.has(editType as NonProEditType)) {
-    return { ok: false, error: "nonPro.editType must be extend_prev_out, move_next_in, split, move_to_so, or keep." };
+    return { ok: false, error: "nonPro.editType must be extend_prev_out, move_next_in, split, move_to_so, partial, or keep." };
   }
   if (editType === "keep") return { ok: false, error: "A keep decision is not a Fullbay edit." };
   const queuedType = editType as Exclude<NonProEditType, "keep">;
@@ -314,6 +337,11 @@ function parseNonPro(value: unknown): { ok: true; value: NonProEditPayload | und
       newClockOut: row.newClockOut as string,
     });
   }
+  const kept = parseKeptNonPro(record.keptClockIn, record.keptClockOut);
+  if (!kept.ok) return kept;
+  if (queuedType === "partial" && !kept.value) {
+    return { ok: false, error: "A partial Non-Pro edit needs keptClockIn and keptClockOut." };
+  }
   return {
     ok: true,
     value: {
@@ -321,8 +349,20 @@ function parseNonPro(value: unknown): { ok: true; value: NonProEditPayload | und
       originalClockIn: record.originalClockIn,
       originalClockOut: record.originalClockOut,
       rows,
+      ...(kept.value ?? {}),
     },
   };
+}
+
+function parseKeptNonPro(
+  clockIn: unknown,
+  clockOut: unknown,
+): { ok: true; value: { keptClockIn: string; keptClockOut: string } | undefined } | { ok: false; error: string } {
+  if (clockIn == null && clockOut == null) return { ok: true, value: undefined };
+  if (typeof clockIn !== "string" || !CLOCK.test(clockIn)) return { ok: false, error: "nonPro.keptClockIn must be HH:MM." };
+  if (typeof clockOut !== "string" || !CLOCK.test(clockOut)) return { ok: false, error: "nonPro.keptClockOut must be HH:MM." };
+  if (clockOut <= clockIn) return { ok: false, error: "nonPro.keptClockOut must be after keptClockIn." };
+  return { ok: true, value: { keptClockIn: clockIn, keptClockOut: clockOut } };
 }
 
 function requiredText(value: unknown, label: string): { ok: true; value: string } | { ok: false; error: string } {
@@ -352,14 +392,51 @@ export function unappliedEditsForShopDay(batches: FullbayEditBatch[], day: strin
   const matching = batches.filter((batch) => batch.days.includes(day) && (batch.shopId === "all" || batch.shopId === shopId));
   const latest = matching.sort(compareBatchDesc)[0];
   if (!latest) return [];
-  return latest.edits.filter((edit) => edit.day === day && edit.shopId === shopId && !editIsResolved(edit.status));
+  return latest.edits.filter((edit) => edit.day === day && edit.shopId === shopId && editBlocksSignoff(edit.status));
+}
+
+/** One pending or failed line named in the sign-off warning. */
+export interface SignoffLineBlock {
+  findingId: string;
+  day: string;
+  shopId: ShopId;
+  label: string;
+  status: FullbayApplyStatus;
+  /** Failed lines focus Reject (leave Fullbay as is). Other lines focus the row. */
+  focusId: string;
+}
+
+export const SIGNOFF_APPLY_PREFIX = "Fullbay apply is not confirmed for ";
+export const SIGNOFF_APPLY_SUFFIX = ". Mark the day done after each accepted edit is confirmed applied.";
+
+/** Element to focus when a warning that names this line is opened. */
+export function lineRevealFocusId(findingId: string, status: FullbayApplyStatus | null): string {
+  return status === "failed" ? `${findingId}-reject-failure` : `finding-${findingId}`;
+}
+
+export function signoffLineLabel(edit: Pick<FullbayQueueEdit, "techName" | "orderId" | "status">): string {
+  return `${edit.techName} ${edit.orderId} (${edit.status})`;
+}
+
+/** Pending and failed lines that block this shop day, in queue order. */
+export function signoffLineBlocks(batches: FullbayEditBatch[], day: string, shopId: ShopId): SignoffLineBlock[] {
+  return unappliedEditsForShopDay(batches, day, shopId).map((edit) => ({
+    findingId: edit.findingId,
+    day: edit.day,
+    shopId: edit.shopId,
+    label: signoffLineLabel(edit),
+    status: edit.status,
+    focusId: lineRevealFocusId(edit.findingId, edit.status),
+  }));
+}
+
+export function signoffApplyMessage(blocks: SignoffLineBlock[]): string | null {
+  if (blocks.length === 0) return null;
+  return `${SIGNOFF_APPLY_PREFIX}${blocks.map((block) => block.label).join(", ")}${SIGNOFF_APPLY_SUFFIX}`;
 }
 
 export function signoffApplyBlock(batches: FullbayEditBatch[], day: string, shopId: ShopId): string | null {
-  const edits = unappliedEditsForShopDay(batches, day, shopId);
-  if (edits.length === 0) return null;
-  const names = edits.map((edit) => `${edit.techName} ${edit.orderId} (${edit.status})`).join(", ");
-  return `Fullbay apply is not confirmed for ${names}. Mark the day done after each accepted edit is confirmed applied.`;
+  return signoffApplyMessage(signoffLineBlocks(batches, day, shopId));
 }
 
 export function applyConfirmations(
@@ -412,13 +489,58 @@ export function latestQueueEdit(batches: FullbayEditBatch[], findingId: string):
   return matches[0]?.edit ?? null;
 }
 
+/**
+ * Mark the latest failed edit for a finding as rejected. Fullbay is left as it is.
+ * The original failure note stays on the edit. The batch audit records who and when.
+ */
+export function rejectFailureInQueue(
+  batches: FullbayEditBatch[],
+  findingId: string,
+  by: string,
+  now: string,
+): { ok: true; batches: FullbayEditBatch[]; batch: FullbayEditBatch } | { ok: false; error: string } {
+  const actor = by.trim();
+  if (actor.length === 0) return { ok: false, error: "A name is required." };
+  if (Number.isNaN(Date.parse(now))) return { ok: false, error: "now must be an ISO timestamp." };
+  const matches = batches.flatMap((batch) => batch.edits.filter((edit) => edit.findingId === findingId).map((edit) => ({ edit, batch })));
+  matches.sort((a, b) => compareBatchDesc(a.batch, b.batch));
+  const match = matches[0];
+  if (!match) return { ok: false, error: "That line is not in the apply queue." };
+  if (match.edit.status !== "failed") return { ok: false, error: "Only a failed Fullbay line can be rejected." };
+  const note = match.edit.applyNote?.trim() ? match.edit.applyNote.trim() : null;
+  let updated: FullbayEditBatch | null = null;
+  const next = batches.map((batch) => {
+    if (batch.id !== match.batch.id) return batch;
+    const replacement: FullbayEditBatch = {
+      ...batch,
+      edits: batch.edits.map((edit) =>
+        edit.findingId === findingId
+          ? { ...edit, status: "rejected", failureRejectedAt: now, failureRejectedBy: actor }
+          : edit,
+      ),
+      audit: [...(batch.audit ?? []), { at: now, by: actor, action: "reject_failure", findingId, note }],
+    };
+    updated = replacement;
+    return replacement;
+  });
+  if (!updated) return { ok: false, error: "That line is not in the apply queue." };
+  return { ok: true, batches: next, batch: updated };
+}
+
 /** Review copy for a queued finding. Resolved and pending rows are not open actions. A failed row keeps its note. */
 export function reviewApplyText(edit: FullbayQueueEdit): string {
   if (edit.status === "pending") return "Waiting on Fullbay.";
   if (edit.status === "failed") return edit.applyNote ? `Fullbay apply failed. ${edit.applyNote}` : "Fullbay apply failed.";
+  if (edit.status === "rejected") return rejectedAfterFailureText(edit);
   if (edit.status === "not_a_gap") return notAGapText(edit);
   if (edit.status === "already_done") return alreadyDoneText(edit);
   return "Edits already updated";
+}
+
+/** A failed line the manager rejected. The original Fullbay note stays on the sentence. */
+export function rejectedAfterFailureText(edit: { applyNote?: string | null }): string {
+  const note = edit.applyNote?.trim() ?? "";
+  return note.length > 0 ? `Rejected after Fullbay failure. ${note}` : "Rejected after Fullbay failure.";
 }
 
 /** Label for a line that was not a real gap, so it adds no job time. */
@@ -562,7 +684,7 @@ export function shopDaysToAutoSignOff(
     if (required.length === 0) return false;
     const latest = latestEditsForShopDay(batches, pair.day, pair.shopId);
     for (const edit of latest.values()) {
-      if (edit.status === "pending" || edit.status === "failed") return false;
+      if (editBlocksSignoff(edit.status)) return false;
     }
     const decided = decidedFindingIds(batches, pair.day, pair.shopId);
     for (const [findingId, edit] of latest) {

@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConfirmView } from "@/components/confirm-view";
 import { DayBar } from "@/components/day-bar";
 import { ReviewView } from "@/components/review-view";
 import { SubmitConfirmDialog } from "@/components/submit-confirm-dialog";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { editsForSubmit, findingCanBeDecided, queueRequestForSubmit, shopDayLock, signoffApplyBlock, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
+import { editsForSubmit, findingCanBeDecided, latestQueueEdit, lineRevealFocusId, queueRequestForSubmit, shopDayLock, signoffApplyBlock, signoffLineBlocks, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { attest, buildPlan, buildSubmission, filterReports, markDone, signoffKey, submissionFingerprint, submitBlockers } from "@/lib/review";
 import { updateReview, useReviewSnapshot } from "@/lib/review-store";
 import { SEED } from "@/lib/seed";
@@ -34,6 +34,11 @@ export function Dashboard() {
   const [signoffError, setSignoffError] = useState<string | null>(null);
   const [queueBatches, setQueueBatches] = useState<FullbayEditBatch[] | null>(null);
   const [serverSignoffs, setServerSignoffs] = useState<RecordedSignoff[] | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectError, setRejectError] = useState<{ findingId: string; message: string } | null>(null);
+  const [reveal, setReveal] = useState<{ findingId: string; focusId: string } | null>(null);
+  const [highlightedFindingId, setHighlightedFindingId] = useState<string | null>(null);
+  const highlightTimer = useRef<number | null>(null);
 
   const reports = filterReports(SEED, state.shopId, state.days);
   const liveSubmission = buildSubmission(reports, state.decisions, state.shopId, state.days, state.submission?.submittedAt ?? "");
@@ -80,6 +85,23 @@ export function Dashboard() {
     });
   }, [serverSignoffs]);
 
+  useEffect(() => {
+    if (!queueBatches) return;
+    updateReview((current) => {
+      let changed = false;
+      const decisions = { ...current.decisions };
+      for (const batch of queueBatches) {
+        for (const edit of batch.edits) {
+          if (latestQueueEdit(queueBatches, edit.findingId)?.status !== "rejected") continue;
+          if (decisions[edit.findingId]?.kind === "reject") continue;
+          decisions[edit.findingId] = { kind: "reject", start: "", end: "" };
+          changed = true;
+        }
+      }
+      return changed ? { ...current, decisions } : current;
+    });
+  }, [queueBatches]);
+
   function setShop(shopId: ShopFilter) {
     setSubmitError(null);
     updateReview((current) => ({ ...current, shopId }));
@@ -108,6 +130,22 @@ export function Dashboard() {
     });
   }
 
+  function revealLine(findingId: string) {
+    const report = SEED.find((item) => item.findings.some((finding) => finding.id === findingId));
+    if (!report) return;
+    setSubmitConfirmCount(null);
+    updateReview((current) => ({
+      ...current,
+      view: "review",
+      shopId: current.shopId === "all" || current.shopId === report.shopId ? current.shopId : report.shopId,
+      days: current.days.includes(report.day) ? current.days : [report.day],
+    }));
+    setReveal({ findingId, focusId: lineRevealFocusId(findingId, latestQueueEdit(queueBatches ?? [], findingId)?.status ?? null) });
+    setHighlightedFindingId(findingId);
+    if (highlightTimer.current != null) window.clearTimeout(highlightTimer.current);
+    highlightTimer.current = window.setTimeout(() => setHighlightedFindingId(null), 4000);
+  }
+
   function setView(view: ViewId) {
     updateReview((current) => ({ ...current, view }));
   }
@@ -123,6 +161,41 @@ export function Dashboard() {
         signoffs: { ...current.signoffs, [key]: attest(current.signoffs[key], attestedValue) },
       };
     });
+  }
+
+  async function rejectFailure(findingId: string) {
+    setRejectError(null);
+    setRejectingId(findingId);
+    try {
+      const response = await fetch("/api/fullbay-edits/reject-failure", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ findingId }),
+      });
+      const body = (await response.json()) as { error?: string; autoSignedOff?: RecordedSignoff[] };
+      if (!response.ok) {
+        setRejectError({ findingId, message: body.error ?? "Could not record the rejection." });
+        return;
+      }
+      updateReview((current) => ({
+        ...current,
+        decisions: { ...current.decisions, [findingId]: { kind: "reject", start: "", end: "" } },
+      }));
+      if (body.autoSignedOff && body.autoSignedOff.length > 0) {
+        setServerSignoffs((current) => {
+          const list = current ?? [];
+          const additions = body.autoSignedOff!.filter(
+            (item) => !list.some((existing) => existing.day === item.day && existing.shopId === item.shopId),
+          );
+          return additions.length > 0 ? [...list, ...additions] : list;
+        });
+      }
+      await refreshQueue();
+    } catch {
+      setRejectError({ findingId, message: "Could not record the rejection." });
+    } finally {
+      setRejectingId(null);
+    }
   }
 
   async function refreshQueue(): Promise<FullbayEditBatch[] | null> {
@@ -291,7 +364,8 @@ export function Dashboard() {
         signoffs={state.signoffs}
         decisions={state.decisions}
         signoffError={signoffError}
-        applyBlock={(day, shopId) => (queueBatches ? signoffApplyBlock(queueBatches, day, shopId) : null)}
+        applyBlocks={(day, shopId) => (queueBatches ? signoffLineBlocks(queueBatches, day, shopId) : [])}
+        onRevealLine={revealLine}
         onShop={setShop}
         onSelectDay={selectDay}
         onOpenSummary={openSummary}
@@ -326,6 +400,12 @@ export function Dashboard() {
             isLocked={(day, shopId) => shopDayLock(queueBatches ?? [], signoffRecords, day, shopId) === "signed-off"}
             batches={queueBatches ?? []}
             onDecision={setDecision}
+            onRejectFailure={(findingId) => void rejectFailure(findingId)}
+            rejectingId={rejectingId}
+            rejectError={rejectError}
+            reveal={reveal}
+            highlightedFindingId={highlightedFindingId}
+            onRevealLine={revealLine}
             onSubmit={openSubmitConfirm}
           />
         </TabsContent>

@@ -1067,21 +1067,21 @@
     {
       "day": "2026-10-08",
       "shopId": "dayton",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "brayden-mapp",
           "name": "Brayden Mapp",
           "clockedHours": 10.07,
           "soHours": 10.01,
-          "addedMinutes": 0
+          "addedMinutes": 4
         },
         {
           "id": "chris-clark",
           "name": "Chris Clark",
           "clockedHours": 2.46,
           "soHours": 1.88,
-          "addedMinutes": 0
+          "addedMinutes": 15
         },
         {
           "id": "colby-purvis",
@@ -1095,28 +1095,28 @@
           "name": "Cole Lozan",
           "clockedHours": 10.19,
           "soHours": 10.13,
-          "addedMinutes": 0
+          "addedMinutes": 2
         },
         {
           "id": "mike-wooten",
           "name": "Mike Wooten",
           "clockedHours": 4.19,
           "soHours": 4.11,
-          "addedMinutes": 0
+          "addedMinutes": 5
         },
         {
           "id": "tanveer-dhaliwal",
           "name": "Tanveer Dhaliwal",
           "clockedHours": 9.08,
           "soHours": 9.05,
-          "addedMinutes": 0
+          "addedMinutes": 1
         },
         {
           "id": "zach-spencer",
           "name": "Zach Spencer",
           "clockedHours": 8.92,
           "soHours": 8.42,
-          "addedMinutes": 0
+          "addedMinutes": 30
         }
       ]
     },
@@ -1186,35 +1186,35 @@
     {
       "day": "2026-10-08",
       "shopId": "springfield",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "chris-queary",
           "name": "Chris Queary",
           "clockedHours": 10.01,
           "soHours": 5.89,
-          "addedMinutes": 0
+          "addedMinutes": 150
         },
         {
           "id": "gary-evans",
           "name": "Gary Evans",
           "clockedHours": 7.81,
           "soHours": 4.44,
-          "addedMinutes": 0
+          "addedMinutes": 202
         },
         {
           "id": "john-spichty",
           "name": "John Spichty",
           "clockedHours": 8.49,
           "soHours": 1.98,
-          "addedMinutes": 0
+          "addedMinutes": 11
         },
         {
           "id": "mike-wooten",
           "name": "Mike Wooten",
           "clockedHours": 5.55,
           "soHours": 2.58,
-          "addedMinutes": 0
+          "addedMinutes": 27
         }
       ]
     }

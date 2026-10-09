@@ -19,9 +19,12 @@ import {
   editIsResolved,
   findingCanBeDecided,
   latestQueueEdit,
+  rejectFailureInQueue,
   minutesPickedUp,
   reviewApplyText,
+  lineRevealFocusId,
   signoffApplyBlock,
+  signoffLineBlocks,
   submissionToQueueRequest,
   submitRefusal,
   type FullbayEditBatch,
@@ -404,6 +407,89 @@ describe("auto sign-off", () => {
     assert.deepEqual(pending, []);
   });
 
+  it("rejects a failed line in the batch audit and then signs the day off", () => {
+    const note = "Blocked: action item completed/SO invoiced; Chris's login lacks permission. Row unchanged.";
+    const failed = { ...sampleEdit("b", friday, "dayton", "failed"), applyNote: note, techName: "Jack Eversole", orderId: "G-88822" };
+    const stored = batch("1", [sampleEdit("a", friday, "dayton", "applied"), failed], decided);
+    const retry = { findingId: "b", day: friday, shopId: "dayton" as const };
+    assert.match(signoffApplyBlock([stored], friday, "dayton") ?? "", /Jack Eversole G-88822 \(failed\)/);
+    const jackBlocks = signoffLineBlocks([stored], friday, "dayton");
+    assert.equal(jackBlocks.length, 1);
+    assert.equal(jackBlocks[0]?.findingId, "b");
+    assert.equal(jackBlocks[0]?.label, "Jack Eversole G-88822 (failed)");
+    assert.equal(jackBlocks[0]?.focusId, "b-reject-failure");
+    assert.equal(lineRevealFocusId("b", "pending"), "finding-b");
+    assert.equal(findingCanBeDecided([stored], "b"), true);
+    assert.equal(editsForSubmit([stored], [retry]).length, 1);
+    assert.equal(submitRefusal([stored], [], { shopId: "dayton", days: [friday], edits: [retry] }), null);
+    assert.match(submitRefusal([stored], [], { shopId: "dayton", days: [friday], edits: [] }) ?? "", /Already submitted/);
+
+    const rejected = rejectFailureInQueue([stored], "b", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(rejected.ok, true);
+    if (!rejected.ok) return;
+    const line = rejected.batch.edits.find((edit) => edit.findingId === "b");
+    assert.equal(line?.status, "rejected");
+    assert.equal(line?.applyNote, note);
+    assert.equal(line?.failureRejectedAt, "2026-10-09T14:00:00.000Z");
+    assert.equal(line?.failureRejectedBy, "Luke");
+    assert.equal(rejected.batch.edits.find((edit) => edit.findingId === "a")?.status, "applied");
+    assert.deepEqual(rejected.batch.audit, [
+      { at: "2026-10-09T14:00:00.000Z", by: "Luke", action: "reject_failure", findingId: "b", note },
+    ]);
+    assert.equal(signoffApplyBlock(rejected.batches, friday, "dayton"), null);
+    assert.equal(findingCanBeDecided(rejected.batches, "b"), false);
+    assert.equal(editsForSubmit(rejected.batches, [retry]).length, 0);
+    assert.match(submitRefusal(rejected.batches, [], { shopId: "dayton", days: [friday], edits: [retry] }) ?? "", /Already submitted/);
+    assert.equal(reviewApplyText(line!), `Rejected after Fullbay failure. ${note}`);
+    assert.deepEqual(shopDaysToAutoSignOff(rejected.batches, scope, required), scope);
+
+    const again = rejectFailureInQueue(rejected.batches, "b", "Luke", "2026-10-09T14:05:00.000Z");
+    assert.equal(again.ok, false);
+    const pendingLine = rejectFailureInQueue([batch("1", [sampleEdit("b", friday, "dayton", "pending")], decided)], "b", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(pendingLine.ok, false);
+    const appliedLine = rejectFailureInQueue([batch("1", [sampleEdit("b", friday, "dayton", "applied")], decided)], "b", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(appliedLine.ok, false);
+    const missing = rejectFailureInQueue([stored], "missing", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(missing.ok, false);
+    if (!missing.ok) assert.equal(missing.error, "That line is not in the apply queue.");
+    const unnamed = rejectFailureInQueue([stored], "b", "  ", "2026-10-09T14:00:00.000Z");
+    assert.equal(unnamed.ok, false);
+
+    const older = batch("older", [{ ...sampleEdit("b", friday, "dayton", "failed"), applyNote: "old" }], decided);
+    older.submittedAt = "2026-10-07T12:00:00.000Z";
+    const newer = batch("newer", [{ ...sampleEdit("b", friday, "dayton", "failed"), applyNote: note }], decided);
+    const latestOnly = rejectFailureInQueue([older, newer], "b", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(latestOnly.ok, true);
+    if (!latestOnly.ok) return;
+    assert.equal(latestOnly.batches.find((item) => item.id === "older")?.edits[0]?.status, "failed");
+    assert.equal(latestOnly.batches.find((item) => item.id === "newer")?.edits[0]?.status, "rejected");
+    assert.equal(latestOnly.batches.find((item) => item.id === "older")?.audit, undefined);
+  });
+
+  it("lists every pending and failed line in the sign-off warning", () => {
+    const failed = { ...sampleEdit("jack", friday, "greenville", "failed"), techName: "Jack Eversole", orderId: "G-88822" };
+    const pending = { ...sampleEdit("gage", friday, "greenville", "pending"), techName: "Gage Wills", orderId: "G-89173" };
+    const applied = sampleEdit("done", friday, "greenville", "applied");
+    const blocks = signoffLineBlocks(
+      [batch("1", [applied, failed, pending], [], "greenville")],
+      friday,
+      "greenville",
+    );
+    assert.deepEqual(
+      blocks.map((block) => block.label),
+      ["Jack Eversole G-88822 (failed)", "Gage Wills G-89173 (pending)"],
+    );
+    assert.deepEqual(
+      blocks.map((block) => block.focusId),
+      ["jack-reject-failure", "finding-gage"],
+    );
+    assert.equal(
+      signoffApplyBlock([batch("1", [applied, failed, pending], [], "greenville")], friday, "greenville"),
+      "Fullbay apply is not confirmed for Jack Eversole G-88822 (failed), Gage Wills G-89173 (pending). Mark the day done after each accepted edit is confirmed applied.",
+    );
+    assert.equal(signoffLineBlocks([batch("1", [applied], [], "greenville")], friday, "greenville").length, 0);
+  });
+
   it("stays open when a required finding has no decision", () => {
     const missing = shopDaysToAutoSignOff(
       [batch("1", [sampleEdit("a", friday, "dayton", "applied")], [{ findingId: "a", day: friday, shopId: "dayton" }])],
@@ -544,6 +630,87 @@ describe("auto sign-off", () => {
       assert.equal(split.value.edits[0]?.nonPro?.rows.length, 2);
       assert.equal(split.value.edits[0]?.nonPro?.originalClockIn, "08:00");
     }
+
+    const partial = parseQueueRequest({
+      submittedAt: "2026-10-08T15:00:00.000Z",
+      shopId: "dayton",
+      days: ["2026-10-08"],
+      edits: [
+        {
+          findingId: "meeting",
+          day: "2026-10-08",
+          shopId: "dayton",
+          techName: "Chris Clark",
+          orderId: "M-90566",
+          work: "Onsite Travel",
+          decision: "accept",
+          newClockIn: "07:11",
+          newClockOut: "07:50",
+          minutes: 7,
+          nonPro: {
+            editType: "partial",
+            originalClockIn: "07:00",
+            originalClockOut: "07:18",
+            keptClockIn: "07:00",
+            keptClockOut: "07:10",
+            rows: [
+              {
+                orderId: "M-90566",
+                work: "Onsite Travel",
+                shopId: "mobile",
+                clockIn: "07:18",
+                clockOut: "07:50",
+                newClockIn: "07:11",
+                newClockOut: "07:50",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(partial.ok, true);
+    if (partial.ok) {
+      assert.equal(partial.value.edits[0]?.nonPro?.editType, "partial");
+      assert.equal(partial.value.edits[0]?.nonPro?.keptClockIn, "07:00");
+      assert.equal(partial.value.edits[0]?.nonPro?.keptClockOut, "07:10");
+      assert.equal(partial.value.edits[0]?.nonPro?.rows[0]?.newClockIn, "07:11");
+    }
+    const partialMissingKept = parseQueueRequest({
+      submittedAt: "2026-10-08T15:00:00.000Z",
+      shopId: "dayton",
+      days: ["2026-10-08"],
+      edits: [
+        {
+          findingId: "meeting",
+          day: "2026-10-08",
+          shopId: "dayton",
+          techName: "Chris Clark",
+          orderId: "M-90566",
+          work: "Onsite Travel",
+          decision: "accept",
+          newClockIn: "07:11",
+          newClockOut: "07:50",
+          minutes: 7,
+          nonPro: {
+            editType: "partial",
+            originalClockIn: "07:00",
+            originalClockOut: "07:18",
+            rows: [
+              {
+                orderId: "M-90566",
+                work: "Onsite Travel",
+                shopId: "mobile",
+                clockIn: "07:18",
+                clockOut: "07:50",
+                newClockIn: "07:11",
+                newClockOut: "07:50",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(partialMissingKept.ok, false);
 
     const kept = parseQueueRequest({
       submittedAt: "2026-10-08T15:00:00.000Z",
@@ -1012,6 +1179,105 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
       assert.equal(stored.length, 1);
       assert.equal(stored[0]?.doneAt, manual.doneAt);
       assert.equal(stored[0]?.note, null);
+    });
+  });
+
+  it("rejects one failed line after submit and signs the day off", async () => {
+    await withStores(async () => {
+      const pair = seededPair(2);
+      const note = "Blocked: action item completed/SO invoiced. Row unchanged.";
+      const { POST } = await import("@/app/api/fullbay-edits/route");
+      const { POST: confirm } = await import("@/app/api/fullbay-edits/confirm/route");
+      const { POST: rejectFailure } = await import("@/app/api/fullbay-edits/reject-failure/route");
+      const submitted = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            submittedAt: "2026-10-09T14:00:00.000Z",
+            shopId: pair.shopId,
+            days: [pair.day],
+            edits: [acceptedEdit(pair.ids[0]!, pair.day, pair.shopId), acceptedEdit(pair.ids[1]!, pair.day, pair.shopId)],
+            decided: decidedRows(pair.day, pair.shopId, pair.ids),
+          }),
+        }),
+      );
+      const submittedBody = (await submitted.json()) as { id?: string };
+      const confirmed = await confirm(
+        new Request("http://127.0.0.1/api/fullbay-edits/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            batchId: submittedBody.id,
+            results: [
+              { findingId: pair.ids[0], status: "already_done" },
+              { findingId: pair.ids[1], status: "failed", applyNote: note },
+            ],
+          }),
+        }),
+      );
+      const confirmedBody = (await confirmed.json()) as { autoSignedOff?: unknown[] };
+      assert.equal(confirmed.status, 200);
+      assert.deepEqual(confirmedBody.autoSignedOff, []);
+      assert.match(signoffApplyBlock(await readQueue(), pair.day, pair.shopId) ?? "", /\(failed\)/);
+      assert.equal(findingCanBeDecided(await readQueue(), pair.ids[1]!), true);
+
+      const missing = await rejectFailure(
+        new Request("http://127.0.0.1/api/fullbay-edits/reject-failure", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ findingId: "missing-line" }),
+        }),
+      );
+      assert.equal(missing.status, 404);
+
+      const saved = await rejectFailure(
+        new Request("http://127.0.0.1/api/fullbay-edits/reject-failure", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Basic ${Buffer.from("Luke:secret").toString("base64")}`,
+          },
+          body: JSON.stringify({ findingId: pair.ids[1] }),
+        }),
+      );
+      assert.equal(saved.status, 200);
+      const savedBody = (await saved.json()) as {
+        autoSignedOff?: { note: string | null }[];
+        batch?: {
+          audit?: { by: string; action: string; findingId: string; note: string | null }[];
+          edits: { findingId: string; status: string; applyNote: string | null; failureRejectedBy: string | null }[];
+        };
+      };
+      assert.equal(savedBody.autoSignedOff?.length, 1);
+      assert.equal(savedBody.autoSignedOff?.[0]?.note, AUTO_SIGNOFF_NOTE);
+      const line = savedBody.batch?.edits.find((edit) => edit.findingId === pair.ids[1]);
+      assert.equal(line?.status, "rejected");
+      assert.equal(line?.applyNote, note);
+      assert.equal(line?.failureRejectedBy, "Luke");
+      assert.equal(savedBody.batch?.audit?.[0]?.action, "reject_failure");
+      assert.equal(savedBody.batch?.audit?.[0]?.findingId, pair.ids[1]);
+      assert.equal(savedBody.batch?.audit?.[0]?.note, note);
+      assert.equal(signoffApplyBlock(await readQueue(), pair.day, pair.shopId), null);
+      assert.equal(findingCanBeDecided(await readQueue(), pair.ids[1]!), false);
+      assert.equal(editsForSubmit(await readQueue(), [{ findingId: pair.ids[1]!, day: pair.day, shopId: pair.shopId }]).length, 0);
+
+      const again = await rejectFailure(
+        new Request("http://127.0.0.1/api/fullbay-edits/reject-failure", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ findingId: pair.ids[1] }),
+        }),
+      );
+      assert.equal(again.status, 409);
+      const appliedLine = await rejectFailure(
+        new Request("http://127.0.0.1/api/fullbay-edits/reject-failure", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ findingId: pair.ids[0] }),
+        }),
+      );
+      assert.equal(appliedLine.status, 409);
     });
   });
 

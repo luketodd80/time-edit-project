@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { defaultPendingDays, formatDay, formatDayShort, formatTimestamp, reviewWindow, todayInNewYork } from "@/lib/dates";
+import { SIGNOFF_APPLY_SUFFIX, signoffApplyMessage, type SignoffLineBlock } from "@/lib/fullbay-edit-queue";
 import { auditLabel, auditStatus, dayChipState, dayUtilization, shopName, shopsInScope, signoffKey } from "@/lib/review";
 import { SEED } from "@/lib/seed";
 import type { Decision, ShopFilter, ShopId, Signoff } from "@/lib/types";
@@ -19,7 +20,8 @@ export function DayBar({
   signoffs,
   decisions,
   signoffError,
-  applyBlock,
+  applyBlocks,
+  onRevealLine,
   onShop,
   onSelectDay,
   onOpenSummary,
@@ -31,7 +33,8 @@ export function DayBar({
   signoffs: Record<string, Signoff>;
   decisions: Record<string, Decision>;
   signoffError: string | null;
-  applyBlock?: (day: string, shopId: ShopId) => string | null;
+  applyBlocks?: (day: string, shopId: ShopId) => SignoffLineBlock[];
+  onRevealLine: (findingId: string) => void;
   onShop: (shopId: ShopFilter) => void;
   onSelectDay: (day: string) => void;
   onOpenSummary: (day: string) => void;
@@ -43,6 +46,14 @@ export function DayBar({
   const dueDays = defaultPendingDays(today);
   const shops = shopsInScope(shopId, SEED);
   const loadedShops = shopsInScope("all", SEED);
+  const signoffCards = [...days].sort().flatMap((day) =>
+    shops.map((id) => ({
+      day,
+      id,
+      signoff: signoffs[signoffKey(day, id)],
+      blocks: applyBlocks?.(day, id) ?? [],
+    })),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -162,19 +173,17 @@ export function DayBar({
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-medium">Sign-off</h2>
         <p className="text-sm text-muted-foreground">
-          Check that you approve the utilization numbers, then mark the day done. Accepted edits for that shop and day must be confirmed applied in Fullbay first. Rejected edits do not block sign-off. The day cannot be marked done without the utilization check. When every finding has a decision and every accepted edit is applied, or the submit rejected every finding, the day is marked done on its own. A signed-off day stays locked: its decisions cannot be changed and it cannot be submitted again.
+          Check that you approve the utilization numbers, then mark the day done. Accepted edits for that shop and day must be confirmed applied in Fullbay first. Rejected edits do not block sign-off. A line that failed in Fullbay can be rejected from Review, which leaves Fullbay as it is and clears this block. The day cannot be marked done without the utilization check. When every finding has a decision and every accepted edit is applied, already done, or rejected after a Fullbay failure, or the submit rejected every finding, the day is marked done on its own. A signed-off day stays locked: its decisions cannot be changed and it cannot be submitted again.
         </p>
         {signoffError ? (
           <p role="alert" className="text-sm text-destructive">
-            {signoffError}
+            <SignoffWarning message={signoffError} blocks={blocksForMessage(signoffCards, signoffError)} onRevealLine={onRevealLine} />
           </p>
         ) : null}
         <div className="grid gap-3">
-          {[...days].sort().map((day) =>
-            shops.map((id) => {
-              const signoff = signoffs[signoffKey(day, id)];
+          {signoffCards.map(({ day, id, signoff, blocks }) => {
               const inputId = `approve-${day}-${id}`;
-              const blocked = applyBlock?.(day, id) ?? null;
+              const blocked = blocks.length > 0;
               return (
                 <div key={`${day}-${id}`} className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-start gap-3">
@@ -199,18 +208,51 @@ export function DayBar({
                     </p>
                   ) : (
                     <div className="flex max-w-md flex-col items-start gap-2">
-                      <Button type="button" disabled={!signoff?.attested || blocked !== null} onClick={() => onMarkDone(day, id)}>
+                      <Button type="button" disabled={!signoff?.attested || blocked} onClick={() => onMarkDone(day, id)}>
                         Mark day done
                       </Button>
-                      {blocked ? <p className="text-sm text-destructive">{blocked}</p> : null}
+                      {blocked ? (
+                        <p className="text-sm text-destructive">
+                          <SignoffWarning message={signoffApplyMessage(blocks) ?? ""} blocks={blocks} onRevealLine={onRevealLine} />
+                        </p>
+                      ) : null}
                     </div>
                   )}
                 </div>
               );
-            }),
-          )}
+            })}
         </div>
       </section>
     </div>
+  );
+}
+
+function blocksForMessage(cards: { blocks: SignoffLineBlock[] }[], message: string): SignoffLineBlock[] {
+  return cards.find((card) => signoffApplyMessage(card.blocks) === message)?.blocks ?? [];
+}
+
+function SignoffWarning({
+  message,
+  blocks,
+  onRevealLine,
+}: {
+  message: string;
+  blocks: SignoffLineBlock[];
+  onRevealLine: (findingId: string) => void;
+}) {
+  if (blocks.length === 0) return message;
+  return (
+    <>
+      Fullbay apply is not confirmed for{" "}
+      {blocks.map((block, index) => (
+        <span key={block.findingId}>
+          {index > 0 ? ", " : null}
+          <button type="button" className="underline decoration-destructive/50 underline-offset-2 hover:decoration-destructive" onClick={() => onRevealLine(block.findingId)}>
+            {block.label}
+          </button>
+        </span>
+      ))}
+      {SIGNOFF_APPLY_SUFFIX}
+    </>
   );
 }

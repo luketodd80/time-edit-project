@@ -9,7 +9,8 @@ function isShopFilter(value: unknown): value is ShopFilter {
   return value === "all" || (typeof value === "string" && SHOP_IDS.has(value));
 }
 
-const NON_PRO_TYPES = new Set(["extend_prev_out", "move_next_in", "split", "move_to_so", "keep"]);
+const NON_PRO_TYPES = new Set(["extend_prev_out", "move_next_in", "split", "move_to_so", "partial", "keep"]);
+const NON_PRO_REMAINDERS = new Set(["previous", "next", "both"]);
 
 function isDecision(value: unknown): value is Decision {
   if (!value || typeof value !== "object") return false;
@@ -28,6 +29,9 @@ function cleanDecision(decision: Decision): Decision {
   if (typeof decision.split === "string" && decision.split.length > 0) base.split = decision.split;
   if (typeof decision.targetOrderId === "string" && decision.targetOrderId.trim().length > 0) {
     base.targetOrderId = decision.targetOrderId.trim();
+  }
+  if (decision.nonProRemainder && NON_PRO_REMAINDERS.has(decision.nonProRemainder)) {
+    base.nonProRemainder = decision.nonProRemainder;
   }
   base.nonProEditType = decision.nonProEditType;
   return base;

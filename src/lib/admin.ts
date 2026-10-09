@@ -336,7 +336,7 @@ function buildCell(
     }
   }
 
-  const counts = { applied: 0, failed: 0, pending: 0, already_done: 0, not_a_gap: 0 };
+  const counts: Record<FullbayApplyStatus, number> = { pending: 0, applied: 0, failed: 0, already_done: 0, not_a_gap: 0, rejected: 0 };
   for (const edit of latest.values()) counts[edit.status] += 1;
   const rejected = hasDecided ? [...decided].filter((id) => !latest.has(id)).length : null;
   const signoff = signoffs.find((item) => item.day === day && item.shopId === shopId && item.doneAt);

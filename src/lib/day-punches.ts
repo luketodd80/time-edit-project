@@ -56,8 +56,8 @@ function latestApplyStatus(batches: FullbayEditBatch[], findingId: string): Full
 }
 
 function statusFor(decision: Decision, batches: FullbayEditBatch[], findingId: string): PunchEditStatus {
-  if (decision.kind === "reject") return "rejected";
   const status = latestApplyStatus(batches, findingId);
+  if (status === "rejected" || decision.kind === "reject") return "rejected";
   if (status === "applied") return "applied";
   if (status === "already_done" || status === "not_a_gap") return "already_done";
   return "accepted";

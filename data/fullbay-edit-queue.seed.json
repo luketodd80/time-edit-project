@@ -2507,6 +2507,696 @@
           "shopId": "covington"
         }
       ]
+    },
+    {
+      "id": "674a7734-f1b4-4382-b81d-7ca0f1c9f2e7",
+      "submittedAt": "2026-10-09T13:36:14.614Z",
+      "shopId": "dayton",
+      "days": [
+        "2026-10-08"
+      ],
+      "edits": [
+        {
+          "findingId": "2026-10-08-dayton-cole-lozan-05",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Cole Lozan",
+          "orderId": "D-90409",
+          "work": "10/5 If driver try's to p ...",
+          "decision": "accept",
+          "newClockIn": "10:33",
+          "newClockOut": "10:35",
+          "minutes": 2,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path A: D-90409 In 10:34:54AM -> 10:33:00AM (target 10:33; prior D-90434 Out 10:32:42AM). Out 12:26:42PM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-dayton-mike-wooten-05",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Mike Wooten",
+          "orderId": "D-89514",
+          "work": "Drive to unit (Service Ca ...",
+          "decision": "accept",
+          "newClockIn": "11:02",
+          "newClockOut": "11:07",
+          "minutes": 5,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path B (Non-Pro/extend-Out): next punch is Springfield Non-Pro 'help out with parts' at 11:06:31AM, so extended D-89514 Drive to unit Out 11:01:54AM -> 11:06:30AM (just before Non-Pro; gap end 11:07 would overlap). In 9:14:09AM unchanged; Non-Pro untouched. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-dayton-brayden-mapp-01",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Brayden Mapp",
+          "orderId": "D-90655",
+          "work": "10/7 Alignment (3-axle) T ...",
+          "decision": "accept",
+          "newClockIn": "06:59",
+          "newClockOut": "07:00",
+          "minutes": 1,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path A: D-90655 In 7:00:25AM -> 6:59:00AM (Clocked start 6:58:41AM). Out 7:45:59AM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-dayton-brayden-mapp-04",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Brayden Mapp",
+          "orderId": "D-90598",
+          "work": "Driver side steer wheel s ...",
+          "decision": "accept",
+          "newClockIn": "07:57",
+          "newClockOut": "07:58",
+          "minutes": 1,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path A: D-90598 In 7:57:32AM -> 7:57:00AM (prior D-90506 Out 7:56:32AM). Out 7:59:22AM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-dayton-brayden-mapp-06",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Brayden Mapp",
+          "orderId": "D-90429",
+          "work": "Replace drive axle brakes",
+          "decision": "accept",
+          "newClockIn": "07:59",
+          "newClockOut": "08:01",
+          "minutes": 2,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path A: D-90429 In 8:00:44AM -> 8:00:00AM (target 07:59 overlapped prior D-90598 Out 7:59:22AM; bumped to next minute). Out 3:05:24PM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-dayton-tanveer-dhaliwal-03",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Tanveer Dhaliwal",
+          "orderId": "D-90733",
+          "work": "Unit is loosing boost whe ...",
+          "decision": "accept",
+          "newClockIn": "09:44",
+          "newClockOut": "09:45",
+          "minutes": 1,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path A: D-90733 In 9:44:58AM -> 9:44:00AM (prior D-90499 Out 9:43:36AM). Out 12:41:27PM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-dayton-chris-clark-04",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Chris Clark",
+          "orderId": "D-90151",
+          "work": "Remove and replace door l ...",
+          "decision": "accept",
+          "newClockIn": "09:22",
+          "newClockOut": "09:34",
+          "minutes": 12,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path A: D-90151 door In 9:34:18AM -> 9:22:00AM (prior D-90273 Out 9:21:58AM). Out 10:03:21AM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-dayton-chris-clark-07",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Chris Clark",
+          "orderId": "D-90151",
+          "work": "Install new roof vent cap",
+          "decision": "accept",
+          "newClockIn": "10:41",
+          "newClockOut": "10:44",
+          "minutes": 3,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path B: no D-90151 punch after gap (next is M-90679 at 10:44:15AM), so extended roof vent Out 10:40:44AM -> 10:44:00AM. In 10:03:29AM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-dayton-zach-spencer-05",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Zach Spencer",
+          "orderId": "D-90272",
+          "work": "Steam clean and inspect f ...",
+          "decision": "accept",
+          "newClockIn": "12:54",
+          "newClockOut": "13:18",
+          "minutes": 24,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path A: afternoon D-90272 In 1:17:40PM -> 12:54:30PM (target 12:54 was before Clocked start 12:54:24PM; set just after). Out 1:47:31PM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-dayton-zach-spencer-07",
+          "day": "2026-10-08",
+          "shopId": "dayton",
+          "shopName": "Dayton",
+          "techName": "Zach Spencer",
+          "orderId": "D-88889",
+          "work": "Replace engine",
+          "decision": "accept",
+          "newClockIn": "13:48",
+          "newClockOut": "13:54",
+          "minutes": 6,
+          "status": "applied",
+          "appliedAt": "2026-10-09T13:43:48.891Z",
+          "applyNote": "Path A: D-88889 In 1:53:41PM -> 1:48:00PM (prior D-90272 Out 1:47:31PM). Out 3:01:31PM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        }
+      ],
+      "decided": [
+        {
+          "findingId": "2026-10-08-dayton-cole-lozan-05",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-mike-wooten-05",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-brayden-mapp-01",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-brayden-mapp-04",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-brayden-mapp-06",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-tanveer-dhaliwal-03",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-chris-clark-04",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-chris-clark-07",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-zach-spencer-05",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-zach-spencer-07",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        },
+        {
+          "findingId": "2026-10-08-dayton-chris-clark-01",
+          "day": "2026-10-08",
+          "shopId": "dayton"
+        }
+      ]
+    },
+    {
+      "id": "840f190b-8a0b-40cb-b3ba-2f993f34c516",
+      "submittedAt": "2026-10-09T15:15:39.801Z",
+      "shopId": "springfield",
+      "days": [
+        "2026-10-08"
+      ],
+      "edits": [
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-01",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Gary Evans",
+          "orderId": "S-90708",
+          "work": "Right rear axle gasket le ...",
+          "decision": "accept",
+          "newClockIn": "06:56",
+          "newClockOut": "07:11",
+          "minutes": 15,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90708 Clock In 7:11:28AM -> 6:56:20AM (just after Clocked start 6:56:14); Out 7:54:42AM kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-03",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Gary Evans",
+          "orderId": "S-90507",
+          "work": "u-joint # 1and 2",
+          "decision": "accept",
+          "newClockIn": "07:55",
+          "newClockOut": "09:40",
+          "minutes": 105,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90507 u-joint Clock In 9:39:35AM -> 8:46:00AM; Out 11:19:57AM kept. Partial: 7:55 not possible because a blank-SO 'popping coming from front' punch (7:54:42-8:45:40AM, no action item, never modified) occupies that window; left it untouched for a manager to assign.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-05",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Gary Evans",
+          "orderId": "S-90507",
+          "work": "u-joint # 1and 2",
+          "decision": "accept",
+          "newClockIn": "11:20",
+          "newClockOut": "11:52",
+          "minutes": 32,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90507 short row Clock In 11:51:53AM -> 11:20:00AM; Out 11:52:14AM kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-11",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Gary Evans",
+          "orderId": "S-90739",
+          "work": "pick up and drop off truc ...",
+          "decision": "accept",
+          "newClockIn": "12:30",
+          "newClockOut": "12:33",
+          "minutes": 3,
+          "status": "already_done",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "Not edited: Andy Nelson reworked Gary's S-90739 punches 10/9 10:25-10:31AM (pick up row now 12:32:55-12:55:22PM). Left the manager's edits as-is.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-14",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Gary Evans",
+          "orderId": "S-90739",
+          "work": "pick up and drop off truc ...",
+          "decision": "accept",
+          "newClockIn": "13:57",
+          "newClockOut": "14:09",
+          "minutes": 12,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "Already updated in Fullbay: Andy Nelson rebuilt S-90739 punches 10/9 (Bay Door 12:55:23-1:10:50, Fed Insp 1:10:51-1:20:08, pick up 1:20:09-2:08:42PM), covering the gap.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-19",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Gary Evans",
+          "orderId": "S-90507",
+          "work": "Shake in the drive line,  ...",
+          "decision": "accept",
+          "newClockIn": "14:23",
+          "newClockOut": "14:42",
+          "minutes": 19,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90507 Shake Clock In 2:41:36PM -> 2:24:00PM (+1 min past prior Out 2:23:28); Out 2:42:35PM kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-22",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Gary Evans",
+          "orderId": "S-90507",
+          "work": "Shake in the drive line,  ...",
+          "decision": "accept",
+          "newClockIn": "14:44",
+          "newClockOut": "15:00",
+          "minutes": 16,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "Path B: no punch after; S-90507 Shake Clock Out 2:44:24PM -> 2:59:57PM (shift end); In 2:42:42PM kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-chris-queary-01",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Chris Queary",
+          "orderId": "S-90692",
+          "work": "Coolant leak under cab, C ...",
+          "decision": "accept",
+          "newClockIn": "06:58",
+          "newClockOut": "07:02",
+          "minutes": 4,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90692 Clock In 7:01:59AM -> 6:58:30AM (after Clocked start 6:58:20); Out 7:14:19AM kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-chris-queary-03",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Chris Queary",
+          "orderId": "S-90507",
+          "work": "u-joint # 1and 2",
+          "decision": "accept",
+          "newClockIn": "07:14",
+          "newClockOut": "09:40",
+          "minutes": 146,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90507 u-joint Clock In 9:39:55AM -> 8:46:00AM; Out 11:19:57AM kept. Partial: blank-SO 'popping coming from front' punch (7:55:43-8:45:41AM, no action item, never modified) blocks earlier start; 7:14:19-7:55:43AM remains uncovered for a manager.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-04",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "John Spichty",
+          "orderId": "S-90695",
+          "work": "Check in Inspection (all  ...",
+          "decision": "accept",
+          "newClockIn": "10:20",
+          "newClockOut": "10:21",
+          "minutes": 1,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "Path B (Non-Pro next at 10:21:23): S-90695 Clock Out 10:19:30AM -> 10:21:00AM; In kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-07",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "John Spichty",
+          "orderId": "S-90746",
+          "work": "park brake not working",
+          "decision": "accept",
+          "newClockIn": "12:58",
+          "newClockOut": "13:00",
+          "minutes": 2,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90746 Clock In 1:00:25PM -> 12:58:00PM (after Clocked start 12:57:32); Out kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-09",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "John Spichty",
+          "orderId": "S-90746",
+          "work": "park brake not working",
+          "decision": "accept",
+          "newClockIn": "13:34",
+          "newClockOut": "13:35",
+          "minutes": 1,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90746 Clock In 1:34:44PM -> 1:34:00PM (prior Out 1:33:31); Out kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-11",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "John Spichty",
+          "orderId": "S-90746",
+          "work": "park brake not working",
+          "decision": "accept",
+          "newClockIn": "13:41",
+          "newClockOut": "13:48",
+          "minutes": 7,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "Path B (Non-Pro 'cleaning up' at 1:47:43): same S-90746 row Clock Out 1:40:43PM -> 1:47:42PM.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-04",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Mike Wooten",
+          "orderId": "S-90746",
+          "work": "park brake not working",
+          "decision": "accept",
+          "newClockIn": "13:34",
+          "newClockOut": "14:08",
+          "minutes": 34,
+          "status": "failed",
+          "appliedAt": null,
+          "applyNote": "Not saved: extending S-90746 park brake Out 1:33:31PM -> 2:08:00PM triggered Fullbay's overlap-with-another-time-entry warning; declined per rules, row unchanged (1:02:09-1:33:31PM). Needs a manager to review Mike's 1:33-2:08 punches.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-07",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Mike Wooten",
+          "orderId": "S-90767",
+          "work": "Unit info needed (and pic ...",
+          "decision": "accept",
+          "newClockIn": "15:17",
+          "newClockOut": "15:26",
+          "minutes": 9,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90767 Clock In 3:25:35PM -> 3:17:00PM (prior Out 3:16:37); Out kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-09",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Mike Wooten",
+          "orderId": "S-90758",
+          "work": "Alignment Steer Axle",
+          "decision": "accept",
+          "newClockIn": "15:29",
+          "newClockOut": "15:36",
+          "minutes": 7,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "S-90758 Alignment Clock In 3:35:52PM -> 3:29:00PM; Out kept.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-11",
+          "day": "2026-10-08",
+          "shopId": "springfield",
+          "shopName": "Springfield",
+          "techName": "Mike Wooten",
+          "orderId": "S-90758",
+          "work": "Alignment Steer Axle",
+          "decision": "accept",
+          "newClockIn": "16:28",
+          "newClockOut": "16:39",
+          "minutes": 11,
+          "status": "applied",
+          "appliedAt": "2026-10-09T15:29:49.947Z",
+          "applyNote": "Path B (shift end 4:39:06): same Alignment row Clock Out 4:27:32PM -> 4:39:00PM.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        }
+      ],
+      "decided": [
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-01",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-03",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-05",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-11",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-14",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-19",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-gary-evans-22",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-chris-queary-01",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-chris-queary-03",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-04",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-07",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-09",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-11",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-04",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-07",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-09",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-11",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-chris-queary-09",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-chris-queary-11",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-02",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-05",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-12",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-john-spichty-15",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-01",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        },
+        {
+          "findingId": "2026-10-08-springfield-mike-wooten-05",
+          "day": "2026-10-08",
+          "shopId": "springfield"
+        }
+      ]
     }
   ]
 }
