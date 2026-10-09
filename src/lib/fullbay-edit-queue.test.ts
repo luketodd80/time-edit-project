@@ -17,6 +17,7 @@ import {
   editsForSubmit,
   findingCanBeDecided,
   latestQueueEdit,
+  rejectFailureInQueue,
   reviewApplyText,
   signoffApplyBlock,
   submissionToQueueRequest,
@@ -399,6 +400,59 @@ describe("auto sign-off", () => {
     );
     assert.deepEqual(failed, []);
     assert.deepEqual(pending, []);
+  });
+
+  it("rejects a failed line in the batch audit and then signs the day off", () => {
+    const note = "Blocked: action item completed/SO invoiced; Chris's login lacks permission. Row unchanged.";
+    const failed = { ...sampleEdit("b", friday, "dayton", "failed"), applyNote: note, techName: "Jack Eversole", orderId: "G-88822" };
+    const stored = batch("1", [sampleEdit("a", friday, "dayton", "applied"), failed], decided);
+    const retry = { findingId: "b", day: friday, shopId: "dayton" as const };
+    assert.match(signoffApplyBlock([stored], friday, "dayton") ?? "", /Jack Eversole G-88822 \(failed\)/);
+    assert.equal(findingCanBeDecided([stored], "b"), true);
+    assert.equal(editsForSubmit([stored], [retry]).length, 1);
+    assert.equal(submitRefusal([stored], [], { shopId: "dayton", days: [friday], edits: [retry] }), null);
+    assert.match(submitRefusal([stored], [], { shopId: "dayton", days: [friday], edits: [] }) ?? "", /Already submitted/);
+
+    const rejected = rejectFailureInQueue([stored], "b", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(rejected.ok, true);
+    if (!rejected.ok) return;
+    const line = rejected.batch.edits.find((edit) => edit.findingId === "b");
+    assert.equal(line?.status, "rejected");
+    assert.equal(line?.applyNote, note);
+    assert.equal(line?.failureRejectedAt, "2026-10-09T14:00:00.000Z");
+    assert.equal(line?.failureRejectedBy, "Luke");
+    assert.equal(rejected.batch.edits.find((edit) => edit.findingId === "a")?.status, "applied");
+    assert.deepEqual(rejected.batch.audit, [
+      { at: "2026-10-09T14:00:00.000Z", by: "Luke", action: "reject_failure", findingId: "b", note },
+    ]);
+    assert.equal(signoffApplyBlock(rejected.batches, friday, "dayton"), null);
+    assert.equal(findingCanBeDecided(rejected.batches, "b"), false);
+    assert.equal(editsForSubmit(rejected.batches, [retry]).length, 0);
+    assert.match(submitRefusal(rejected.batches, [], { shopId: "dayton", days: [friday], edits: [retry] }) ?? "", /Already submitted/);
+    assert.equal(reviewApplyText(line!), `Rejected after Fullbay failure. ${note}`);
+    assert.deepEqual(shopDaysToAutoSignOff(rejected.batches, scope, required), scope);
+
+    const again = rejectFailureInQueue(rejected.batches, "b", "Luke", "2026-10-09T14:05:00.000Z");
+    assert.equal(again.ok, false);
+    const pendingLine = rejectFailureInQueue([batch("1", [sampleEdit("b", friday, "dayton", "pending")], decided)], "b", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(pendingLine.ok, false);
+    const appliedLine = rejectFailureInQueue([batch("1", [sampleEdit("b", friday, "dayton", "applied")], decided)], "b", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(appliedLine.ok, false);
+    const missing = rejectFailureInQueue([stored], "missing", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(missing.ok, false);
+    if (!missing.ok) assert.equal(missing.error, "That line is not in the apply queue.");
+    const unnamed = rejectFailureInQueue([stored], "b", "  ", "2026-10-09T14:00:00.000Z");
+    assert.equal(unnamed.ok, false);
+
+    const older = batch("older", [{ ...sampleEdit("b", friday, "dayton", "failed"), applyNote: "old" }], decided);
+    older.submittedAt = "2026-10-07T12:00:00.000Z";
+    const newer = batch("newer", [{ ...sampleEdit("b", friday, "dayton", "failed"), applyNote: note }], decided);
+    const latestOnly = rejectFailureInQueue([older, newer], "b", "Luke", "2026-10-09T14:00:00.000Z");
+    assert.equal(latestOnly.ok, true);
+    if (!latestOnly.ok) return;
+    assert.equal(latestOnly.batches.find((item) => item.id === "older")?.edits[0]?.status, "failed");
+    assert.equal(latestOnly.batches.find((item) => item.id === "newer")?.edits[0]?.status, "rejected");
+    assert.equal(latestOnly.batches.find((item) => item.id === "older")?.audit, undefined);
   });
 
   it("stays open when a required finding has no decision", () => {
@@ -1090,6 +1144,105 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
       assert.equal(stored.length, 1);
       assert.equal(stored[0]?.doneAt, manual.doneAt);
       assert.equal(stored[0]?.note, null);
+    });
+  });
+
+  it("rejects one failed line after submit and signs the day off", async () => {
+    await withStores(async () => {
+      const pair = seededPair(2);
+      const note = "Blocked: action item completed/SO invoiced. Row unchanged.";
+      const { POST } = await import("@/app/api/fullbay-edits/route");
+      const { POST: confirm } = await import("@/app/api/fullbay-edits/confirm/route");
+      const { POST: rejectFailure } = await import("@/app/api/fullbay-edits/reject-failure/route");
+      const submitted = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            submittedAt: "2026-10-09T14:00:00.000Z",
+            shopId: pair.shopId,
+            days: [pair.day],
+            edits: [acceptedEdit(pair.ids[0]!, pair.day, pair.shopId), acceptedEdit(pair.ids[1]!, pair.day, pair.shopId)],
+            decided: decidedRows(pair.day, pair.shopId, pair.ids),
+          }),
+        }),
+      );
+      const submittedBody = (await submitted.json()) as { id?: string };
+      const confirmed = await confirm(
+        new Request("http://127.0.0.1/api/fullbay-edits/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            batchId: submittedBody.id,
+            results: [
+              { findingId: pair.ids[0], status: "already_done" },
+              { findingId: pair.ids[1], status: "failed", applyNote: note },
+            ],
+          }),
+        }),
+      );
+      const confirmedBody = (await confirmed.json()) as { autoSignedOff?: unknown[] };
+      assert.equal(confirmed.status, 200);
+      assert.deepEqual(confirmedBody.autoSignedOff, []);
+      assert.match(signoffApplyBlock(await readQueue(), pair.day, pair.shopId) ?? "", /\(failed\)/);
+      assert.equal(findingCanBeDecided(await readQueue(), pair.ids[1]!), true);
+
+      const missing = await rejectFailure(
+        new Request("http://127.0.0.1/api/fullbay-edits/reject-failure", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ findingId: "missing-line" }),
+        }),
+      );
+      assert.equal(missing.status, 404);
+
+      const saved = await rejectFailure(
+        new Request("http://127.0.0.1/api/fullbay-edits/reject-failure", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Basic ${Buffer.from("Luke:secret").toString("base64")}`,
+          },
+          body: JSON.stringify({ findingId: pair.ids[1] }),
+        }),
+      );
+      assert.equal(saved.status, 200);
+      const savedBody = (await saved.json()) as {
+        autoSignedOff?: { note: string | null }[];
+        batch?: {
+          audit?: { by: string; action: string; findingId: string; note: string | null }[];
+          edits: { findingId: string; status: string; applyNote: string | null; failureRejectedBy: string | null }[];
+        };
+      };
+      assert.equal(savedBody.autoSignedOff?.length, 1);
+      assert.equal(savedBody.autoSignedOff?.[0]?.note, AUTO_SIGNOFF_NOTE);
+      const line = savedBody.batch?.edits.find((edit) => edit.findingId === pair.ids[1]);
+      assert.equal(line?.status, "rejected");
+      assert.equal(line?.applyNote, note);
+      assert.equal(line?.failureRejectedBy, "Luke");
+      assert.equal(savedBody.batch?.audit?.[0]?.action, "reject_failure");
+      assert.equal(savedBody.batch?.audit?.[0]?.findingId, pair.ids[1]);
+      assert.equal(savedBody.batch?.audit?.[0]?.note, note);
+      assert.equal(signoffApplyBlock(await readQueue(), pair.day, pair.shopId), null);
+      assert.equal(findingCanBeDecided(await readQueue(), pair.ids[1]!), false);
+      assert.equal(editsForSubmit(await readQueue(), [{ findingId: pair.ids[1]!, day: pair.day, shopId: pair.shopId }]).length, 0);
+
+      const again = await rejectFailure(
+        new Request("http://127.0.0.1/api/fullbay-edits/reject-failure", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ findingId: pair.ids[1] }),
+        }),
+      );
+      assert.equal(again.status, 409);
+      const appliedLine = await rejectFailure(
+        new Request("http://127.0.0.1/api/fullbay-edits/reject-failure", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ findingId: pair.ids[0] }),
+        }),
+      );
+      assert.equal(appliedLine.status, 409);
     });
   });
 

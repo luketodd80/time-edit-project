@@ -33,6 +33,9 @@ export function ReviewView({
   isLocked,
   batches,
   onDecision,
+  onRejectFailure,
+  rejectingId,
+  rejectError,
   onSubmit,
 }: {
   days: string[];
@@ -43,6 +46,9 @@ export function ReviewView({
   isLocked: (day: string, shopId: DayReport["shopId"]) => boolean;
   batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
+  onRejectFailure: (findingId: string) => void;
+  rejectingId: string | null;
+  rejectError: { findingId: string; message: string } | null;
   onSubmit: () => void;
 }) {
   const plan = buildPlan(reports, decisions);
@@ -62,7 +68,7 @@ export function ReviewView({
               </p>
             ) : (
               dayReports.map((report) => (
-                <ShopDay key={report.shopId} report={report} decisions={decisions} isLocked={isLocked} batches={batches} onDecision={onDecision} />
+                <ShopDay key={report.shopId} report={report} decisions={decisions} isLocked={isLocked} batches={batches} onDecision={onDecision} onRejectFailure={onRejectFailure} rejectingId={rejectingId} rejectError={rejectError} />
               ))
             )}
           </section>
@@ -95,12 +101,18 @@ function ShopDay({
   isLocked,
   batches,
   onDecision,
+  onRejectFailure,
+  rejectingId,
+  rejectError,
 }: {
   report: DayReport;
   decisions: Record<string, Decision>;
   isLocked: (day: string, shopId: DayReport["shopId"]) => boolean;
   batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
+  onRejectFailure: (findingId: string) => void;
+  rejectingId: string | null;
+  rejectError: { findingId: string; message: string } | null;
 }) {
   const active = techsWithFindings(report);
   const quiet = techsWithoutFindings(report).filter((tech) => {
@@ -122,7 +134,7 @@ function ShopDay({
       </div>
 
       {active.map((tech) => (
-        <TechDay key={tech.id} report={report} tech={tech} decisions={decisions} locked={isLocked(report.day, report.shopId)} batches={batches} onDecision={onDecision} />
+        <TechDay key={tech.id} report={report} tech={tech} decisions={decisions} locked={isLocked(report.day, report.shopId)} batches={batches} onDecision={onDecision} onRejectFailure={onRejectFailure} rejectingId={rejectingId} rejectError={rejectError} />
       ))}
 
       {quiet.length > 0 ? (
@@ -163,6 +175,9 @@ function TechDay({
   locked,
   batches,
   onDecision,
+  onRejectFailure,
+  rejectingId,
+  rejectError,
 }: {
   report: DayReport;
   tech: Technician;
@@ -170,6 +185,9 @@ function TechDay({
   locked: boolean;
   batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
+  onRejectFailure: (findingId: string) => void;
+  rejectingId: string | null;
+  rejectError: { findingId: string; message: string } | null;
 }) {
   const outlook = techOutlook(report, tech, decisions);
   const findings = report.findings
@@ -205,6 +223,9 @@ function TechDay({
                 locked={locked}
                 queued={latestQueueEdit(batches, finding.id)}
                 onDecision={onDecision}
+                onRejectFailure={onRejectFailure}
+                rejecting={rejectingId === finding.id}
+                rejectError={rejectError?.findingId === finding.id ? rejectError.message : null}
               />
             ))}
           </tbody>
@@ -283,6 +304,9 @@ function DayRows({
   locked,
   queued,
   onDecision,
+  onRejectFailure,
+  rejecting,
+  rejectError,
 }: {
   report: DayReport;
   tech: Technician;
@@ -291,16 +315,20 @@ function DayRows({
   locked: boolean;
   queued: ReturnType<typeof latestQueueEdit>;
   onDecision: (findingId: string, decision: Decision | null) => void;
+  onRejectFailure: (findingId: string) => void;
+  rejecting: boolean;
+  rejectError: string | null;
 }) {
   const recommendation = finding.recommendation;
   const order = recommendation ? report.orders.find((item) => item.id === recommendation.orderId) : undefined;
   const eligible = isEligible(report, finding);
   const preview = recommendation && decision ? appliedWindow(recommendation, decision) : null;
-  const canDecide = !locked && (queued == null || queued.status === "failed");
+  const openFailure = queued?.status === "failed";
+  const canDecide = !locked && (queued == null || openFailure);
   const tone =
     queued?.status === "applied" || queued?.status === "already_done"
       ? "bg-green-50"
-      : queued?.status === "failed"
+      : openFailure
         ? "bg-red-50"
         : finding.kind === "flag"
           ? "bg-orange-200"
@@ -332,7 +360,12 @@ function DayRows({
         <td className="px-3 py-3 leading-6">
           <p>{suggestedText(finding)}</p>
           {queued ? (
-            <p className={`mt-3 ${queued.status === "failed" ? "text-destructive" : queued.status === "already_done" ? "font-medium text-green-950" : "font-medium"}`}>{reviewApplyText(queued)}</p>
+            <p className={`mt-3 ${openFailure ? "text-destructive" : queued.status === "already_done" || queued.status === "rejected" ? "font-medium text-green-950" : "font-medium"}`}>{reviewApplyText(queued)}</p>
+          ) : null}
+          {openFailure ? (
+            <p className="mt-2 text-muted-foreground">
+              This failure is still open on the server. Change the times and submit this line again, or choose Reject (leave Fullbay as is). That rejection is saved on the server. Until then, Mark day done stays blocked for this line.
+            </p>
           ) : null}
           {recommendation?.optional && canDecide ? <Badge variant="outline" className="mt-2">Optional</Badge> : null}
           {order && canDecide ? (
@@ -343,28 +376,46 @@ function DayRows({
           ) : null}
           {locked && recommendation && !queued ? <p className="mt-3 text-muted-foreground">Signed off. This decision is locked.</p> : null}
           {finding.nonPro ? (
-            <NonProChoices finding={finding} decision={decision} canDecide={canDecide} onDecision={onDecision} />
+            <NonProChoices
+              finding={finding}
+              decision={decision}
+              canDecide={canDecide}
+              failedOpen={openFailure}
+              onDecision={onDecision}
+              onRejectFailure={() => onRejectFailure(finding.id)}
+              rejecting={rejecting}
+              rejectError={rejectError}
+            />
           ) : null}
-          {eligible && recommendation && canDecide && !finding.nonPro ? (
+          {(eligible || openFailure) && recommendation && canDecide && !finding.nonPro ? (
             <div className="mt-3 flex flex-col gap-2">
               <div className="flex flex-wrap gap-2" role="group" aria-label={`Decision for ${tech.name} ${recommendation.orderId}`}>
                 <Button type="button" size="sm" variant={decision?.kind === "accept" ? "default" : "outline"} aria-pressed={decision?.kind === "accept"} onClick={() => choose("accept")}>
-                  Accept
+                  {openFailure ? "Retry suggested times" : "Accept"}
                 </Button>
-                <Button type="button" size="sm" variant={decision?.kind === "reject" ? "destructive" : "outline"} aria-pressed={decision?.kind === "reject"} onClick={() => choose("reject")}>
-                  Reject
-                </Button>
+                {openFailure ? (
+                  <Button type="button" size="sm" variant="outline" disabled={rejecting} onClick={() => onRejectFailure(finding.id)}>
+                    {rejecting ? "Saving rejection…" : "Reject (leave Fullbay as is)"}
+                  </Button>
+                ) : (
+                  <Button type="button" size="sm" variant={decision?.kind === "reject" ? "destructive" : "outline"} aria-pressed={decision?.kind === "reject"} onClick={() => choose("reject")}>
+                    Reject
+                  </Button>
+                )}
                 <Button type="button" size="sm" variant={decision?.kind === "override" ? "default" : "outline"} aria-pressed={decision?.kind === "override"} onClick={() => choose("override")}>
-                  Override
+                  {openFailure ? "Change the times" : "Override"}
                 </Button>
               </div>
-              {decision?.kind === "accept" ? <p>Accepted. Adds {formatDuration(recommendation.minutes)} to SO hours.</p> : null}
-              {decision?.kind === "reject" ? <p>Rejected. Adds no SO hours.</p> : null}
+              {openFailure && rejectError ? <p role="alert" className="text-destructive">{rejectError}</p> : null}
+              {!openFailure && decision?.kind === "accept" ? <p>Accepted. Adds {formatDuration(recommendation.minutes)} to SO hours.</p> : null}
+              {!openFailure && decision?.kind === "reject" ? <p>Rejected. Adds no SO hours.</p> : null}
+              {openFailure && decision?.kind === "accept" ? <p>Retry queued locally. Submit sends this line again.</p> : null}
+              {openFailure && decision?.kind === "override" ? <p>Edit the times, then submit this line again.</p> : null}
             </div>
           ) : null}
         </td>
       </tr>
-      {eligible && recommendation && canDecide && decision?.kind === "override" && preview ? (
+      {(eligible || openFailure) && recommendation && canDecide && decision?.kind === "override" && preview ? (
         <tr className={`border-b ${tone}`}>
           <td colSpan={4} className="px-3 py-3">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -437,12 +488,20 @@ function NonProChoices({
   finding,
   decision,
   canDecide,
+  failedOpen,
   onDecision,
+  onRejectFailure,
+  rejecting,
+  rejectError,
 }: {
   finding: Finding;
   decision: Decision | undefined;
   canDecide: boolean;
+  failedOpen: boolean;
   onDecision: (findingId: string, decision: Decision | null) => void;
+  onRejectFailure: () => void;
+  rejecting: boolean;
+  rejectError: string | null;
 }) {
   const review = finding.nonPro;
   if (!review) return null;
@@ -507,9 +566,15 @@ function NonProChoices({
     <div className="mt-3 flex flex-col gap-2">
       {canDecide ? (
         <div className="flex flex-col items-start gap-2" role="group" aria-label={`Non-Pro review for ${formatClock(finding.start)}`}>
-          <Button type="button" size="sm" className="h-auto whitespace-normal py-1.5 text-left" variant={selected === "keep" ? "destructive" : "outline"} aria-pressed={selected === "keep"} onClick={() => choose("keep")}>
-            Keep as Non-Pro
-          </Button>
+          {failedOpen ? (
+            <Button type="button" size="sm" className="h-auto whitespace-normal py-1.5 text-left" variant="outline" disabled={rejecting} onClick={onRejectFailure}>
+              {rejecting ? "Saving rejection…" : "Reject (leave Fullbay as is)"}
+            </Button>
+          ) : (
+            <Button type="button" size="sm" className="h-auto whitespace-normal py-1.5 text-left" variant={selected === "keep" ? "destructive" : "outline"} aria-pressed={selected === "keep"} onClick={() => choose("keep")}>
+              Keep as Non-Pro
+            </Button>
+          )}
           {partialDefault ? (
             <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={selected === "partial" ? "default" : "outline"} aria-pressed={selected === "partial"} onClick={() => choose("partial")}>
               Keep part as Non-Pro and give the rest to a service order
@@ -535,6 +600,8 @@ function NonProChoices({
           </Button>
         </div>
       ) : null}
+      {failedOpen && rejectError ? <p role="alert" className="text-destructive">{rejectError}</p> : null}
+      {failedOpen && selected && selected !== "keep" ? <p>Submit sends this line again.</p> : null}
       {canDecide && selected === "partial" && decision ? (
         <PartialTimes finding={finding} decision={decision} onDecision={onDecision} />
       ) : null}
@@ -579,7 +646,7 @@ function NonProChoices({
       {canDecide && selected === "move_to_so" && decision ? (
         <MoveToOrder finding={finding} decision={decision} onDecision={onDecision} />
       ) : null}
-      {described ? <p>{described} {built?.ok && built.minutes > 0 ? `Adds ${formatDuration(built.minutes)} to SO hours.` : "Adds no SO hours."}</p> : null}
+      {described && !(failedOpen && selected === "keep") ? <p>{described} {built?.ok && built.minutes > 0 ? `Adds ${formatDuration(built.minutes)} to SO hours.` : "Adds no SO hours."}</p> : null}
       {built && !built.ok ? (
         <p role="alert" className="text-destructive">
           {built.error}

@@ -162,7 +162,7 @@ export function DayBar({
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-medium">Sign-off</h2>
         <p className="text-sm text-muted-foreground">
-          Check that you approve the utilization numbers, then mark the day done. Accepted edits for that shop and day must be confirmed applied in Fullbay first. Rejected edits do not block sign-off. The day cannot be marked done without the utilization check. When every finding has a decision and every accepted edit is applied, or the submit rejected every finding, the day is marked done on its own. A signed-off day stays locked: its decisions cannot be changed and it cannot be submitted again.
+          Check that you approve the utilization numbers, then mark the day done. Accepted edits for that shop and day must be confirmed applied in Fullbay first. Rejected edits do not block sign-off. A line that failed in Fullbay can be rejected from Review, which leaves Fullbay as it is and clears this block. The day cannot be marked done without the utilization check. When every finding has a decision and every accepted edit is applied, already done, or rejected after a Fullbay failure, or the submit rejected every finding, the day is marked done on its own. A signed-off day stays locked: its decisions cannot be changed and it cannot be submitted again.
         </p>
         {signoffError ? (
           <p role="alert" className="text-sm text-destructive">
