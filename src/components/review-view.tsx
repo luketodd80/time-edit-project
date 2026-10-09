@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { OrderStatusBadge } from "@/components/order-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,6 @@ import {
   ordersWithoutEdit,
   shopName,
   statusLabel,
-  submitBlockers,
   techOutlook,
   techsWithFindings,
   techsWithoutFindings,
@@ -36,6 +36,9 @@ export function ReviewView({
   onRejectFailure,
   rejectingId,
   rejectError,
+  reveal,
+  highlightedFindingId,
+  onRevealLine,
   onSubmit,
 }: {
   days: string[];
@@ -49,11 +52,40 @@ export function ReviewView({
   onRejectFailure: (findingId: string) => void;
   rejectingId: string | null;
   rejectError: { findingId: string; message: string } | null;
+  reveal: { findingId: string; focusId: string } | null;
+  highlightedFindingId: string | null;
+  onRevealLine: (findingId: string) => void;
   onSubmit: () => void;
 }) {
   const plan = buildPlan(reports, decisions);
-  const blockers = submitBlockers(plan);
   const nothingToDecide = plan.edits.length + plan.rejected.length + plan.undecided.length + plan.invalid.length === 0;
+
+  useEffect(() => {
+    if (!reveal) return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer = 0;
+    function tryReveal() {
+      if (cancelled || !reveal) return;
+      const row = document.getElementById(`finding-${reveal.findingId}`);
+      if (!(row instanceof HTMLElement)) {
+        attempts += 1;
+        if (attempts < 10) timer = window.setTimeout(tryReveal, 40);
+        return;
+      }
+      openCollapsedAncestors(row);
+      const focusTarget = document.getElementById(reveal.focusId);
+      const target = focusTarget instanceof HTMLElement ? focusTarget : row;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (focusTarget instanceof HTMLElement) focusTarget.focus({ preventScroll: true, focusVisible: true } as FocusOptions);
+      else row.focus({ preventScroll: true });
+    }
+    timer = window.setTimeout(tryReveal, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [reveal]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -68,7 +100,7 @@ export function ReviewView({
               </p>
             ) : (
               dayReports.map((report) => (
-                <ShopDay key={report.shopId} report={report} decisions={decisions} isLocked={isLocked} batches={batches} onDecision={onDecision} onRejectFailure={onRejectFailure} rejectingId={rejectingId} rejectError={rejectError} />
+                <ShopDay key={report.shopId} report={report} decisions={decisions} isLocked={isLocked} batches={batches} onDecision={onDecision} onRejectFailure={onRejectFailure} rejectingId={rejectingId} rejectError={rejectError} highlightedFindingId={highlightedFindingId} />
               ))
             )}
           </section>
@@ -83,12 +115,20 @@ export function ReviewView({
         <p className="max-w-2xl text-sm text-muted-foreground">
           Saves this confirmation in the browser and queues accepted and overridden edits for Fullbay Time Stamp apply. Rejected edits are not queued.
         </p>
-        {submitError ? (
+        {plan.invalid.length > 0 ? (
+          <ul className="flex flex-col gap-1 text-sm text-destructive">
+            {plan.invalid.map((edit) => (
+              <li key={edit.findingId}>
+                <button type="button" className="text-left underline decoration-destructive/50 underline-offset-2 hover:decoration-destructive" onClick={() => onRevealLine(edit.findingId)}>
+                  {edit.techName} {edit.orderId}: {edit.error}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : submitError ? (
           <p role="alert" className="text-sm text-destructive">
             {submitError}
           </p>
-        ) : blockers.some((blocker) => blocker.includes("valid")) ? (
-          <p className="text-sm text-destructive">{blockers.join(" ")}</p>
         ) : null}
       </div>
     </div>
@@ -104,6 +144,7 @@ function ShopDay({
   onRejectFailure,
   rejectingId,
   rejectError,
+  highlightedFindingId,
 }: {
   report: DayReport;
   decisions: Record<string, Decision>;
@@ -113,6 +154,7 @@ function ShopDay({
   onRejectFailure: (findingId: string) => void;
   rejectingId: string | null;
   rejectError: { findingId: string; message: string } | null;
+  highlightedFindingId: string | null;
 }) {
   const active = techsWithFindings(report);
   const quiet = techsWithoutFindings(report).filter((tech) => {
@@ -134,7 +176,7 @@ function ShopDay({
       </div>
 
       {active.map((tech) => (
-        <TechDay key={tech.id} report={report} tech={tech} decisions={decisions} locked={isLocked(report.day, report.shopId)} batches={batches} onDecision={onDecision} onRejectFailure={onRejectFailure} rejectingId={rejectingId} rejectError={rejectError} />
+        <TechDay key={tech.id} report={report} tech={tech} decisions={decisions} locked={isLocked(report.day, report.shopId)} batches={batches} onDecision={onDecision} onRejectFailure={onRejectFailure} rejectingId={rejectingId} rejectError={rejectError} highlightedFindingId={highlightedFindingId} />
       ))}
 
       {quiet.length > 0 ? (
@@ -178,6 +220,7 @@ function TechDay({
   onRejectFailure,
   rejectingId,
   rejectError,
+  highlightedFindingId,
 }: {
   report: DayReport;
   tech: Technician;
@@ -188,6 +231,7 @@ function TechDay({
   onRejectFailure: (findingId: string) => void;
   rejectingId: string | null;
   rejectError: { findingId: string; message: string } | null;
+  highlightedFindingId: string | null;
 }) {
   const outlook = techOutlook(report, tech, decisions);
   const findings = report.findings
@@ -226,6 +270,7 @@ function TechDay({
                 onRejectFailure={onRejectFailure}
                 rejecting={rejectingId === finding.id}
                 rejectError={rejectError?.findingId === finding.id ? rejectError.message : null}
+                highlighted={highlightedFindingId === finding.id}
               />
             ))}
           </tbody>
@@ -307,6 +352,7 @@ function DayRows({
   onRejectFailure,
   rejecting,
   rejectError,
+  highlighted,
 }: {
   report: DayReport;
   tech: Technician;
@@ -318,6 +364,7 @@ function DayRows({
   onRejectFailure: (findingId: string) => void;
   rejecting: boolean;
   rejectError: string | null;
+  highlighted: boolean;
 }) {
   const recommendation = finding.recommendation;
   const order = recommendation ? report.orders.find((item) => item.id === recommendation.orderId) : undefined;
@@ -325,6 +372,13 @@ function DayRows({
   const preview = recommendation && decision ? appliedWindow(recommendation, decision) : null;
   const openFailure = queued?.status === "failed";
   const canDecide = !locked && (queued == null || openFailure);
+
+  useEffect(() => {
+    if (!highlighted || !openFailure) return;
+    const button = document.getElementById(`${finding.id}-reject-failure`);
+    if (!(button instanceof HTMLElement)) return;
+    button.focus({ preventScroll: true, focusVisible: true } as FocusOptions);
+  }, [highlighted, openFailure, finding.id]);
   const tone =
     queued?.status === "applied" || queued?.status === "already_done"
       ? "bg-green-50"
@@ -351,7 +405,7 @@ function DayRows({
 
   return (
     <>
-      <tr className={`border-b align-top ${tone}`}>
+      <tr id={`finding-${finding.id}`} tabIndex={-1} className={`scroll-mt-8 border-b align-top outline-none ${tone}${highlighted ? " shadow-[inset_0_0_0_3px_#d97706]" : ""}`}>
         <td className="px-3 py-3 whitespace-nowrap font-medium">
           {formatClock(finding.start)}–{formatClock(finding.end)}
         </td>
@@ -394,7 +448,7 @@ function DayRows({
                   {openFailure ? "Retry suggested times" : "Accept"}
                 </Button>
                 {openFailure ? (
-                  <Button type="button" size="sm" variant="outline" disabled={rejecting} onClick={() => onRejectFailure(finding.id)}>
+                  <Button id={`${finding.id}-reject-failure`} type="button" size="sm" variant="outline" disabled={rejecting} className="focus:border-amber-700 focus:ring-2 focus:ring-amber-700 focus:ring-offset-2" onClick={() => onRejectFailure(finding.id)}>
                     {rejecting ? "Saving rejection…" : "Reject (leave Fullbay as is)"}
                   </Button>
                 ) : (
@@ -471,6 +525,16 @@ function DayRows({
       ) : null}
     </>
   );
+}
+
+/** Open a closed disclosure or dialog that contains the line before scrolling to it. */
+function openCollapsedAncestors(node: HTMLElement) {
+  let current: HTMLElement | null = node.parentElement;
+  while (current) {
+    if (current instanceof HTMLDetailsElement) current.open = true;
+    if (current.getAttribute("role") === "dialog") current.hidden = false;
+    current = current.parentElement;
+  }
 }
 
 function reportText(finding: Finding): string {
@@ -567,7 +631,7 @@ function NonProChoices({
       {canDecide ? (
         <div className="flex flex-col items-start gap-2" role="group" aria-label={`Non-Pro review for ${formatClock(finding.start)}`}>
           {failedOpen ? (
-            <Button type="button" size="sm" className="h-auto whitespace-normal py-1.5 text-left" variant="outline" disabled={rejecting} onClick={onRejectFailure}>
+            <Button id={`${finding.id}-reject-failure`} type="button" size="sm" className="h-auto whitespace-normal py-1.5 text-left focus:border-amber-700 focus:ring-2 focus:ring-amber-700 focus:ring-offset-2" variant="outline" disabled={rejecting} onClick={onRejectFailure}>
               {rejecting ? "Saving rejection…" : "Reject (leave Fullbay as is)"}
             </Button>
           ) : (

@@ -19,7 +19,9 @@ import {
   latestQueueEdit,
   rejectFailureInQueue,
   reviewApplyText,
+  lineRevealFocusId,
   signoffApplyBlock,
+  signoffLineBlocks,
   submissionToQueueRequest,
   submitRefusal,
   type FullbayEditBatch,
@@ -408,6 +410,12 @@ describe("auto sign-off", () => {
     const stored = batch("1", [sampleEdit("a", friday, "dayton", "applied"), failed], decided);
     const retry = { findingId: "b", day: friday, shopId: "dayton" as const };
     assert.match(signoffApplyBlock([stored], friday, "dayton") ?? "", /Jack Eversole G-88822 \(failed\)/);
+    const jackBlocks = signoffLineBlocks([stored], friday, "dayton");
+    assert.equal(jackBlocks.length, 1);
+    assert.equal(jackBlocks[0]?.findingId, "b");
+    assert.equal(jackBlocks[0]?.label, "Jack Eversole G-88822 (failed)");
+    assert.equal(jackBlocks[0]?.focusId, "b-reject-failure");
+    assert.equal(lineRevealFocusId("b", "pending"), "finding-b");
     assert.equal(findingCanBeDecided([stored], "b"), true);
     assert.equal(editsForSubmit([stored], [retry]).length, 1);
     assert.equal(submitRefusal([stored], [], { shopId: "dayton", days: [friday], edits: [retry] }), null);
@@ -453,6 +461,30 @@ describe("auto sign-off", () => {
     assert.equal(latestOnly.batches.find((item) => item.id === "older")?.edits[0]?.status, "failed");
     assert.equal(latestOnly.batches.find((item) => item.id === "newer")?.edits[0]?.status, "rejected");
     assert.equal(latestOnly.batches.find((item) => item.id === "older")?.audit, undefined);
+  });
+
+  it("lists every pending and failed line in the sign-off warning", () => {
+    const failed = { ...sampleEdit("jack", friday, "greenville", "failed"), techName: "Jack Eversole", orderId: "G-88822" };
+    const pending = { ...sampleEdit("gage", friday, "greenville", "pending"), techName: "Gage Wills", orderId: "G-89173" };
+    const applied = sampleEdit("done", friday, "greenville", "applied");
+    const blocks = signoffLineBlocks(
+      [batch("1", [applied, failed, pending], [], "greenville")],
+      friday,
+      "greenville",
+    );
+    assert.deepEqual(
+      blocks.map((block) => block.label),
+      ["Jack Eversole G-88822 (failed)", "Gage Wills G-89173 (pending)"],
+    );
+    assert.deepEqual(
+      blocks.map((block) => block.focusId),
+      ["jack-reject-failure", "finding-gage"],
+    );
+    assert.equal(
+      signoffApplyBlock([batch("1", [applied, failed, pending], [], "greenville")], friday, "greenville"),
+      "Fullbay apply is not confirmed for Jack Eversole G-88822 (failed), Gage Wills G-89173 (pending). Mark the day done after each accepted edit is confirmed applied.",
+    );
+    assert.equal(signoffLineBlocks([batch("1", [applied], [], "greenville")], friday, "greenville").length, 0);
   });
 
   it("stays open when a required finding has no decision", () => {

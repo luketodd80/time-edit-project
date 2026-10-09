@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConfirmView } from "@/components/confirm-view";
 import { DayBar } from "@/components/day-bar";
 import { ReviewView } from "@/components/review-view";
 import { SubmitConfirmDialog } from "@/components/submit-confirm-dialog";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { editsForSubmit, findingCanBeDecided, latestQueueEdit, queueRequestForSubmit, shopDayLock, signoffApplyBlock, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
+import { editsForSubmit, findingCanBeDecided, latestQueueEdit, lineRevealFocusId, queueRequestForSubmit, shopDayLock, signoffApplyBlock, signoffLineBlocks, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { attest, buildPlan, buildSubmission, filterReports, markDone, signoffKey, submissionFingerprint, submitBlockers } from "@/lib/review";
 import { updateReview, useReviewSnapshot } from "@/lib/review-store";
 import { SEED } from "@/lib/seed";
@@ -35,6 +35,9 @@ export function Dashboard() {
   const [serverSignoffs, setServerSignoffs] = useState<RecordedSignoff[] | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectError, setRejectError] = useState<{ findingId: string; message: string } | null>(null);
+  const [reveal, setReveal] = useState<{ findingId: string; focusId: string } | null>(null);
+  const [highlightedFindingId, setHighlightedFindingId] = useState<string | null>(null);
+  const highlightTimer = useRef<number | null>(null);
 
   const reports = filterReports(SEED, state.shopId, state.days);
   const liveSubmission = buildSubmission(reports, state.decisions, state.shopId, state.days, state.submission?.submittedAt ?? "");
@@ -124,6 +127,22 @@ export function Dashboard() {
       else decisions[findingId] = decision;
       return { ...current, decisions };
     });
+  }
+
+  function revealLine(findingId: string) {
+    const report = SEED.find((item) => item.findings.some((finding) => finding.id === findingId));
+    if (!report) return;
+    setSubmitConfirmCount(null);
+    updateReview((current) => ({
+      ...current,
+      view: "review",
+      shopId: current.shopId === "all" || current.shopId === report.shopId ? current.shopId : report.shopId,
+      days: current.days.includes(report.day) ? current.days : [report.day],
+    }));
+    setReveal({ findingId, focusId: lineRevealFocusId(findingId, latestQueueEdit(queueBatches ?? [], findingId)?.status ?? null) });
+    setHighlightedFindingId(findingId);
+    if (highlightTimer.current != null) window.clearTimeout(highlightTimer.current);
+    highlightTimer.current = window.setTimeout(() => setHighlightedFindingId(null), 4000);
   }
 
   function setView(view: ViewId) {
@@ -339,7 +358,8 @@ export function Dashboard() {
         signoffs={state.signoffs}
         decisions={state.decisions}
         signoffError={signoffError}
-        applyBlock={(day, shopId) => (queueBatches ? signoffApplyBlock(queueBatches, day, shopId) : null)}
+        applyBlocks={(day, shopId) => (queueBatches ? signoffLineBlocks(queueBatches, day, shopId) : [])}
+        onRevealLine={revealLine}
         onShop={setShop}
         onSelectDay={selectDay}
         onOpenSummary={openSummary}
@@ -377,6 +397,9 @@ export function Dashboard() {
             onRejectFailure={(findingId) => void rejectFailure(findingId)}
             rejectingId={rejectingId}
             rejectError={rejectError}
+            reveal={reveal}
+            highlightedFindingId={highlightedFindingId}
+            onRevealLine={revealLine}
             onSubmit={openSubmitConfirm}
           />
         </TabsContent>

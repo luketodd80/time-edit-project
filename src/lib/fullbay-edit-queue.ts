@@ -365,11 +365,48 @@ export function unappliedEditsForShopDay(batches: FullbayEditBatch[], day: strin
   return latest.edits.filter((edit) => edit.day === day && edit.shopId === shopId && editBlocksSignoff(edit.status));
 }
 
+/** One pending or failed line named in the sign-off warning. */
+export interface SignoffLineBlock {
+  findingId: string;
+  day: string;
+  shopId: ShopId;
+  label: string;
+  status: FullbayApplyStatus;
+  /** Failed lines focus Reject (leave Fullbay as is). Other lines focus the row. */
+  focusId: string;
+}
+
+export const SIGNOFF_APPLY_PREFIX = "Fullbay apply is not confirmed for ";
+export const SIGNOFF_APPLY_SUFFIX = ". Mark the day done after each accepted edit is confirmed applied.";
+
+/** Element to focus when a warning that names this line is opened. */
+export function lineRevealFocusId(findingId: string, status: FullbayApplyStatus | null): string {
+  return status === "failed" ? `${findingId}-reject-failure` : `finding-${findingId}`;
+}
+
+export function signoffLineLabel(edit: Pick<FullbayQueueEdit, "techName" | "orderId" | "status">): string {
+  return `${edit.techName} ${edit.orderId} (${edit.status})`;
+}
+
+/** Pending and failed lines that block this shop day, in queue order. */
+export function signoffLineBlocks(batches: FullbayEditBatch[], day: string, shopId: ShopId): SignoffLineBlock[] {
+  return unappliedEditsForShopDay(batches, day, shopId).map((edit) => ({
+    findingId: edit.findingId,
+    day: edit.day,
+    shopId: edit.shopId,
+    label: signoffLineLabel(edit),
+    status: edit.status,
+    focusId: lineRevealFocusId(edit.findingId, edit.status),
+  }));
+}
+
+export function signoffApplyMessage(blocks: SignoffLineBlock[]): string | null {
+  if (blocks.length === 0) return null;
+  return `${SIGNOFF_APPLY_PREFIX}${blocks.map((block) => block.label).join(", ")}${SIGNOFF_APPLY_SUFFIX}`;
+}
+
 export function signoffApplyBlock(batches: FullbayEditBatch[], day: string, shopId: ShopId): string | null {
-  const edits = unappliedEditsForShopDay(batches, day, shopId);
-  if (edits.length === 0) return null;
-  const names = edits.map((edit) => `${edit.techName} ${edit.orderId} (${edit.status})`).join(", ");
-  return `Fullbay apply is not confirmed for ${names}. Mark the day done after each accepted edit is confirmed applied.`;
+  return signoffApplyMessage(signoffLineBlocks(batches, day, shopId));
 }
 
 export function applyConfirmations(
