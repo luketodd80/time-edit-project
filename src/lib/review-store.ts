@@ -5,7 +5,7 @@ import { defaultPendingDays, reviewWindow, todayInNewYork } from "@/lib/dates";
 import { shopsWithData } from "@/lib/review";
 import { SEED } from "@/lib/seed";
 import { clearState, loadState, saveState } from "@/lib/storage";
-import type { PersistedState } from "@/lib/types";
+import type { PersistedState, ShopFilter, ShopId } from "@/lib/types";
 
 export interface ReviewSnapshot {
   state: PersistedState;
@@ -49,16 +49,32 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
+/** Opens the shop and day from `?shop=&day=` when that day is on the review trail. */
+export function reviewSelectionFromQuery(state: PersistedState, search: string, today = todayInNewYork()): PersistedState {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const day = params.get("day");
+  const shop = params.get("shop");
+  if ((day == null || day.length === 0) && (shop == null || shop.length === 0)) return state;
+  const allowed = new Set(reviewWindow(today));
+  const loaded = shopsWithData(SEED);
+  let shopId = state.shopId;
+  if (shop === "all" || (shop != null && loaded.includes(shop as ShopId))) shopId = shop as ShopFilter;
+  const days = day != null && allowed.has(day) ? [day] : state.days;
+  const view = day != null && allowed.has(day) ? "review" : state.view;
+  return { ...state, shopId, days, view };
+}
+
 function hydrate(): ReviewSnapshot {
   if (hydrated) return snapshot;
   hydrated = true;
   try {
     const saved = loadState();
-    snapshot = saved ? { state: sanitize(saved), loadError: null } : serverSnapshot;
+    const base = saved ? sanitize(saved) : emptyState();
+    snapshot = { state: reviewSelectionFromQuery(base, window.location.search), loadError: null };
   } catch {
     clearState();
     snapshot = {
-      state: emptyState(),
+      state: reviewSelectionFromQuery(emptyState(), window.location.search),
       loadError: "Saved review data on this browser could not be read, so it was cleared.",
     };
   }

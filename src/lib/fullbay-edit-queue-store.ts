@@ -1,7 +1,7 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { liveDataPath, readStoredJson, seedDataPath } from "@/lib/durable-file";
-import { applyConfirmations, submitRefusal, type FullbayConfirmResult, type FullbayEditBatch, type FullbayQueueRequest } from "@/lib/fullbay-edit-queue";
+import { applyConfirmations, rejectFailureInQueue, submitRefusal, type FullbayConfirmResult, type FullbayEditBatch, type FullbayQueueRequest } from "@/lib/fullbay-edit-queue";
 import { readSignoffs } from "@/lib/signoff-store";
 
 let writeChain: Promise<unknown> = Promise.resolve();
@@ -52,6 +52,24 @@ export async function enqueueIfAllowed(
     batches.push(batch);
     await writeQueue(batches);
     return { ok: true, batch };
+  });
+}
+
+/** Records a manager rejection of a failed line. Fullbay is left unchanged. */
+export async function rejectFailedEdit(
+  findingId: string,
+  by: string,
+  now: string,
+): Promise<{ ok: true; batch: FullbayEditBatch } | { ok: false; status: number; error: string }> {
+  return withQueueLock(async () => {
+    const batches = await readQueue();
+    const rejected = rejectFailureInQueue(batches, findingId, by, now);
+    if (!rejected.ok) {
+      const status = rejected.error === "That line is not in the apply queue." ? 404 : 409;
+      return { ok: false, status, error: rejected.error };
+    }
+    await writeQueue(rejected.batches);
+    return { ok: true, batch: rejected.batch };
   });
 }
 

@@ -2,7 +2,7 @@
 
 import { OrderStatusBadge } from "@/components/order-status";
 import { formatDayShort, formatTimestamp } from "@/lib/dates";
-import { alreadyDoneText, batchForSubmission, type FullbayEditBatch, type FullbayQueueEdit } from "@/lib/fullbay-edit-queue";
+import { alreadyDoneText, batchForSubmission, notAGapText, rejectedAfterFailureText, type FullbayEditBatch, type FullbayQueueEdit } from "@/lib/fullbay-edit-queue";
 import { shopName } from "@/lib/review";
 import type { PlannedEdit, SkippedOrder, Submission } from "@/lib/types";
 import { describeNonProEdit } from "@/lib/nonpro";
@@ -145,6 +145,8 @@ function applyStatusText(edit: FullbayQueueEdit | undefined): string {
   if (!edit) return "Not queued.";
   if (edit.status === "pending") return "Pending Fullbay apply.";
   if (edit.status === "failed") return edit.applyNote ? `Fullbay apply failed. ${edit.applyNote}` : "Fullbay apply failed.";
+  if (edit.status === "rejected") return rejectedAfterFailureText(edit);
+  if (edit.status === "not_a_gap") return notAGapText(edit);
   if (edit.status === "already_done") return alreadyDoneText(edit);
   const when = edit.appliedAt ? ` ${formatTimestamp(edit.appliedAt)}` : "";
   return edit.applyNote ? `Applied in Fullbay${when}. ${edit.applyNote}` : `Applied in Fullbay${when}.`;

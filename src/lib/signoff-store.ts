@@ -43,7 +43,10 @@ function storedNote(note: unknown): string | null {
   return typeof note === "string" && note.trim().length > 0 ? note.trim() : null;
 }
 
-/** Records the first sign-off for a shop and day. A second call keeps the original time. */
+/**
+ * Records a sign-off for a shop and day.
+ * The earliest `doneAt` wins, so a restore can send the original time and a later call does not move it forward.
+ */
 export async function recordSignoff(day: string, shopId: ShopId, doneAt: string, note?: string | null): Promise<RecordedSignoff> {
   const run = writeChain.then(() => writeSignoff(day, shopId, doneAt, note), () => writeSignoff(day, shopId, doneAt, note));
   writeChain = run.then(
@@ -66,9 +69,19 @@ export async function recordAutoSignoffs(pairs: ShopDayRef[], doneAt: string, no
 async function writeSignoff(day: string, shopId: ShopId, doneAt: string, note?: string | null): Promise<RecordedSignoff> {
   const file = signoffFilePath();
   const signoffs = await readSignoffs();
-  const existing = signoffs.find((signoff) => signoff.day === day && signoff.shopId === shopId);
-  if (existing) return existing;
-  const next: RecordedSignoff = { day, shopId, doneAt, note: storedNote(note) };
+  const index = signoffs.findIndex((signoff) => signoff.day === day && signoff.shopId === shopId);
+  const stored = storedNote(note);
+  if (index >= 0) {
+    const existing = signoffs[index]!;
+    const incoming = Date.parse(doneAt);
+    const current = Date.parse(existing.doneAt);
+    if (Number.isNaN(incoming) || incoming >= current) return existing;
+    const next: RecordedSignoff = { ...existing, doneAt, note: stored ?? existing.note ?? null };
+    signoffs[index] = next;
+    await persistSignoffs(file, signoffs);
+    return next;
+  }
+  const next: RecordedSignoff = { day, shopId, doneAt, note: stored };
   signoffs.push(next);
   await persistSignoffs(file, signoffs);
   return next;

@@ -26,6 +26,7 @@ import {
 } from "@/lib/review";
 import { SHOPS, type DayReport, type Decision, type Finding } from "@/lib/types";
 import { dayPunches } from "@/lib/day-punches";
+import { defaultKeptWindow, defaultPartialChoice } from "@/lib/nonpro";
 
 const friday = "2026-10-02";
 const saturday = "2026-10-03";
@@ -342,6 +343,7 @@ describe("submit plan", () => {
         decisions: {
           "zach-0629": accept,
           "meeting": { kind: "accept", start: "", end: "", nonProEditType: "split", split: "07:09", targetOrderId: " D-1 " },
+          "partial": { kind: "accept", start: "07:00", end: "07:10", nonProEditType: "partial", nonProRemainder: "next" },
           "bad": { kind: "accept", start: "", end: "", nonProEditType: "nope" },
         },
         signoffs: {},
@@ -352,6 +354,10 @@ describe("submit plan", () => {
     assert.equal(state.decisions.meeting?.nonProEditType, "split");
     assert.equal(state.decisions.meeting?.split, "07:09");
     assert.equal(state.decisions.meeting?.targetOrderId, "D-1");
+    assert.equal(state.decisions.partial?.nonProEditType, "partial");
+    assert.equal(state.decisions.partial?.nonProRemainder, "next");
+    assert.equal(state.decisions.partial?.start, "07:00");
+    assert.equal(state.decisions.partial?.end, "07:10");
     assert.equal(state.decisions.bad?.nonProEditType, undefined);
   });
 });
@@ -516,5 +522,117 @@ describe("Non-Pro edit payload", () => {
     const daytonOnly = dayUtilization(SEED, "2026-10-08", ["dayton"], {});
     assert.ok(day.original != null && daytonOnly.original != null);
     assert.ok(daytonOnly.original > 0.15);
+  });
+
+  it("keeps 7:00–7:10 of Chris Clark’s Shop Meeting and moves M-90566 back to 7:11", () => {
+    const report = SEED.find((item) => item.day === "2026-10-08" && item.shopId === "dayton");
+    const tech = report?.technicians.find((item) => item.id === "chris-clark");
+    const finding = report?.findings.find((item) => item.id === "2026-10-08-dayton-chris-clark-01");
+    assert.ok(report && tech && finding?.nonPro);
+    assert.equal(finding.start, "07:00");
+    assert.equal(finding.end, "07:18");
+    assert.equal(finding.nonPro.previous, null);
+    assert.equal(finding.nonPro.next?.orderId, "M-90566");
+    assert.equal(finding.nonPro.next?.clockIn, "07:18");
+    const defaults = defaultPartialChoice(finding.start, finding.end, finding.nonPro);
+    assert.equal(defaults?.remainder, "next");
+    assert.equal(defaults?.start, "07:00");
+    assert.equal(defaults?.end, "07:09");
+
+    const decision: Decision = { kind: "accept", start: "07:00", end: "07:10", nonProEditType: "partial", nonProRemainder: "next" };
+    const plan = buildPlan([report], { [finding.id]: decision });
+    const payload = plan.edits[0]?.nonPro;
+    const row = payload?.rows[0];
+    assert.equal(plan.invalid.length, 0);
+    assert.equal(payload?.editType, "partial");
+    assert.equal(payload?.originalClockIn, "07:00");
+    assert.equal(payload?.originalClockOut, "07:18");
+    assert.equal(payload?.keptClockIn, "07:00");
+    assert.equal(payload?.keptClockOut, "07:10");
+    assert.equal(row?.orderId, "M-90566");
+    assert.equal(row?.shopId, "mobile");
+    assert.equal(row?.clockIn, "07:18");
+    assert.equal(row?.newClockIn, "07:11");
+    assert.equal(row?.newClockOut, row?.clockOut);
+    assert.equal(plan.edits[0]?.minutes, 7);
+    assert.equal(plan.edits[0]?.start, "07:11");
+
+    const outlook = techOutlook(report, tech, { [finding.id]: decision });
+    const before = techOutlook(report, tech);
+    assert.equal(outlook.choiceMinutes, 7);
+    assert.ok((outlook.ifAll ?? 0) > (before.ifAll ?? 0));
+    const punches = dayPunches(report, tech.id, { [finding.id]: decision }, []);
+    const travel = punches.find((punch) => punch.orderId === "M-90566" && punch.originalClockIn === "07:18");
+    assert.equal(travel?.clockIn, "07:11");
+
+    const outside = buildPlan([report], { [finding.id]: { ...decision, end: "07:30" } });
+    assert.match(outside.invalid[0]?.error ?? "", /inside/);
+    const backwards = buildPlan([report], { [finding.id]: { ...decision, start: "07:12", end: "07:10" } });
+    assert.match(backwards.invalid[0]?.error ?? "", /after its start/);
+    const noRoom = buildPlan([report], { [finding.id]: { ...decision, end: "07:18" } });
+    assert.match(noRoom.invalid[0]?.error ?? "", /one minute/);
+
+    const mobile = SEED.find((item) => item.day === "2026-10-08" && item.shopId === "mobile");
+    const later = mobile?.findings.find((item) => item.id === "2026-10-08-mobile-chris-clark-02");
+    assert.equal(later?.nonPro?.previous?.orderId, "M-90566");
+    assert.equal(later?.nonPro?.next?.orderId, "D-90273");
+    assert.equal(defaultPartialChoice(later?.start ?? "", later?.end ?? "", later?.nonPro ?? { previous: null, next: null })?.remainder, "both");
+  });
+
+  it("lets the manager adjust Non-Pro times and rejects an overlap", () => {
+    const { report, finding } = nonProDay();
+    assert.ok(finding.nonPro?.previous && finding.nonPro.next);
+    const extend = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "08:30", nonProEditType: "extend_prev_out" } });
+    assert.equal(extend.edits[0]?.nonPro?.rows[0]?.newClockOut, "08:30");
+    assert.equal(extend.edits[0]?.nonPro?.keptClockIn, "08:31");
+    assert.equal(extend.edits[0]?.nonPro?.keptClockOut, "09:00");
+    assert.equal(extend.edits[0]?.minutes, 30);
+
+    const move = buildPlan([report], { [finding.id]: { kind: "accept", start: "08:11", end: "", nonProEditType: "move_next_in" } });
+    assert.equal(move.edits[0]?.nonPro?.rows[0]?.newClockIn, "08:11");
+    assert.equal(move.edits[0]?.nonPro?.keptClockIn, "08:00");
+    assert.equal(move.edits[0]?.nonPro?.keptClockOut, "08:10");
+    assert.equal(move.edits[0]?.minutes, 49);
+
+    const bumped = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "08:21", nonProEditType: "split", split: "08:20" } });
+    assert.equal(bumped.edits[0]?.nonPro?.rows[0]?.newClockOut, "08:20");
+    assert.equal(bumped.edits[0]?.nonPro?.rows[1]?.newClockIn, "08:21");
+    assert.equal(bumped.edits[0]?.nonPro?.keptClockIn, undefined);
+    assert.equal(bumped.edits[0]?.minutes, 59);
+
+    const gap = buildPlan([report], { [finding.id]: { kind: "accept", start: "", end: "08:40", nonProEditType: "split", split: "08:20" } });
+    assert.equal(gap.edits[0]?.nonPro?.keptClockIn, "08:21");
+    assert.equal(gap.edits[0]?.nonPro?.keptClockOut, "08:39");
+    assert.equal(gap.edits[0]?.minutes, 40);
+
+    const both = defaultKeptWindow("08:00", "09:00", "both");
+    assert.ok(both);
+    const partial = buildPlan([report], {
+      [finding.id]: { kind: "accept", start: both.start, end: both.end, nonProEditType: "partial", nonProRemainder: "both" },
+    });
+    assert.equal(partial.edits[0]?.nonPro?.rows[0]?.orderId, "D-10");
+    assert.equal(partial.edits[0]?.nonPro?.rows[1]?.orderId, "M-20");
+    assert.equal(partial.edits[0]?.nonPro?.keptClockIn, both.start);
+    assert.equal(partial.edits[0]?.nonPro?.keptClockOut, both.end);
+    assert.ok((partial.edits[0]?.minutes ?? 0) > 0);
+    assert.ok((partial.edits[0]?.minutes ?? 60) < 60);
+
+    const moved = buildPlan([report], { [finding.id]: { kind: "accept", start: "08:00", end: "08:20", nonProEditType: "move_to_so", targetOrderId: "S-55" } });
+    assert.equal(moved.edits[0]?.nonPro?.rows[0]?.newClockIn, "08:00");
+    assert.equal(moved.edits[0]?.nonPro?.rows[0]?.newClockOut, "08:20");
+    assert.equal(moved.edits[0]?.nonPro?.keptClockIn, "08:21");
+    assert.equal(moved.edits[0]?.minutes, 20);
+
+    const outside = buildPlan([report], { [finding.id]: { kind: "accept", start: "08:30", end: "09:30", nonProEditType: "move_to_so", targetOrderId: "S-55" } });
+    assert.match(outside.invalid[0]?.error ?? "", /inside/);
+    const early = buildPlan([report], { [finding.id]: { kind: "accept", start: "07:30", end: "", nonProEditType: "move_next_in" } });
+    assert.match(early.invalid[0]?.error ?? "", /inside/);
+
+    const outlook = techOutlook(report, report.technicians[0]!, { [finding.id]: { kind: "accept", start: "08:11", end: "", nonProEditType: "move_next_in" } });
+    assert.equal(outlook.choiceMinutes, 49);
+
+    finding.nonPro?.punches.push({ orderId: "M-77", work: "Overlap", shopId: "mobile", clockIn: "08:15", clockOut: "08:25" });
+    const foreign = buildPlan([report], { [finding.id]: { kind: "accept", start: "08:00", end: "09:00", nonProEditType: "move_to_so", targetOrderId: "S-55" } });
+    assert.match(foreign.invalid[0]?.error ?? "", /Mobile M-77/);
   });
 });
