@@ -1,5 +1,5 @@
 import { shopName } from "@/lib/review";
-import { SHOPS, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
+import { SHOPS, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 
 export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done";
@@ -26,6 +26,11 @@ export interface FullbayQueueEdit {
    */
   currentClockIn?: string | null;
   currentClockOut?: string | null;
+  /**
+   * Non-Pro attendance choice. Absent on older queue rows and on ordinary gap edits.
+   * `keep` is not queued. `rows` lists every service-order punch this choice changes.
+   */
+  nonPro?: NonProEditPayload;
 }
 
 /** A finding the manager accepted, overrode, or rejected. Undecided findings are omitted. */
@@ -84,7 +89,7 @@ export function queueEditFromPlanned(edit: PlannedEdit): FullbayQueueEdit {
   if (edit.decision !== "accept" && edit.decision !== "override") {
     throw new Error("Only accepted and overridden edits are queued.");
   }
-  return {
+  const queued: FullbayQueueEdit = {
     findingId: edit.findingId,
     day: edit.day,
     shopId: edit.shopId,
@@ -100,6 +105,8 @@ export function queueEditFromPlanned(edit: PlannedEdit): FullbayQueueEdit {
     appliedAt: null,
     applyNote: null,
   };
+  if (edit.nonPro && edit.nonPro.editType !== "keep") queued.nonPro = edit.nonPro;
+  return queued;
 }
 
 export function submissionToQueueRequest(submission: Submission): FullbayQueueRequest {
@@ -213,6 +220,8 @@ function parseQueueEdit(item: unknown): { ok: true; value: FullbayQueueEdit } | 
   if (typeof edit.minutes !== "number" || !Number.isFinite(edit.minutes) || edit.minutes < 0) {
     return { ok: false, error: "minutes must be a non-negative number." };
   }
+  const nonPro = parseNonPro(edit.nonPro);
+  if (!nonPro.ok) return nonPro;
   return {
     ok: true,
     value: {
@@ -230,6 +239,58 @@ function parseQueueEdit(item: unknown): { ok: true; value: FullbayQueueEdit } | 
       status: "pending",
       appliedAt: null,
       applyNote: null,
+      ...(nonPro.value ? { nonPro: nonPro.value } : {}),
+    },
+  };
+}
+
+const NON_PRO_TYPES = new Set<NonProEditType>(["extend_prev_out", "move_next_in", "split", "move_to_so", "keep"]);
+
+function parseNonPro(value: unknown): { ok: true; value: NonProEditPayload | undefined } | { ok: false; error: string } {
+  if (value == null) return { ok: true, value: undefined };
+  if (typeof value !== "object") return { ok: false, error: "nonPro must be an object." };
+  const record = value as Record<string, unknown>;
+  const editType = record.editType;
+  if (typeof editType !== "string" || !NON_PRO_TYPES.has(editType as NonProEditType)) {
+    return { ok: false, error: "nonPro.editType must be extend_prev_out, move_next_in, split, move_to_so, or keep." };
+  }
+  if (editType === "keep") return { ok: false, error: "A keep decision is not a Fullbay edit." };
+  const queuedType = editType as Exclude<NonProEditType, "keep">;
+  if (typeof record.originalClockIn !== "string" || !CLOCK.test(record.originalClockIn)) {
+    return { ok: false, error: "nonPro.originalClockIn must be HH:MM." };
+  }
+  if (typeof record.originalClockOut !== "string" || !CLOCK.test(record.originalClockOut)) {
+    return { ok: false, error: "nonPro.originalClockOut must be HH:MM." };
+  }
+  if (!Array.isArray(record.rows) || record.rows.length === 0) return { ok: false, error: "nonPro.rows must list each affected service order." };
+  const rows: NonProEditPayload["rows"] = [];
+  for (const item of record.rows) {
+    if (!item || typeof item !== "object") return { ok: false, error: "Each nonPro row must be an object." };
+    const row = item as Record<string, unknown>;
+    const rowOrderId = requiredText(row.orderId, "nonPro orderId");
+    if (!rowOrderId.ok) return rowOrderId;
+    if (typeof row.work !== "string") return { ok: false, error: "Each nonPro work must be a string." };
+    if (typeof row.shopId !== "string" || !SHOP_IDS.has(row.shopId)) return { ok: false, error: "Each nonPro shopId must be a known shop." };
+    for (const field of ["clockIn", "clockOut", "newClockIn", "newClockOut"] as const) {
+      if (typeof row[field] !== "string" || !CLOCK.test(row[field])) return { ok: false, error: `nonPro ${field} must be HH:MM.` };
+    }
+    rows.push({
+      orderId: rowOrderId.value,
+      work: row.work,
+      shopId: row.shopId as ShopId,
+      clockIn: row.clockIn as string,
+      clockOut: row.clockOut as string,
+      newClockIn: row.newClockIn as string,
+      newClockOut: row.newClockOut as string,
+    });
+  }
+  return {
+    ok: true,
+    value: {
+      editType: queuedType,
+      originalClockIn: record.originalClockIn,
+      originalClockOut: record.originalClockOut,
+      rows,
     },
   };
 }

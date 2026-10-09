@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay } from "@/lib/dates";
 import { latestQueueEdit, reviewApplyText, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
+import { buildNonProEdit, clampSplitTime, describeNonProEdit, splitMidpoint } from "@/lib/nonpro";
 import {
   buildPlan,
   isEligible,
@@ -20,7 +21,7 @@ import {
   utilization,
   type TechOutlook,
 } from "@/lib/review";
-import type { DayReport, Decision, DecisionKind, Finding, Technician } from "@/lib/types";
+import type { DayReport, Decision, DecisionKind, Finding, NonProEditType, Technician } from "@/lib/types";
 import { appliedWindow, formatClock, formatDuration, formatPercent } from "@/lib/time";
 
 export function ReviewView({
@@ -116,7 +117,7 @@ function ShopDay({
           Only time inside a clocked window counts. Off-the-clock stretches are in the table so the day reads straight through, and they are not gaps. Times are Eastern. Yellow is missed time. Orange is billable work with no service order.
         </p>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-          These rows come from the Fullbay timesheet. A gap with no Clock In Comment is aimed at the nearest service order for that tech. A Clock In Comment that names a coworker, such as “Help Nick”, is aimed at that person’s overlapping service order on the same shop day. Time on another shop’s service order is covered: it is labeled with that shop, it is not a gap, and it is not an edit. Orders are marked open on priorities.
+          These rows come from the Fullbay timesheet. A gap with no Clock In Comment is aimed at the nearest service order for that tech. A Clock In Comment that names a coworker, such as “Help Nick”, is aimed at that person’s overlapping service order on the same shop day. Time on another shop’s service order is covered: it is labeled with that shop, it is not a gap, and it is not an edit. A Non-Pro attendance row is marked Review. Keep it, give the span to the service order before or after it, split it, or move it onto another service order. Orders are marked open on priorities.
         </p>
       </div>
 
@@ -170,7 +171,7 @@ function TechDay({
   batches: FullbayEditBatch[];
   onDecision: (findingId: string, decision: Decision | null) => void;
 }) {
-  const outlook = techOutlook(report, tech);
+  const outlook = techOutlook(report, tech, decisions);
   const findings = report.findings
     .filter((finding) => finding.techId === tech.id)
     .slice()
@@ -248,20 +249,30 @@ function outcomeHeading(tech: Technician, outlook: TechOutlook): string {
   if (tech.sheetLine) return `${tech.name} — ${tech.sheetLine}`;
   const ratio = utilization(tech.soHours, tech.clockedHours);
   const now = ratio == null ? "No clocked hours" : formatPercent(ratio);
-  const hours = `${tech.soHours.toFixed(2)} SO / ${tech.clockedHours.toFixed(2)} clocked`;
+  const scope = tech.foreignCoveredHours ? " on this shop" : "";
+  const hours = `${tech.soHours.toFixed(2)} SO / ${tech.clockedHours.toFixed(2)} clocked${scope}`;
+  const choice = outlook.choiceMinutes > 0 ? ", including Non-Pro time assigned to a service order" : "";
   if (outlook.optionalMinutes > 0 && outlook.requiredMinutes > 0 && outlook.ifRequired != null && outlook.ifAll != null) {
-    return `${tech.name} — ${now} now (${hours}). About ${formatPercent(outlook.ifRequired)} if the required edits are made; about ${formatPercent(outlook.ifAll)} if the optional ${formatDuration(outlook.optionalMinutes)} is closed too.`;
+    return `${tech.name} — ${now} now (${hours}). About ${formatPercent(outlook.ifRequired)} if the required edits are made${choice}; about ${formatPercent(outlook.ifAll)} if the optional ${formatDuration(outlook.optionalMinutes)} is closed too.`;
+  }
+  if (outlook.choiceMinutes > 0 && outlook.recommendedMinutes === 0 && outlook.ifAll != null) {
+    return `${tech.name} — ${now} now (${hours}). About ${formatPercent(outlook.ifAll)} with the Non-Pro time assigned to a service order.`;
   }
   if (outlook.ifAll != null && outlook.recommendedMinutes > 0) {
-    return `${tech.name} — ${now} now (${hours}). About ${formatPercent(outlook.ifAll)} if the recommended edits are made.`;
+    return `${tech.name} — ${now} now (${hours}). About ${formatPercent(outlook.ifAll)} if the recommended edits are made${choice}.`;
   }
   return `${tech.name} — ${now} now (${hours}).`;
 }
 
 function outcomeDetail(tech: Technician, outlook: TechOutlook): string {
   if (tech.sheetNote) return tech.sheetNote;
-  if (outlook.minutesToGoal === 0) return "Already at the 98% goal on the loaded hours.";
-  return `Needs about ${formatDuration(outlook.minutesToGoal)} more SO time to reach 98%. Rejected edits add none. A row with no service order is not an edit until an order exists.`;
+  const scope = tech.foreignCoveredHours
+    ? ` ${tech.foreignCoveredHours.toFixed(2)} h on other shops’ service orders is outside this shop’s clocked time.`
+    : "";
+  if (outlook.minutesToGoal === 0) {
+    return scope.length > 0 ? `Already at the 98% goal on this shop’s hours.${scope}` : "Already at the 98% goal on the loaded hours.";
+  }
+  return `Needs about ${formatDuration(outlook.minutesToGoal)} more SO time to reach 98%.${scope} Rejected edits add none. A row with no service order is not an edit until an order exists.`;
 }
 
 function DayRows({
@@ -331,7 +342,10 @@ function DayRows({
             </p>
           ) : null}
           {locked && recommendation && !queued ? <p className="mt-3 text-muted-foreground">Signed off. This decision is locked.</p> : null}
-          {eligible && recommendation && canDecide ? (
+          {finding.nonPro ? (
+            <NonProChoices finding={finding} decision={decision} canDecide={canDecide} onDecision={onDecision} />
+          ) : null}
+          {eligible && recommendation && canDecide && !finding.nonPro ? (
             <div className="mt-3 flex flex-col gap-2">
               <div className="flex flex-wrap gap-2" role="group" aria-label={`Decision for ${tech.name} ${recommendation.orderId}`}>
                 <Button type="button" size="sm" variant={decision?.kind === "accept" ? "default" : "outline"} aria-pressed={decision?.kind === "accept"} onClick={() => choose("accept")}>
@@ -413,9 +427,177 @@ function reportText(finding: Finding): string {
 }
 
 function missedText(finding: Finding): string {
+  if (finding.nonPro) return "Review";
   if (finding.kind === "off_clock" || finding.notAGap) return "Not a gap";
   if (finding.kind === "gap" || finding.kind === "flag") return formatDuration(finding.minutes);
   return "";
+}
+
+function NonProChoices({
+  finding,
+  decision,
+  canDecide,
+  onDecision,
+}: {
+  finding: Finding;
+  decision: Decision | undefined;
+  canDecide: boolean;
+  onDecision: (findingId: string, decision: Decision | null) => void;
+}) {
+  const review = finding.nonPro;
+  if (!review) return null;
+  const selected = decision?.nonProEditType;
+  const built = decision ? buildNonProEdit(finding, decision) : null;
+  const described = built?.ok ? describeNonProEdit(built.payload) : null;
+
+  function choose(editType: NonProEditType) {
+    if (selected === editType && editType !== "split" && editType !== "move_to_so") {
+      onDecision(finding.id, null);
+      return;
+    }
+    if (editType === "keep") {
+      onDecision(finding.id, { kind: "reject", start: "", end: "", nonProEditType: "keep" });
+      return;
+    }
+    if (editType === "split") {
+      onDecision(finding.id, {
+        kind: "accept",
+        start: "",
+        end: "",
+        nonProEditType: "split",
+        split: decision?.split || splitMidpoint(finding.start, finding.end) || "",
+      });
+      return;
+    }
+    if (editType === "move_to_so") {
+      onDecision(finding.id, {
+        kind: "accept",
+        start: "",
+        end: "",
+        nonProEditType: "move_to_so",
+        targetOrderId: decision?.targetOrderId ?? "",
+      });
+      return;
+    }
+    onDecision(finding.id, { kind: "accept", start: "", end: "", nonProEditType: editType });
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {canDecide ? (
+        <div className="flex flex-col items-start gap-2" role="group" aria-label={`Non-Pro review for ${formatClock(finding.start)}`}>
+          <Button type="button" size="sm" className="h-auto whitespace-normal py-1.5 text-left" variant={selected === "keep" ? "destructive" : "outline"} aria-pressed={selected === "keep"} onClick={() => choose("keep")}>
+            Keep as Non-Pro
+          </Button>
+          {review.previous ? (
+            <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={selected === "extend_prev_out" ? "default" : "outline"} aria-pressed={selected === "extend_prev_out"} onClick={() => choose("extend_prev_out")}>
+              Give the whole span to {neighborLabel(review.previous)} — extend clock-out to {formatClock(finding.end)}
+            </Button>
+          ) : null}
+          {review.next ? (
+            <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={selected === "move_next_in" ? "default" : "outline"} aria-pressed={selected === "move_next_in"} onClick={() => choose("move_next_in")}>
+              Give the whole span to {neighborLabel(review.next)} — move clock-in back to {formatClock(finding.start)}
+            </Button>
+          ) : null}
+          {review.canSplit && review.previous && review.next ? (
+            <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={selected === "split" ? "default" : "outline"} aria-pressed={selected === "split"} onClick={() => choose("split")}>
+              Split: earlier part to {neighborLabel(review.previous)}, later part to {neighborLabel(review.next)}
+            </Button>
+          ) : null}
+          <Button type="button" size="sm" className="h-auto max-w-xl whitespace-normal py-1.5 text-left" variant={selected === "move_to_so" ? "default" : "outline"} aria-pressed={selected === "move_to_so"} onClick={() => choose("move_to_so")}>
+            Move onto another service order, keeping {formatClock(finding.start)}–{formatClock(finding.end)}
+          </Button>
+        </div>
+      ) : null}
+      {canDecide && selected === "split" && decision ? (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={`${finding.id}-split`}>Split time</Label>
+          <Input
+            id={`${finding.id}-split`}
+            type="time"
+            step={60}
+            value={decision.split ?? ""}
+            onChange={(event) =>
+              onDecision(finding.id, {
+                kind: "accept",
+                start: "",
+                end: "",
+                nonProEditType: "split",
+                split: clampSplitTime(event.target.value, finding.start, finding.end) ?? event.target.value,
+              })
+            }
+            className="h-10 max-w-40 bg-white text-base md:text-base"
+          />
+          <p className="text-muted-foreground">
+            Inside {formatClock(finding.start)}–{formatClock(finding.end)}. The earlier part goes to {neighborLabel(review.previous)} and the later part to {neighborLabel(review.next)}.
+          </p>
+        </div>
+      ) : null}
+      {canDecide && selected === "move_to_so" && decision ? (
+        <MoveToOrder finding={finding} decision={decision} onDecision={onDecision} />
+      ) : null}
+      {described ? <p>{described} {built?.ok && built.minutes > 0 ? `Adds ${formatDuration(built.minutes)} to SO hours.` : "Adds no SO hours."}</p> : null}
+      {built && !built.ok ? (
+        <p role="alert" className="text-destructive">
+          {built.error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function MoveToOrder({
+  finding,
+  decision,
+  onDecision,
+}: {
+  finding: Finding;
+  decision: Decision;
+  onDecision: (findingId: string, decision: Decision | null) => void;
+}) {
+  const orders = finding.nonPro?.orders ?? [];
+  function setOrder(targetOrderId: string) {
+    onDecision(finding.id, { kind: "accept", start: "", end: "", nonProEditType: "move_to_so", targetOrderId });
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {orders.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={`${finding.id}-order`}>Service order</Label>
+          <select
+            id={`${finding.id}-order`}
+            value={orders.some((order) => order.orderId === decision.targetOrderId) ? decision.targetOrderId : ""}
+            onChange={(event) => setOrder(event.target.value)}
+            className="h-10 max-w-xl rounded-lg border bg-white px-3 text-base"
+          >
+            <option value="">Choose a service order</option>
+            {orders.map((order) => (
+              <option key={order.orderId} value={order.orderId}>
+                {shopName(order.shopId)} · {order.orderId}
+                {order.work ? ` / ${order.work}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`${finding.id}-typed`}>Or type an SO number</Label>
+        <Input
+          id={`${finding.id}-typed`}
+          value={decision.targetOrderId ?? ""}
+          onChange={(event) => setOrder(event.target.value)}
+          placeholder="D-90273"
+          className="h-10 max-w-48 bg-white text-base md:text-base"
+        />
+      </div>
+    </div>
+  );
+}
+
+function neighborLabel(neighbor: { shopId: DayReport["shopId"]; orderId: string; work: string } | null): string {
+  if (!neighbor) return "the neighboring service order";
+  const work = neighbor.work ? ` / ${neighbor.work}` : "";
+  return `${shopName(neighbor.shopId)} ${neighbor.orderId}${work}`;
 }
 
 function suggestedText(finding: Finding): string {

@@ -9,6 +9,14 @@ export function parseClock(value: string): number | null {
   return hours * 60 + minutes;
 }
 
+/** 24-hour HH:MM from minutes since midnight. */
+export function clockFromMinutes(totalMinutes: number): string {
+  const capped = Math.min(23 * 60 + 59, Math.max(0, Math.round(totalMinutes)));
+  const hour = Math.floor(capped / 60);
+  const minute = capped % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 export function formatClock(value: string): string {
   const minutes = parseClock(value);
   if (minutes == null) return value;

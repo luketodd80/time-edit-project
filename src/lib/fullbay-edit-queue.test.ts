@@ -467,6 +467,103 @@ describe("auto sign-off", () => {
     assert.equal(absent.ok, true);
     if (absent.ok) assert.deepEqual(absent.value.decided, []);
   });
+
+  it("loads an older edit without nonPro and a Non-Pro payload", () => {
+    const older = parseQueueRequest({
+      submittedAt: "2026-10-07T15:00:00.000Z",
+      shopId: "dayton",
+      days: [friday],
+      edits: [
+        {
+          findingId: "legacy",
+          day: friday,
+          shopId: "dayton",
+          techName: "Chris Clark",
+          orderId: "D-1",
+          work: "Brakes",
+          decision: "accept",
+          newClockIn: "08:00",
+          newClockOut: "09:00",
+          minutes: 60,
+        },
+      ],
+    });
+    assert.equal(older.ok, true);
+    if (older.ok) assert.equal(older.value.edits[0]?.nonPro, undefined);
+
+    const split = parseQueueRequest({
+      submittedAt: "2026-10-08T15:00:00.000Z",
+      shopId: "dayton",
+      days: ["2026-10-08"],
+      edits: [
+        {
+          findingId: "meeting",
+          day: "2026-10-08",
+          shopId: "dayton",
+          techName: "Chris Clark",
+          orderId: "D-10",
+          work: "Brakes",
+          decision: "accept",
+          newClockIn: "07:00",
+          newClockOut: "08:30",
+          minutes: 60,
+          nonPro: {
+            editType: "split",
+            originalClockIn: "08:00",
+            originalClockOut: "09:00",
+            rows: [
+              {
+                orderId: "D-10",
+                work: "Brakes",
+                shopId: "dayton",
+                clockIn: "07:00",
+                clockOut: "08:00",
+                newClockIn: "07:00",
+                newClockOut: "08:30",
+              },
+              {
+                orderId: "M-20",
+                work: "Onsite",
+                shopId: "mobile",
+                clockIn: "09:00",
+                clockOut: "10:00",
+                newClockIn: "08:30",
+                newClockOut: "10:00",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(split.ok, true);
+    if (split.ok) {
+      assert.equal(split.value.edits[0]?.nonPro?.editType, "split");
+      assert.equal(split.value.edits[0]?.nonPro?.rows.length, 2);
+      assert.equal(split.value.edits[0]?.nonPro?.originalClockIn, "08:00");
+    }
+
+    const kept = parseQueueRequest({
+      submittedAt: "2026-10-08T15:00:00.000Z",
+      shopId: "dayton",
+      days: ["2026-10-08"],
+      edits: [
+        {
+          findingId: "meeting",
+          day: "2026-10-08",
+          shopId: "dayton",
+          techName: "Chris Clark",
+          orderId: "Non-Pro",
+          work: "Attendance",
+          decision: "accept",
+          newClockIn: "08:00",
+          newClockOut: "09:00",
+          minutes: 0,
+          nonPro: { editType: "keep", originalClockIn: "08:00", originalClockOut: "09:00", rows: [] },
+        },
+      ],
+    });
+    assert.equal(kept.ok, false);
+  });
 });
 
 describe("fullbay edit queue file", { concurrency: false }, () => {

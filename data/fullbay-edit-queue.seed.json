@@ -2253,6 +2253,260 @@
           "shopId": "mobile"
         }
       ]
+    },
+    {
+      "id": "84ee9bc5-dd42-42b1-a24c-48cae8a9fa0f",
+      "submittedAt": "2026-10-09T10:24:19.805Z",
+      "shopId": "greenville",
+      "days": [
+        "2026-10-08"
+      ],
+      "edits": [
+        {
+          "findingId": "2026-10-08-greenville-gage-wills-11",
+          "day": "2026-10-08",
+          "shopId": "greenville",
+          "shopName": "Greenville",
+          "techName": "Gage Wills",
+          "orderId": "G-89173",
+          "work": "Customer Picked Up Parts",
+          "decision": "accept",
+          "newClockIn": "13:08",
+          "newClockOut": "13:09",
+          "minutes": 1,
+          "status": "already_done",
+          "appliedAt": "2026-10-09T10:28:16.753Z",
+          "applyNote": "Gap already closed by manager (Shawn Loxley, 10/9 6:16 AM). No edit made.",
+          "currentClockIn": "13:07",
+          "currentClockOut": "13:09"
+        },
+        {
+          "findingId": "2026-10-08-greenville-jack-eversole-06",
+          "day": "2026-10-08",
+          "shopId": "greenville",
+          "shopName": "Greenville",
+          "techName": "Jack Eversole",
+          "orderId": "G-88822",
+          "work": "B service Tractor",
+          "decision": "override",
+          "newClockIn": "11:11",
+          "newClockOut": "11:12",
+          "minutes": 1,
+          "status": "failed",
+          "appliedAt": null,
+          "applyNote": "Blocked: action item completed/SO invoiced; Chris's login lacks permission. Row unchanged.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-greenville-jack-eversole-08",
+          "day": "2026-10-08",
+          "shopId": "greenville",
+          "shopName": "Greenville",
+          "techName": "Jack Eversole",
+          "orderId": "G-90748",
+          "work": "Driveshaft Build Drivelin ...",
+          "decision": "accept",
+          "newClockIn": "12:19",
+          "newClockOut": "12:23",
+          "minutes": 4,
+          "status": "already_done",
+          "appliedAt": "2026-10-09T10:28:16.753Z",
+          "applyNote": "Gap already closed by manager (Shawn Loxley, 10/9 6:17 AM). No edit made.",
+          "currentClockIn": "12:18",
+          "currentClockOut": "12:52"
+        },
+        {
+          "findingId": "2026-10-08-greenville-cody-kester-08",
+          "day": "2026-10-08",
+          "shopId": "greenville",
+          "shopName": "Greenville",
+          "techName": "Cody Kester",
+          "orderId": "G-90653",
+          "work": "Truck running around 215, ...",
+          "decision": "accept",
+          "newClockIn": "14:28",
+          "newClockOut": "14:33",
+          "minutes": 5,
+          "status": "already_done",
+          "appliedAt": "2026-10-09T10:28:16.753Z",
+          "applyNote": "Gap already closed by manager (Shawn Loxley, 10/9 6:09 AM). No edit made.",
+          "currentClockIn": "14:27",
+          "currentClockOut": "14:53"
+        },
+        {
+          "findingId": "2026-10-08-greenville-cody-kester-11",
+          "day": "2026-10-08",
+          "shopId": "greenville",
+          "shopName": "Greenville",
+          "techName": "Cody Kester",
+          "orderId": "G-90773",
+          "work": "Service Call to Venture l ...",
+          "decision": "override",
+          "newClockIn": "15:53",
+          "newClockOut": "15:54",
+          "minutes": 1,
+          "status": "already_done",
+          "appliedAt": "2026-10-09T10:28:16.753Z",
+          "applyNote": "Gap already closed by manager (Shawn Loxley, 10/9 6:09 AM). No edit made.",
+          "currentClockIn": "15:52",
+          "currentClockOut": "16:52"
+        }
+      ],
+      "decided": [
+        {
+          "findingId": "2026-10-08-greenville-gage-wills-11",
+          "day": "2026-10-08",
+          "shopId": "greenville"
+        },
+        {
+          "findingId": "2026-10-08-greenville-jack-eversole-06",
+          "day": "2026-10-08",
+          "shopId": "greenville"
+        },
+        {
+          "findingId": "2026-10-08-greenville-jack-eversole-08",
+          "day": "2026-10-08",
+          "shopId": "greenville"
+        },
+        {
+          "findingId": "2026-10-08-greenville-cody-kester-08",
+          "day": "2026-10-08",
+          "shopId": "greenville"
+        },
+        {
+          "findingId": "2026-10-08-greenville-cody-kester-11",
+          "day": "2026-10-08",
+          "shopId": "greenville"
+        }
+      ]
+    },
+    {
+      "id": "7005a1ea-0f43-4ade-854d-eeafd51d1166",
+      "submittedAt": "2026-10-09T11:39:52.968Z",
+      "shopId": "covington",
+      "days": [
+        "2026-10-08"
+      ],
+      "edits": [
+        {
+          "findingId": "2026-10-08-covington-cline-wirick-05",
+          "day": "2026-10-08",
+          "shopId": "covington",
+          "shopName": "Covington",
+          "techName": "Cline Wirick",
+          "orderId": "C-90605",
+          "work": "*10/8  B service Straight ...",
+          "decision": "accept",
+          "newClockIn": "14:03",
+          "newClockOut": "14:04",
+          "minutes": 1,
+          "status": "applied",
+          "appliedAt": "2026-10-09T12:29:24.381Z",
+          "applyNote": "Path A: C-90605 In 2:04:27PM -> 2:04:00PM (target 14:03 overlapped prior C-89133 Out 2:03:03PM; bumped to next minute). Out 2:22:40PM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-covington-joe-hueber-02",
+          "day": "2026-10-08",
+          "shopId": "covington",
+          "shopName": "Covington",
+          "techName": "Joe Hueber",
+          "orderId": "C-90675",
+          "work": "*10/7 Service Call to 965 ...",
+          "decision": "accept",
+          "newClockIn": "09:08",
+          "newClockOut": "09:14",
+          "minutes": 6,
+          "status": "applied",
+          "appliedAt": "2026-10-09T12:29:24.381Z",
+          "applyNote": "Path A: C-90675 In 9:13:46AM -> 9:09:00AM (target 09:08 overlapped prior C-90265 Out 9:08:29AM; bumped). Out 11:06:58AM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-covington-anthony-montgomery-02",
+          "day": "2026-10-08",
+          "shopId": "covington",
+          "shopName": "Covington",
+          "techName": "Anthony Montgomery",
+          "orderId": "C-90200",
+          "work": "*10/5  Complaint of engin ...",
+          "decision": "accept",
+          "newClockIn": "08:32",
+          "newClockOut": "08:35",
+          "minutes": 3,
+          "status": "applied",
+          "appliedAt": "2026-10-09T12:29:24.381Z",
+          "applyNote": "Path A: second C-90200 row In 8:34:55AM -> 8:33:00AM (target 08:32 overlapped prior C-90200 Out 8:32:11AM; bumped). Out 8:40:15AM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-covington-anthony-montgomery-04",
+          "day": "2026-10-08",
+          "shopId": "covington",
+          "shopName": "Covington",
+          "techName": "Anthony Montgomery",
+          "orderId": "C-90719",
+          "work": "*10/8 Repair air leak on  ...",
+          "decision": "accept",
+          "newClockIn": "08:40",
+          "newClockOut": "08:42",
+          "minutes": 2,
+          "status": "applied",
+          "appliedAt": "2026-10-09T12:29:24.381Z",
+          "applyNote": "Path A: C-90719 In 8:42:12AM -> 8:41:00AM (target 08:40 overlapped prior C-90200 Out 8:40:15AM; bumped). Out 10:32:05AM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        },
+        {
+          "findingId": "2026-10-08-covington-anthony-montgomery-06",
+          "day": "2026-10-08",
+          "shopId": "covington",
+          "shopName": "Covington",
+          "techName": "Anthony Montgomery",
+          "orderId": "C-90270",
+          "work": "*10/8  B service Straight ...",
+          "decision": "accept",
+          "newClockIn": "10:32",
+          "newClockOut": "10:34",
+          "minutes": 2,
+          "status": "applied",
+          "appliedAt": "2026-10-09T12:29:24.381Z",
+          "applyNote": "Path A: morning C-90270 In 10:34:29AM -> 10:33:00AM (target 10:32 overlapped prior C-90719 Out 10:32:05AM; bumped). Out 12:01:43PM unchanged. Saved.",
+          "currentClockIn": null,
+          "currentClockOut": null
+        }
+      ],
+      "decided": [
+        {
+          "findingId": "2026-10-08-covington-cline-wirick-05",
+          "day": "2026-10-08",
+          "shopId": "covington"
+        },
+        {
+          "findingId": "2026-10-08-covington-joe-hueber-02",
+          "day": "2026-10-08",
+          "shopId": "covington"
+        },
+        {
+          "findingId": "2026-10-08-covington-anthony-montgomery-02",
+          "day": "2026-10-08",
+          "shopId": "covington"
+        },
+        {
+          "findingId": "2026-10-08-covington-anthony-montgomery-04",
+          "day": "2026-10-08",
+          "shopId": "covington"
+        },
+        {
+          "findingId": "2026-10-08-covington-anthony-montgomery-06",
+          "day": "2026-10-08",
+          "shopId": "covington"
+        }
+      ]
     }
   ]
 }

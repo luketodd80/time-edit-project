@@ -5,6 +5,7 @@ import { formatDayShort, formatTimestamp } from "@/lib/dates";
 import { alreadyDoneText, batchForSubmission, type FullbayEditBatch, type FullbayQueueEdit } from "@/lib/fullbay-edit-queue";
 import { shopName } from "@/lib/review";
 import type { PlannedEdit, SkippedOrder, Submission } from "@/lib/types";
+import { describeNonProEdit } from "@/lib/nonpro";
 import { formatClock, formatDuration } from "@/lib/time";
 
 export function ConfirmView({
@@ -65,14 +66,20 @@ export function ConfirmView({
         empty="No accepted or overridden edits in this confirmation."
         edits={submission.edits}
         render={(edit) =>
-          `${edit.decision === "accept" ? "Accepted as recommended" : "Override"} · ${formatClock(edit.start)}–${formatClock(edit.end)} · ${formatDuration(edit.minutes)} added to SO hours. ${applyStatusText(byId.get(edit.findingId))}`
+          edit.nonPro
+            ? `${describeNonProEdit(edit.nonPro)} ${formatDuration(edit.minutes)} added to SO hours. ${applyStatusText(byId.get(edit.findingId))}`
+            : `${edit.decision === "accept" ? "Accepted as recommended" : "Override"} · ${formatClock(edit.start)}–${formatClock(edit.end)} · ${formatDuration(edit.minutes)} added to SO hours. ${applyStatusText(byId.get(edit.findingId))}`
         }
       />
       <EditList
         title="Rejected"
         empty="No rejected recommendations."
         edits={submission.rejected}
-        render={() => "Rejected. No reason recorded. Adds no SO hours."}
+        render={(edit) =>
+          edit.nonPro?.editType === "keep"
+            ? "Kept as Non-Pro. No Fullbay change. Adds no SO hours."
+            : "Rejected. No reason recorded. Adds no SO hours."
+        }
       />
       <section className="flex flex-col gap-3">
         <h3 className="font-medium">Skipped because invoiced</h3>

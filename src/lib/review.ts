@@ -1,3 +1,4 @@
+import { buildNonProEdit, nonProEditType } from "@/lib/nonpro";
 import { SHOPS, type DayReport, type Decision, type Finding, type PlannedEdit, type ServiceOrder, type ShopFilter, type ShopId, type Signoff, type SkippedOrder, type Submission, type Technician } from "@/lib/types";
 import { appliedWindow } from "@/lib/time";
 
@@ -77,7 +78,11 @@ export function requiredDecisionFindingIds(reports: DayReport[], pair: { day: st
   const report = reports.find((item) => item.day === pair.day && item.shopId === pair.shopId);
   if (!report) return [];
   return report.findings
-    .filter((finding) => finding.recommendation != null && isEligible(report, finding) && techFor(report, finding.techId) != null)
+    .filter((finding) => {
+      if (techFor(report, finding.techId) == null) return false;
+      if (finding.nonPro) return true;
+      return finding.recommendation != null && isEligible(report, finding);
+    })
     .map((finding) => finding.id);
 }
 
@@ -102,30 +107,48 @@ export interface TechOutlook {
   recommendedMinutes: number;
   requiredMinutes: number;
   optionalMinutes: number;
-  /** SO minutes still needed to reach 98%, from the loaded baseline. */
+  /** Minutes from Non-Pro choices that assign the span to a service order. Keep adds none. */
+  choiceMinutes: number;
+  /** SO minutes still needed to reach 98%, from this shop's loaded baseline. */
   minutesToGoal: number;
   ifRequired: number | null;
   ifAll: number | null;
 }
 
-/** Utilization if every eligible recommendation is kept. Rejects and the no-order flag add nothing. */
-export function techOutlook(report: DayReport, tech: Technician): TechOutlook {
+/**
+ * Utilization if every eligible recommendation is kept, plus Non-Pro spans the manager has assigned.
+ * An undecided Non-Pro row adds nothing. Keep adds nothing. Rejects and the no-order flag add nothing.
+ */
+export function techOutlook(report: DayReport, tech: Technician, decisions: Record<string, Decision> = {}): TechOutlook {
   let requiredMinutes = 0;
   let optionalMinutes = 0;
+  let choiceMinutes = 0;
   for (const finding of report.findings) {
-    if (finding.techId !== tech.id || !finding.recommendation || !isEligible(report, finding)) continue;
+    if (finding.techId !== tech.id) continue;
+    if (finding.nonPro) {
+      choiceMinutes += nonProMinutes(finding, decisions[finding.id]);
+      continue;
+    }
+    if (!finding.recommendation || !isEligible(report, finding)) continue;
     if (finding.recommendation.optional) optionalMinutes += finding.recommendation.minutes;
     else requiredMinutes += finding.recommendation.minutes;
   }
   const minutesToGoal = Math.max(0, Math.round((UTILIZATION_GOAL * tech.clockedHours - tech.soHours) * 60));
+  const projected = requiredMinutes + optionalMinutes + choiceMinutes;
   return {
     recommendedMinutes: requiredMinutes + optionalMinutes,
     requiredMinutes,
     optionalMinutes,
+    choiceMinutes,
     minutesToGoal,
-    ifRequired: utilization(tech.soHours + requiredMinutes / 60, tech.clockedHours),
-    ifAll: utilization(tech.soHours + (requiredMinutes + optionalMinutes) / 60, tech.clockedHours),
+    ifRequired: utilization(tech.soHours + (requiredMinutes + choiceMinutes) / 60, tech.clockedHours),
+    ifAll: utilization(tech.soHours + projected / 60, tech.clockedHours),
   };
+}
+
+function nonProMinutes(finding: Finding, decision: Decision | undefined): number {
+  const built = buildNonProEdit(finding, decision);
+  return built.ok ? built.minutes : 0;
 }
 
 export function ordersWithoutEdit(report: DayReport): ServiceOrder[] {
@@ -183,6 +206,7 @@ export interface TechTotal {
 }
 
 export function addedMinutes(report: DayReport, finding: Finding, decision: Decision | undefined): number {
+  if (finding.nonPro) return nonProMinutes(finding, decision);
   if (!decision || !isEligible(report, finding) || !finding.recommendation) return 0;
   if (decision.kind === "reject") return 0;
   const window = appliedWindow(finding.recommendation, decision);
@@ -253,6 +277,7 @@ function plannedEdit(
   finding: Finding,
   decision: Decision | undefined,
 ): PlannedEdit | null {
+  if (finding.nonPro) return plannedNonProEdit(report, finding, decision);
   if (!finding.recommendation || !isEligible(report, finding)) return null;
   const order = orderFor(report, finding.recommendation.orderId);
   const tech = techFor(report, finding.techId);
@@ -290,6 +315,44 @@ function plannedEdit(
     minutes: decision.kind === "reject" || !window.valid ? 0 : window.minutes,
     error: window.error,
   };
+}
+
+function plannedNonProEdit(report: DayReport, finding: Finding, decision: Decision | undefined): PlannedEdit | null {
+  const tech = techFor(report, finding.techId);
+  if (!tech || !finding.nonPro) return null;
+  const built = decision ? buildNonProEdit(finding, decision) : null;
+  const editType = nonProEditType(decision);
+  const row = built?.ok ? built.payload.rows[0] : undefined;
+  const orderId = row?.orderId ?? "Non-Pro";
+  const work = row?.work ?? "Attendance";
+  const order = orderFor(report, orderId);
+  const base = {
+    findingId: finding.id,
+    day: report.day,
+    shopId: report.shopId,
+    techName: tech.name,
+    orderId,
+    work,
+    orderStatus: order?.status ?? "priorities",
+    start: row?.newClockIn ?? finding.start,
+    end: row?.newClockOut ?? finding.end,
+  };
+
+  if (!decision || !editType) {
+    return { ...base, decision: "undecided", minutes: 0, error: null };
+  }
+  if (!built || !built.ok) {
+    return {
+      ...base,
+      decision: decision.kind === "reject" ? "reject" : "accept",
+      minutes: 0,
+      error: built && !built.ok ? built.error : "Choose what to do with this Non-Pro row.",
+    };
+  }
+  if (editType === "keep") {
+    return { ...base, orderId: "Non-Pro", work: "Attendance", decision: "reject", start: finding.start, end: finding.end, minutes: 0, error: null, nonPro: built.payload };
+  }
+  return { ...base, decision: "accept", minutes: built.minutes, error: null, nonPro: built.payload };
 }
 
 export interface ReviewPlan {
