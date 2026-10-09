@@ -26,7 +26,19 @@ The shop grid is the previous 7 calendar days. Green is signed off, with the ear
 
 Utilization is job time divided by clocked time. Clocked and job hours are the shop-scoped technician totals already on each day report. After, and minutes picked up, add only `applied` and `already_done` edits. `not_a_gap`, and a note that says the line was not applied or was a false gap, add zero. The section has This week, Last week, This month, Last month, Year to date, and Last 30 days, plus a start and end date. Weeks start Monday. A range with no timesheet data says so. It does not show 0%.
 
-Those before/after rows are also stored in `data/utilization-history.json`, one row per day, shop, and tech. The admin page merges the days currently loaded in the app with that file. A day that is no longer in the loaded reports stays in the file, and a day whose queue rows are gone keeps the minutes already stored. Render has no persistent disk, so the committed file is what comes back after a deploy. Refreshing the day seed or the queue seed should merge into this file rather than replacing it, or older days drop out of month and year ranges. The live overlay, when the process can write, is `data/utilization-history.live.json` (or `utilization-history.json` under `TSC_DATA_DIR`). It is gitignored.
+Those before/after rows are also stored in `data/utilization-history.json`, one row per day, shop, and tech. The admin page merges the days currently loaded in the app with that file. A day that is no longer in the loaded reports stays in the file, and a day whose queue rows are gone keeps the minutes already stored. Render has no persistent disk, so the committed file is what comes back after a deploy. After the nightly load adds a day, or after the queue seed changes, run `npm run history:update`. That merges the loaded days into this file and keeps every day already stored. The live overlay, when the process can write, is `data/utilization-history.live.json` (or `utilization-history.json` under `TSC_DATA_DIR`). It is gitignored.
+
+## Nightly load
+
+Adding a new Fullbay day means putting that Details List download into the seed described under What is loaded (`data/fullbay-timesheets`, the weekday CSV module, `src/lib/fullbay-timesheet.ts`, and `src/lib/seed.ts`). There is no separate seed-load script. Utilization history is the step that has to run every time, including when only `data/fullbay-edit-queue.seed.json` is refreshed.
+
+After the new day is in the seed, run:
+
+```bash
+npm run history:update
+```
+
+Commit the updated `data/utilization-history.json` in the same seed PR. The command reads `src/lib/seed.ts` and `data/fullbay-edit-queue.seed.json`, then runs `mergeUtilizationHistory` into `data/utilization-history.json`. Shop days already in the file stay. Shop days still loaded are added or refreshed. A loaded shop day whose queue rows are gone keeps the minutes already stored.
 
 ## Shared password
 
