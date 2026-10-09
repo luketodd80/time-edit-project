@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/review.test.ts src/lib/fullbay-timesheet.test.ts src/lib/fullbay-edit-queue.test.ts src/lib/day-punches.test.ts src/lib/site-auth.test.ts src/lib/submit-webhook.test.ts src/lib/admin.test.ts"
+    "history:update": "node --import tsx scripts/update-utilization-history.ts",
+    "test": "node --import tsx --test src/lib/review.test.ts src/lib/fullbay-timesheet.test.ts src/lib/fullbay-edit-queue.test.ts src/lib/day-punches.test.ts src/lib/site-auth.test.ts src/lib/submit-webhook.test.ts src/lib/admin.test.ts scripts/update-utilization-history.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
