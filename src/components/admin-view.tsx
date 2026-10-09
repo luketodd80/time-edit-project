@@ -397,7 +397,14 @@ function ShopBlock({
     <>
       <RollupRow
         label={
-          <button type="button" onClick={onToggle} className="inline-flex items-center gap-1 text-left font-semibold">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-left font-semibold"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle();
+            }}
+          >
             <span className="w-4 text-muted-foreground">{open ? "▾" : "▸"}</span>
             {name}
             <span className="font-normal text-muted-foreground">{techCount} techs</span>
