@@ -31,6 +31,7 @@ describe("history update", () => {
       assert.equal(after.find((row) => row.day === "2026-09-15" && row.shopId === "dayton")?.techs[0]?.addedMinutes, 40);
       assert.ok(afterDays.includes("2026-10-02"));
       assert.ok(afterDays.includes("2026-10-08"));
+      assert.ok(afterDays.includes("2026-10-09"));
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
