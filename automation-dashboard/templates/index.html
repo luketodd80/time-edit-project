@@ -1,0 +1,359 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Automations · The Service Company</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#f4f6f9;color:#1d2433}
+header{background:#1f2a44;color:#fff;padding:18px 28px;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:20px} header span{opacity:.75;font-size:13px}header a{color:#9cc3ff;font-weight:600;margin-left:8px}
+.wrap{padding:22px 28px;max-width:1100px}
+.stats{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap}.stat{background:#fff;border-radius:10px;padding:12px 18px;box-shadow:0 1px 3px #0001;min-width:110px}
+.stat b{font-size:22px;display:block}.stat small{color:#667}
+.filters{margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.filters button{border:1px solid #ccd;background:#fff;border-radius:16px;padding:5px 12px;cursor:pointer;font-size:13px}.filters button.on{background:#1f2a44;color:#fff}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:#556;margin:22px 0 8px}
+.card{background:#fff;border-radius:10px;box-shadow:0 1px 3px #0001;padding:16px 18px;margin-bottom:12px;display:grid;grid-template-columns:1fr 230px;gap:16px}
+.card h3{margin:0 0 6px;font-size:16px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.does{margin:0 0 10px;color:#334;font-size:14px;line-height:1.4}
+.meta{display:grid;grid-template-columns:110px 1fr;font-size:13px;row-gap:4px}.meta dt{color:#778}.meta dd{margin:0}
+.pill{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600}
+.active{background:#e3f6e8;color:#1b7a3a}.paused{background:#fff3d6;color:#9a6a00}.retired{background:#eceef2;color:#666}
+.ttype{background:#e8eef8;color:#2a4a7a;font-weight:600}
+.side{display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.side button{padding:8px;border-radius:6px;border:1px solid #ccd;background:#fff;cursor:pointer;font-weight:600}
+.side button.danger{color:#b42318;border-color:#f1b5ae}.side button:disabled{opacity:.35;cursor:default}
+table{width:100%;background:#fff;border-collapse:collapse;border-radius:10px;overflow:hidden;font-size:13px}td,th{padding:8px 10px;border-bottom:1px solid #eee;text-align:left}th{background:#eef1f6}
+.owners{margin-top:4px;margin-bottom:14px}.owners .lbl{font-size:12px;color:#667;margin-right:4px;text-transform:uppercase;letter-spacing:.05em}.card.ret{opacity:.7}.src{font-size:12px;color:#889;margin-top:6px}
+.mock{background:#fff7e0;border:1px dashed #e0b84a;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:10px}
+.note{background:#e8f1ff;border:1px solid #b7c9e8;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:14px;color:#243a5e}
+.flag{background:#fff0e6;border:1px solid #e8b07a;color:#8a4b12;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:600;margin:0 0 10px}
+
+.tabs{display:flex;gap:4px;background:#1f2a44;padding:0 28px}
+.tabs button{background:none;border:0;color:#c9d2e6;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent}
+.tabs button.on{color:#fff;border-bottom-color:#5b9cff}
+.hidden{display:none}
+.dbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.dbar button{border:1px solid #ccd;background:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600}
+.dbar button.on{background:#1f2a44;color:#fff;border-color:#1f2a44}.dbar button:disabled{opacity:.35;cursor:default}
+.dbar input{padding:5px 8px;border:1px solid #ccd;border-radius:6px;font-size:13px}
+.dbar .dl{font-size:18px;font-weight:700;margin-left:8px}.dbar .tag{font-size:12px;color:#667;margin-left:4px}
+.strip{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:16px}
+.day{background:#fff;border-radius:8px;box-shadow:0 1px 3px #0001;padding:8px 10px;cursor:pointer;border:2px solid transparent;font-size:12px}
+.day.on{border-color:#1f2a44}.day b{display:block;font-size:13px;margin-bottom:4px}.day .c{display:flex;gap:6px;flex-wrap:wrap}
+.day .c span{padding:1px 6px;border-radius:8px;font-weight:600}.day .muted{color:#99a}
+.chips{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.chip{background:#fff;border-radius:10px;padding:10px 16px;box-shadow:0 1px 3px #0001;min-width:120px;border-left:5px solid #ccd}
+.chip b{font-size:22px;display:block}.chip small{color:#667}
+.c-sched{border-color:#1f2a44}.c-ok{border-color:#2e9e57}.c-issue{border-color:#e0a100}.c-miss{border-color:#d0352b}.c-pend{border-color:#5b9cff}.c-unk{border-color:#9aa3b2}
+.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap}
+.b-yes{background:#e3f6e8;color:#1b7a3a}.b-no{background:#fde4e1;color:#b42318}.b-pending{background:#e3eeff;color:#2456a6}
+.b-unknown{background:#eceef2;color:#5b6474}.b-none{background:#f4f4f6;color:#888}.b-ns{background:#f4f4f6;color:#888}
+#runs tr.r{cursor:pointer}#runs tr.r:hover td{background:#f7f9fc}#runs td.t{white-space:nowrap;font-weight:600;width:96px}
+#runs td.res{color:#334;width:300px}#runs td.cb{width:150px}#runs td.cr{width:80px}#runs td.ca{width:90px}#runs td.cn{min-width:220px}.fq{display:block;font-size:12px;color:#2456a6;font-weight:600}.dup{display:inline-block;margin-left:6px;background:#fff0e6;color:#8a4b12;border:1px solid #e8b07a;border-radius:6px;font-size:11px;padding:0 6px;font-weight:700}
+#runs tr.det td{background:#fafbfd;font-size:13px;color:#334;padding:10px 16px 14px 106px}
+#runs tr.det dl{display:grid;grid-template-columns:110px 1fr;row-gap:4px;margin:6px 0 0}#runs tr.det dt{color:#778}#runs tr.det dd{margin:0}
+#runs tr.sec td{background:#eef1f6;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#556}
+#runs tr.nsr td{color:#99a}
+.idle{margin-top:14px;background:#fff;border-radius:10px;padding:12px 16px;box-shadow:0 1px 3px #0001;font-size:13px}.idle b{margin-right:6px}.idle .n{color:#778}
+.empty{background:#fff;border-radius:10px;padding:30px;text-align:center;color:#556;box-shadow:0 1px 3px #0001;font-size:15px}
+.caret{color:#99a;margin-right:4px;display:inline-block;width:10px}
+.grp{display:flex;align-items:center;gap:6px;margin:-4px 0 12px}.grp .lbl{font-size:12px;color:#667;text-transform:uppercase;letter-spacing:.05em;margin-right:4px}
+.grp button{border:1px solid #ccd;background:#fff;padding:5px 14px;cursor:pointer;font-size:13px;font-weight:600;border-radius:16px}.grp button.on{background:#1f2a44;color:#fff;border-color:#1f2a44}
+.grp .gx{margin-left:10px;font-size:12px;color:#5b9cff;cursor:pointer}
+.bsec{background:#fff;border-radius:10px;box-shadow:0 1px 3px #0001;margin-bottom:10px;overflow:hidden;border-left:5px solid #c9d2e6}
+.bsec.miss{border-left-color:#d0352b;background:#fff8f7}.bsec.idle2{border-left-color:#e3e6ec}
+.bhead{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;flex-wrap:wrap}.bhead.nox{cursor:default}
+.bhead h4{margin:0;font-size:15px;min-width:230px}.bhead .cnt{font-size:12px;padding:2px 8px;border-radius:10px;font-weight:700}
+.cnt.s{background:#eef1f6;color:#1f2a44}.cnt.miss{background:#d0352b;color:#fff}
+.bsec.idle2 h4{color:#778;font-weight:600}.bsec table{border-radius:0;border-top:1px solid #eee}
+.bsec #runs td.res,.bsec td.res{width:330px}
+tr.gw td{color:#99a}
+.odbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;font-size:13px}.odbar .lbl{font-size:12px;color:#667;text-transform:uppercase;letter-spacing:.05em;margin:0 4px 0 14px}
+.odbar select{padding:5px 8px;border:1px solid #ccd;border-radius:6px;font-size:13px;margin-left:4px}
+.odbar span button{border:1px solid #ccd;background:#fff;border-radius:16px;padding:4px 11px;cursor:pointer;font-size:12px;margin:2px}.odbar span button.on{background:#1f2a44;color:#fff;border-color:#1f2a44}
+.runsel{margin-left:auto;background:#1f2a44;color:#fff;border:0;border-radius:6px;padding:7px 14px;font-weight:700;cursor:pointer}.runsel:disabled{opacity:.35;cursor:default}
+.flash{background:#e3f6e8;border:1px solid #9fd5b0;color:#1b5e33;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:10px}
+.odt{font-size:13px;margin-bottom:6px}.odt td{vertical-align:top}.odt th{font-size:12px}
+.odt .tk{font-weight:600}.odt .cat{display:block;font-size:11px;color:#889;font-weight:400}.odt .ord{display:inline-block;background:#eef1f6;color:#556;border-radius:6px;font-size:11px;padding:0 5px;margin-right:4px}
+.odt .nt{color:#556;max-width:220px}.ab{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}
+.ab-run{background:#e3f6e8;color:#1b7a3a}.ab-prep{background:#fff3d6;color:#8a5a00}.ab-claude{background:#efe6ff;color:#5b2ea6}.ab-manual{background:#eceef2;color:#5b6474}
+.bot{display:block;font-size:11px;color:#2456a6;margin-top:3px;font-weight:600}.qa{display:block;font-size:11px;color:#b45309;margin-top:2px}
+.st{font-weight:600}.st-open{color:#b42318}.st-done{color:#1b7a3a}.st-na{color:#99a;font-weight:400}.st-note{color:#8a6d00;font-weight:400;font-style:italic}
+.rn{border:1px solid #1f2a44;background:#fff;color:#1f2a44;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer;font-size:12px;white-space:nowrap}
+.syncbar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;background:#e8f1ff;border:1px solid #b7c9e8;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;color:#243a5e}
+.syncbar button{border:1px solid #2456a6;background:#fff;color:#2456a6;border-radius:6px;padding:4px 12px;font-weight:700;cursor:pointer}.smsg{color:#1b7a3a;font-weight:600}
+.prog{background:#fff;border-radius:10px;box-shadow:0 1px 3px #0001;padding:12px 16px;margin-bottom:14px}.ptext{font-size:15px;margin-bottom:8px}.ptext b{font-size:18px}
+.pbar{height:14px;background:#eceef2;border-radius:7px;overflow:hidden;display:flex}.pready{background:#2e9e57;height:100%}.pbuild{background:#e0a100;height:100%}
+.plegend{font-size:12px;color:#667;margin-top:8px}
+.ld{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}.ld-manual{background:#eceef2;color:#5b6474}.ld-building{background:#fff3d6;color:#8a5a00}.ld-ready{background:#2e9e57;color:#fff}
+.rowno{white-space:nowrap;color:#556;font-size:12px;font-weight:600}.hsub{font-weight:400;color:#889;text-transform:none;letter-spacing:0}
+.odt tr.rdy td{background:#f3fbf5}.cand{display:block;font-size:12px;color:#2456a6;font-weight:600}.candk{display:block;font-size:11px;color:#778}
+.muted2{color:#99a;font-size:12px}.newtag{background:#5b9cff;color:#fff;border-radius:6px;font-size:10px;padding:1px 6px;font-weight:700;vertical-align:middle}
+.rnopt{font-size:11px;color:#556;margin-top:5px;display:flex;flex-direction:column;gap:3px}.rnopt select{font-size:11px;padding:1px 2px}
+.rs{display:block;font-size:12px;font-weight:700;margin-top:5px}.rs-run{color:#2456a6}.rs-wait{color:#b45309}.rs-ok{color:#1b7a3a}.rs-bad{color:#b42318}
+.apv{display:flex;gap:6px;margin-top:5px}.apv button{border:1px solid #ccd;background:#fff;border-radius:6px;padding:3px 10px;font-weight:700;cursor:pointer;font-size:12px}.apv button.ok{background:#2e9e57;color:#fff;border-color:#2e9e57}
+.odt tr.det2 td{background:#fafbfd;font-size:12.5px;color:#334;line-height:1.5}.hist{margin:2px 0 0 18px;padding:0}
+details.sect{background:#fff;border-radius:10px;box-shadow:0 1px 3px #0001;margin:16px 0 6px}details.sect summary{padding:12px 16px;cursor:pointer;font-weight:700;font-size:14px}
+details.sect table{border-radius:0}
+.clip{display:inline-block;background:#fff3d6;color:#8a5a00;border:1px solid #f0d58a;border-radius:8px;font-size:10.5px;font-weight:700;padding:0 6px;white-space:nowrap;vertical-align:middle}
+.outp{display:inline-block;background:#e8f1ff;color:#2456a6;border-radius:8px;font-size:10.5px;font-weight:700;padding:0 6px;vertical-align:middle}
+.fsec{margin:4px 0}.addreq{border:1px dashed #2456a6;background:#fff;color:#2456a6;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;margin-top:4px}
+.reqform{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}.reqform input[type=text],.reqform input:not([type]){padding:5px 8px;border:1px solid #ccd;border-radius:6px;font-size:12px;min-width:180px}
+.reqform button{border:1px solid #ccd;background:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700}.reqform button.ok{background:#2e9e57;color:#fff;border-color:#2e9e57}
+.modal{position:fixed;inset:0;background:#0c1424aa;display:flex;align-items:flex-start;justify-content:center;z-index:50;padding:60px 12px;overflow:auto}.modal.hidden{display:none}
+.mbox{background:#fff;border-radius:12px;max-width:620px;width:100%;padding:20px 22px;box-shadow:0 10px 40px #0005}.mbox h3{margin:0 0 4px;font-size:18px}.fsub{font-size:12px;color:#667;margin-bottom:14px}
+.fitem{border:1px solid #e1e5ec;border-radius:10px;padding:12px 14px;margin-bottom:10px}.fitem.fok{border-color:#9fd5b0;background:#f3fbf5}
+.fhead{font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}.fchk{display:inline-flex;width:20px;height:20px;border-radius:50%;border:2px solid #ccd;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:900}
+.fok .fchk{background:#2e9e57;border-color:#2e9e57}.freq{font-size:11px;font-weight:700;color:#b42318;background:#fde4e1;border-radius:8px;padding:1px 7px}.freq.fopt{color:#5b6474;background:#eceef2}
+.fhint{font-size:12.5px;color:#445;margin-top:5px}.fdrop{display:block;margin-top:10px;border:2px dashed #b7c3d6;border-radius:8px;padding:14px;text-align:center;font-size:13px;color:#445;cursor:pointer;background:#fafbfd}
+.fdrop.over{border-color:#2456a6;background:#e8f1ff}.fdrop u{color:#2456a6;font-weight:700}.fname{font-weight:700}.fmeta{color:#667;font-size:12px}
+.fwarn{color:#b42318;font-size:12.5px;font-weight:700;margin-top:6px}.fnote{font-size:12px;color:#778;margin:6px 0 12px}
+.factions{display:flex;justify-content:flex-end;gap:8px}.factions button{border:1px solid #ccd;background:#fff;border-radius:8px;padding:8px 18px;font-weight:700;cursor:pointer}
+.factions .frun{background:#1f2a44;color:#fff;border-color:#1f2a44}.factions .frun:disabled{opacity:.35;cursor:default}
+.notes2{display:grid;grid-template-columns:1.3fr 1fr;gap:14px;margin-bottom:8px}.notebox{width:100%;box-sizing:border-box;border:1px solid #ccd;border-radius:8px;padding:7px 9px;font:inherit;font-size:13px;margin-top:4px;resize:vertical}
+.nrow{display:flex;gap:8px;align-items:center;margin-top:5px}.nrow button{border:1px solid #ccd;background:#fff;border-radius:6px;padding:3px 12px;font-weight:700;cursor:pointer}.nrow button.ok{background:#2e9e57;color:#fff;border-color:#2e9e57}
+.nstamp{font-size:11px;color:#889}.noteview{background:#fff;border:1px solid #e6e9ef;border-radius:8px;padding:7px 9px;margin-top:4px;white-space:pre-wrap;font-size:13px}
+.noteic{display:inline-block;color:#6b4fd8;background:#efe9ff;border-radius:6px;padding:0 4px;vertical-align:middle}
+.fnoteline{margin-top:6px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}.fnote-in{flex:1;min-width:200px;border:1px solid #ccd;border-radius:6px;padding:4px 7px;font-size:12px}
+.standing{background:#f6f3ff;border:1px solid #ddd2ff;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px}.runnote{margin:6px 0 10px;font-size:13px}.rnote{color:#5b2ea6;font-weight:600}
+@media (max-width:700px){.notes2{grid-template-columns:1fr}}
+
+.tabs{overflow-x:auto;white-space:nowrap}.tabs button{flex:0 0 auto}
+@media (max-width:700px){
+ header{padding:12px 14px;flex-direction:column;align-items:flex-start;gap:4px}header h1{font-size:17px}
+ .tabs{padding:0 6px}.tabs button{padding:9px 9px;font-size:13px}
+ .wrap{padding:12px}
+ .strip{display:flex;overflow-x:auto;gap:6px;align-items:flex-start;position:relative;padding-bottom:4px}.strip .day{flex:0 0 112px}.tabs .lg{display:none}
+ .chips .chip,.stats .stat{min-width:0;flex:1 1 30%;padding:8px 10px}.chip b,.stat b{font-size:18px}
+ .card{grid-template-columns:1fr}.side{flex-direction:row}.side button{flex:1}
+ .meta{grid-template-columns:90px 1fr}
+ table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+ #runs td.cn{min-width:180px}#runs td.res{min-width:200px}.odt td.tk{min-width:170px}.odt td.nt{min-width:140px}
+ .bhead h4{min-width:0}.runsel{margin-left:0}
+ #runs tr.det td{padding-left:16px}
+ .dbar .dl{font-size:15px;margin-left:0;width:100%}
+}
+</style></head><body>
+<header><h1>Grok Bot Automations</h1><span>The Service Company · <a href="#" onclick="logout();return false">Log out</a></span></header>
+<nav class="tabs"><button id="tabDaily" onclick="showTab('daily')">Today / Daily runs</button><button id="tabAll" onclick="showTab('all')">All automations</button><button id="tabOd" onclick="showTab('od')">On demand<span class=lg> / Month-end</span></button></nav>
+<div class="wrap hidden" id="odView">
+<div class="note">Run Now queues a request the bot can pick up, with the files and notes for that run. This dashboard does not write to the Google Sheet or to QuickBooks. A new sheet line shows up as Manual with a New tag. A line that leaves the sheet goes to Removed from sheet.</div>
+<div class="syncbar"><span>Source: Shared Accounting › <b>Month End- 2026</b> (read-only snapshot)</span><span>Last synced from sheet: <b id="odSynced"></b></span><button onclick="syncOd()">Sync now</button><span id="odSyncMsg" class="smsg"></span></div>
+<div class="prog"><div class="ptext" id="odProgText"></div><div class="pbar"><div class="pready" id="odProg"></div><div class="pbuild" id="odProgB"></div></div><div class="plegend"><span class="ld ld-manual">Manual: no automation yet</span> → <span class="ld ld-building">Being built</span> → <span class="ld ld-ready">Run Now ready</span></div></div>
+<div class="chips" id="odChips"></div>
+<div class="odbar"><label>Month <select id="odMonth" onchange="odM=this.value;renderOd()"></select></label><span class=lbl>Show</span><span id="odLadders"></span></div>
+<div id="odGroups"></div>
+<details class="sect" id="odOthers"><summary id="odOthersSum"></summary><div id="odOthersBody"></div></details>
+<details class="sect" id="odRemoved"><summary id="odRemovedSum"></summary><div id="odRemovedBody"></div></details>
+<h2>Run log</h2><table class="tw"><thead><tr><th>When</th><th>Task</th><th>Step</th><th>Detail</th></tr></thead><tbody id="odLog"></tbody></table>
+</div>
+<div class="wrap" id="dailyView">
+<div class="note">Each row is a scheduled run. A bot report fills it in. Until the scheduled time passes, an empty row says no report yet. After that it says missed.</div>
+<div class="dbar"><button onclick="step(-1)" title="Previous day">&#8592;</button><input type="date" id="dpick" onchange="go(this.value)"><button onclick="step(1)" id="nextBtn" title="Next day">&#8594;</button>
+<button id="btnToday" onclick="go(TODAY)">Today</button><button id="btnYest" onclick="go(addDays(TODAY,-1))">Yesterday</button><span class="dl" id="dlabel"></span><span class="tag" id="dtag"></span></div>
+<div class="strip" id="strip"></div>
+<div class="chips" id="chips"></div>
+<div class="grp" id="grp"><span class=lbl>Group by</span><button id="gTime" onclick="setGroup('time')">Time</button><button id="gBot" onclick="setGroup('bot')">Bot</button><span class="gx" id="gx"></span></div>
+<div id="runsWrap"></div>
+<div class="idle" id="idle"></div>
+</div>
+<div class="wrap hidden" id="allView">
+<div class="note">Pause, resume, and retire are saved on this server. They are not sent to the bots yet.</div>
+<div class="note" id="banner">Bot-confirmed Oct 10 by all 13 bots. Warranty, Recruiter, Amber, Grok-Yoda: no automations.</div>
+<div class="stats" id="stats"></div>
+<div class="filters" id="filters"></div>
+<div class="filters owners" id="owners"></div>
+<div id="groups"></div>
+<h2>Command log</h2><table><thead><tr><th>When</th><th>Automation</th><th>Action</th><th>Result</th></tr></thead><tbody id="log"><tr><td colspan=4>No commands yet</td></tr></tbody></table>
+</div>
+<script>
+const DASH = __DASH_JSON__;
+let filter='all',owner='all',data={automations:[],log:[]};
+const OWNER_ORDER=['Grok Bot','Ed','2.0','Don','Flo','CEO','Nathan','Purchase Order Dashboard Project','Time Edit Project','Chris'];
+async function load(){data=await (await fetch('/api/automations')).json();render()}
+async function cmd(id,action){if(action==='retire'&&!confirm('Retire this automation? It will be deleted in Grok Bot and kept here as retired.'))return;
+ await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,action})});load()}
+function logout(){fetch('/logout',{method:'POST'}).then(()=>location.href='/login')}
+function render(){const A=data.automations,c=s=>A.filter(a=>a.status===s).length;
+ stats.innerHTML=[['Total',A.length],['Active',c('active')],['Paused',c('paused')],['Retired',c('retired')]].map(([k,v])=>`<div class=stat><b>${v}</b><small>${k}</small></div>`).join('');
+ filters.innerHTML=['all','active','paused','retired'].map(f=>`<button class="${f===filter?'on':''}" onclick="filter='${f}';render()">${f[0].toUpperCase()+f.slice(1)}</button>`).join('');
+ const present=new Set(A.map(a=>a.owner));
+ const O=['all',...OWNER_ORDER.filter(o=>present.has(o)),...[...present].filter(o=>!OWNER_ORDER.includes(o)).sort()];
+ owners.innerHTML='<span class=lbl>Owner bot</span>'+O.map(o=>`<button class="${o===owner?'on':''}" onclick="owner='${o.replace(/'/g,"\\'")}';render()">${o==='all'?'All bots':esc(o)} (${o==='all'?A.length:A.filter(a=>a.owner===o).length})</button>`).join('');
+ const shown=A.filter(a=>(filter==='all'||a.status===filter)&&(owner==='all'||a.owner===owner)),cats={};shown.forEach(a=>(cats[a.category]=cats[a.category]||[]).push(a));
+ const catOrder=['Finance & Vendors','Parts & Purchasing','Inbox','Marketing','Reminders','Fullbay / Shop Ops','Time & Payroll'];
+ const catsSorted=[...catOrder.filter(k=>cats[k]),...Object.keys(cats).filter(k=>!catOrder.includes(k))];
+ groups.innerHTML=catsSorted.length?catsSorted.map(k=>{const list=cats[k];return `<h2>${esc(k)}</h2>`+list.map(a=>`<div class="card ${a.status==='retired'?'ret':''}"><div>
+  <h3>${esc(a.name)} <span class="pill ${a.status}">${esc(a.status)}</span> <span class="pill ttype">${esc(a.trigger_type||'Schedule')}</span></h3><p class=does>${esc(a.does)}</p>${a.flag?`<div class=flag>${esc(a.flag)}</div>`:``}
+  <dl class=meta><dt>Trigger</dt><dd>${esc(a.trigger)}</dd><dt>Last run</dt><dd>${esc(a.last_run||'Never run yet')}</dd><dt>Next run</dt><dd>${esc(a.next_run||'-')}</dd><dt>Delivers to</dt><dd>${esc(a.delivers_to)}</dd><dt>Owner</dt><dd>${esc(a.owner)} · created ${esc(a.created)}</dd></dl><div class=src>Found in: ${esc(a.source)}</div></div>
+  <div class=side><button onclick="cmd('${a.id}','pause')" ${a.status!=='active'?'disabled':''}>Pause</button>
+  <button onclick="cmd('${a.id}','resume')" ${a.status!=='paused'?'disabled':''}>Resume</button>
+  <button class=danger onclick="cmd('${a.id}','retire')" ${a.status==='retired'?'disabled':''}>Retire</button></div></div>`).join('')}).join(''):'<p>No automations match.</p>';
+ log.innerHTML=data.log.length?data.log.map(l=>`<tr><td>${esc(l.at)}</td><td>${esc(l.name)}</td><td>${esc(l.action)}</td><td>${esc(l.result)}</td></tr>`).join(''):'<tr><td colspan=4>No commands yet</td></tr>'}
+let group='time';const collapsed={};
+let cur=DASH.today,openKeys=new Set();const cache={};
+const P=new URLSearchParams(location.search);
+function addDays(ds,n){const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
+function showTab(t){[['daily',dailyView,tabDaily],['all',allView,tabAll],['od',odView,tabOd]].forEach(([k,v,b])=>{v.classList.toggle('hidden',k!==t);b.classList.toggle('on',k===t)});
+ const u=new URL(location);u.searchParams.set('tab',t);history.replaceState(null,'',u);if(t==='od')loadOd();if(t==='daily'){delete cache[DASH.today];renderDaily()}}
+const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DUE=['1st week','2nd Week','3rd Week','4th Week','End of Month','Weekly','Monthly','Yearly'];
+const LADDER={manual:['ld-manual','Manual: no automation yet'],building:['ld-building','Being built'],ready:['ld-ready','Run Now ready']};
+let OD=null,odM=DASH.month,odL='all';const odOpen=new Set();
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
+function hm(d){let h=d.getHours(),m=String(d.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';return `${h%12||12}:${m} ${ap}`}
+function fmtTs(iso){const d=new Date(iso);return isNaN(d)?iso:`${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]} ${d.getDate()}, ${hm(d)} ET`}
+async function loadOd(force){const r=await fetch(force?'/api/monthend/sync':'/api/monthend',force?{method:'POST'}:undefined);OD=await r.json();renderOd()}
+async function syncOd(){odSyncMsg.textContent='Syncing…';await loadOd(true);const c=OD.changes;
+ odSyncMsg.textContent=`Synced: ${OD.tasks.length} lines · ${c.added.length} new · ${c.removed.length} removed${c.restored.length?' · '+c.restored.length+' back':''}`}
+function monthVal(t,m){return t.months[m]||{kind:'open',text:'Open'}}
+function openState(t){return t.open_request||null}
+function startRun(id){const t=OD.tasks.find(x=>x.id===id);if(!t||t.ladder!=='ready'||t.open_request)return;
+ openRun(t,{month:(document.getElementById('mo-'+id)||{}).value||DASH.month})}
+let MF=null;
+const fsz=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
+const extOf=n=>{const i=n.lastIndexOf('.');return i<0?'':n.slice(i).toLowerCase()};
+function openRun(t,opts){MF={t,opts,runNote:'',editStanding:false,items:(t.files.needs||[]).map(n=>({need:n,file:null,ok:false,warn:''}))};drawFiles();fmodal.classList.remove('hidden')}
+function closeFiles(){MF=null;fmodal.classList.add('hidden')}
+function attach(i,f){if(!MF||!f)return;const it=MF.items[i],ty=it.need.types||[],e=extOf(f.name);
+ it.file=f;it.ok=!ty.length||ty.includes(e);it.warn=it.ok?'':`Wrong type: ${e||'no extension'}. Expected ${ty.join(' / ')}.`;drawFiles()}
+function stamp2(n){return n&&n.edited_at?`Last edited ${fmtTs(n.edited_at)}`:''}
+function drawFiles(){const t=MF.t,ready=MF.items.every(it=>!it.need.required||it.ok),sn=t.note&&t.note.text;
+ const standing=MF.editStanding?`<textarea id="mStanding" class=notebox rows=3 placeholder="Instructions for the bot every time this task runs">${esc(sn||'')}</textarea><div class=nrow><button class=ok onclick="saveStandingFromModal()">Save</button><button onclick="MF.editStanding=false;drawFiles()">Cancel</button></div>`
+  :(sn?`<div class=noteview>${esc(sn)}</div><div class=nstamp>${stamp2(t.note)} · <a href="#" onclick="MF.editStanding=true;drawFiles();return false">Edit</a></div>`:`<div class=nstamp>No standing notes yet · <a href="#" onclick="MF.editStanding=true;drawFiles();return false">Edit</a></div>`);
+ fmodalBody.innerHTML=`<h3>${MF.items.length?'Files needed for ':'Run '}${esc(t.task)}</h3><div class=fsub>Row ${t.row} · logs under ${esc(MF.opts.month)} (cell ${t.cols[MONTHS.indexOf(MF.opts.month)]}${t.row})${t.qbo_write?' · QBO write: needs your approval':''}</div>
+ <div class=standing><b>Your standing notes</b> <span class=muted2>(instructions for the bot every run)</span>${standing}</div>`+
+ (t.files&&t.files.note?`<div class=fnote>${esc(t.files.note)}</div>`:'')+
+ MF.items.map((it,i)=>`<div class="fitem ${it.ok?'fok':''}"><div class=fhead><span class=fchk>${it.ok?'&#10003;':''}</span><b>${esc(it.need.name)}</b> <span class="freq ${it.need.required?'':'fopt'}">${it.need.required?'Required':'Optional'}</span></div>
+  <div class=fhint><b>Where to get it:</b> ${esc(it.need.hint)||'–'}</div><div class=fhint><b>Accepted:</b> ${(it.need.types||[]).join(' / ')||'any type'}${it.need.last_used?` · <b>Last used:</b> ${esc(it.need.last_used)}`:''}</div>
+  <label class=fdrop id="fdrop-${i}" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="event.preventDefault();this.classList.remove('over');attach(${i},event.dataTransfer.files[0])">
+   <input type=file id="finput-${i}" accept="${(it.need.types||[]).join(',')}" onchange="attach(${i},this.files[0])" style="display:none">
+   ${it.file?`<span class=fname>${esc(it.file.name)}</span> <span class=fmeta>${fsz(it.file.size)} · ${esc(it.file.type||extOf(it.file.name)||'unknown type')}</span> <u>Replace</u>`:'Drag the file here or <u>Choose file</u>'}</label>
+  ${it.warn?`<div class=fwarn>&#9888; ${esc(it.warn)}</div>`:''}
+  <div class=fnoteline><b>File note:</b> <input id="mfn-${i}" class=fnote-in value="${esc(it.need.note&&it.need.note.text||'')}" placeholder="e.g. use the Month-to-Date version" onblur="saveFileNoteModal(${i})"> <span class=nstamp>${stamp2(it.need.note)}</span></div></div>`).join('')+
+ `<div class=runnote><b>Notes for this run</b> <span class=muted2>(optional, saved with this run's history)</span><textarea id="mRunNote" class=notebox rows=2 placeholder="Anything special about this run" oninput="MF.runNote=this.value">${esc(MF.runNote)}</textarea></div>
+ ${MF.items.length?`<div class=fnote>Files are saved on this server with the Run Now request. Nothing is written to the Google Sheet or QuickBooks.</div>`:''}
+ <div class=factions><button onclick="closeFiles()">Cancel</button><button class=frun id=fRunBtn ${ready?'':'disabled'} onclick="runFromModal()">Run</button></div>`}
+async function postNote(path,body){const r=await (await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();if(r.monthend)OD=r.monthend;return r}
+function taskById(id){return OD.tasks.find(x=>x.id===id)}
+async function saveStandingFromModal(){const v=mStanding.value;await postNote('/api/monthend/note',{key:MF.t.key,text:v});MF.t=taskById(MF.t.id);MF.editStanding=false;drawFiles();renderOd()}
+async function saveFileNoteModal(i){if(!MF)return;const it=MF.items[i],el=document.getElementById('mfn-'+i),v=el.value.trim();if(v===((it.need.note&&it.need.note.text)||''))return;
+ await postNote('/api/monthend/filenote',{key:MF.t.key,name:it.need.name,text:v});if(!MF)return;const t=taskById(MF.t.id);MF.t=t;it.need=t.files.needs.find(n=>n.name===it.need.name)||it.need;drawFiles();renderOd()}
+async function saveStanding(id){const t=taskById(id),el=document.getElementById('note-'+id);if(!el)return;const v=el.value.trim();if(v===((t.note&&t.note.text)||'')&&!el.dataset.force)return;
+ await postNote('/api/monthend/note',{key:t.key,text:v});renderOd()}
+async function saveFileNote(id,i){const t=taskById(id),n=t.files.needs[i],el=document.getElementById(`dfn-${id}-${i}`);if(!el)return;const v=el.value.trim();if(v===((n.note&&n.note.text)||''))return;
+ await postNote('/api/monthend/filenote',{key:t.key,name:n.name,text:v});renderOd()}
+const b64=f=>new Promise((res,rej)=>{const rd=new FileReader();rd.onload=()=>res(String(rd.result).split(',')[1]||'');rd.onerror=rej;rd.readAsDataURL(f)});
+async function runFromModal(){if(!MF)return;const fnEls=MF.items.map((_,i)=>document.getElementById('mfn-'+i));
+ for(let i=0;i<fnEls.length;i++)await saveFileNoteModal(i);
+ const {t,opts}=MF,att=MF.items.filter(it=>it.file&&it.ok),runNote=(document.getElementById('mRunNote')||{}).value||MF.runNote||'';
+ fRunBtn.disabled=true;fRunBtn.textContent='Queuing…';
+ let files=[];
+ try{files=await Promise.all(att.map(async it=>({name:it.file.name,type:it.file.type,size:it.file.size,need:it.need.name,file_note:(it.need.note&&it.need.note.text)||'',data_b64:await b64(it.file)})))}catch(e){fRunBtn.disabled=false;fRunBtn.textContent='Run';alert('Could not read a file.');return}
+ const r=await (await fetch('/api/monthend/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:t.key,month:opts.month,run_note:runNote,files})})).json();
+ if(r.error){fRunBtn.disabled=false;fRunBtn.textContent='Run';alert(r.error);return}
+ closeFiles();if(r.monthend)OD=r.monthend;delete cache[DASH.today];renderOd()}
+const NOTEICON='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:-1px"><path d="M4 4h12l4 4v12H4z"/><path d="M8 11h8M8 15h6"/></svg>';
+const CLIP='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="vertical-align:-1px"><path d="M21 11l-8.5 8.5a5 5 0 01-7-7L14 4a3.5 3.5 0 015 5l-8.5 8.5a2 2 0 01-3-3L15 7"/></svg>';
+function fileTags(t){const f=t.files||{needs:[],outputs:[]},n=f.needs.length;
+ return (n?` <span class=clip>${CLIP} Needs ${n} file${n>1?'s':''}</span>`:'')+(f.outputs.length?` <span class=outp>Output: ${esc(f.outputs.join(', '))}</span>`:'')}
+function filesSection(t){const f=t.files||{needs:[],outputs:[],note:null,seeded:false};let s='<div class=fsec><b>Files needed:</b> ';
+ if(f.needs.length)s+='<ul class=hist>'+f.needs.map((n,i)=>`<li><b>${esc(n.name)}</b> · ${n.required?'Required':'Optional'} · ${(n.types||[]).join(' / ')||'any type'}${n.added_by_luke?' · <i>added by you</i>':''}<br><span class=muted2>Where to get it: ${esc(n.hint)||'–'}${n.last_used?' · Last used: '+esc(n.last_used):''}</span><div class=fnoteline><b>File note:</b> <input id="dfn-${t.id}-${i}" class=fnote-in value="${esc(n.note&&n.note.text||'')}" placeholder="e.g. use the Month-to-Date version" onblur="saveFileNote('${t.id}',${i})"> <span class=nstamp>${stamp2(n.note)}</span></div></li>`).join('')+'</ul>';
+ else if(f.outputs.length)s+=`none. <span class=outp>Output: ${esc(f.outputs.join(', '))}</span> <span class=muted2>(this task produces the file)</span>`;
+ else if(f.note)s+=esc(f.note);else s+='<span class=muted2>not set yet</span>';
+ if(!f.seeded)s+=`<div id="fr-${t.id}"><button class=addreq onclick="showReqForm('${t.id}')">+ Add file requirement</button></div>`;return s+'</div>'}
+function showReqForm(id){document.getElementById('fr-'+id).innerHTML=`<div class=reqform><input id="rq-n-${id}" placeholder="File name, e.g. Bank statement (PDF)"><input id="rq-h-${id}" placeholder="Where to get it"><input id="rq-t-${id}" placeholder="Types, e.g. .xlsx, .csv, .pdf">
+ <label><input type=checkbox id="rq-r-${id}" checked> Required</label><button class=ok onclick="saveReq('${id}')">Save</button><button onclick="renderOd()">Cancel</button></div>`}
+async function saveReq(id){const t=OD.tasks.find(x=>x.id===id),g=k=>document.getElementById(`rq-${k}-${id}`);const name=g('n').value.trim();if(!name){g('n').focus();return}
+ const r=await (await fetch('/api/monthend/filereq',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:t.key,item:{name,hint:g('h').value,types:g('t').value,required:g('r').checked}})})).json();
+ if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;renderOd()}
+async function approve(rid,ok){const r=await (await fetch('/api/monthend/requests/'+rid+'/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approve:!!ok})})).json();
+ if(r.monthend)OD=r.monthend;delete cache[DASH.today];renderOd()}
+function ldBadge(l){const [c,t]=LADDER[l]||LADDER.manual;return `<span class="ld ${c}">${t}</span>`}
+function runCell(t){if(t.ladder!=='ready')return `<span class=muted2>${t.ladder==='building'?'Being built':'Not on Run Now yet'}</span>`;
+ const open=t.open_request,last=(t.requests||[])[t.requests.length-1];
+ if(open&&open.state==='queued')return `<span class="rs rs-run">&#9203; Queued — waiting on ${esc(t.bot)}</span>`;
+ if(open&&open.state==='awaiting')return `<span class="rs rs-wait">Awaiting your approval</span><div class=apv><button class=ok onclick="approve('${open.rid}',1)">Approve</button><button onclick="approve('${open.rid}',0)">Reject</button></div>`;
+ if(open&&open.state==='approved')return `<span class="rs rs-run">Approved — waiting on ${esc(t.bot)}</span>`;
+ const opts=MONTHS.map((m,i)=>`<option value="${m}" ${m===DASH.month?'selected':''}>${m.slice(0,3)} → ${t.cols[i]}${t.row}</option>`).join('');
+ const prev=last&&(last.state==='succeeded'||last.state==='failed')?`<div class="rs ${last.state==='succeeded'?'rs-ok':'rs-bad'}">${last.state==='succeeded'?'&#10003; ':'&#10007; '}${esc(last.result)}</div>`:'';
+ return `<button class=rn onclick="startRun('${t.id}')">Run Now</button><div class=rnopt><label title="Which month column the done date goes in">Log under <select id="mo-${t.id}">${opts}</select></label></div>`+prev}
+function histHtml(t){const H=t.history||[];
+ return H.length?'<ul class=hist>'+H.map(h=>`<li><b>${esc(h.when)}</b> · ${esc(h.state)} · ${esc(h.result)}${h.files?`<br><span class=muted2>Files: ${esc(h.files)}</span>`:''}${h.run_note?`<br><span class=rnote>Run note: ${esc(h.run_note)}</span>`:''}${h.standing?`<br><span class=muted2>Standing notes used: ${esc(h.standing)}</span>`:''}</li>`).join('')+'</ul>':'<span class=muted2>No runs yet.</span>'}
+function tog2(id){odOpen.has(id)?odOpen.delete(id):odOpen.add(id);renderOd()}
+function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='Luke'),O=T.filter(t=>t.assigned!=='Luke');
+ const mi=MONTHS.indexOf(odM),pm=mi>0?MONTHS[mi-1]:null,N=L.length||1,c=l=>L.filter(t=>t.ladder===l).length;
+ odSynced.textContent=fmtTs(OD.last_synced);
+ odProgText.innerHTML=`<b>${c('ready')} of ${L.length}</b> of your tasks are Run Now ready${c('building')?` · ${c('building')} being built`:''} · ${c('manual')} manual`;
+ odProg.style.width=(100*c('ready')/N)+'%';odProgB.style.width=(100*c('building')/N)+'%';
+ const mv=t=>monthVal(t,odM).kind;
+ odChips.innerHTML=[['c-sched','Your lines (Assigned To = Luke)',L.length],['c-ok','Run Now ready',c('ready')],['c-pend','Being built',c('building')],['c-unk','Manual',c('manual')],['c-miss',`Open in ${odM}`,L.filter(t=>mv(t)==='open').length],['c-ok',`Done in ${odM}`,L.filter(t=>mv(t)==='done').length]].map(([cl,k,v])=>`<div class="chip ${cl}"><b>${v}</b><small>${k}</small></div>`).join('');
+ odMonth.innerHTML=MONTHS.map(m=>`<option ${m===odM?'selected':''}>${m}</option>`).join('');
+ const F=[['all','All',L.length],['ready','Run Now ready',c('ready')],['building','Being built',c('building')],['manual','Manual',c('manual')],['cand','Has a candidate bot',L.filter(t=>t.candidate).length],['new','New',L.filter(t=>t.new).length]];
+ odLadders.innerHTML=F.map(([k,l,n])=>`<button class="${k===odL?'on':''}" onclick="odL='${k}';renderOd()">${l} (${n})</button>`).join('');
+ const S=L.filter(t=>odL==='all'||(odL==='cand'?t.candidate:odL==='new'?t.new:t.ladder===odL));
+ const st=s=>`<span class="st st-${s.kind}">${esc(s.text)}</span>`;
+ odGroups.innerHTML=DUE.filter(d=>S.some(t=>t.due===d)).map(d=>{const G=S.filter(t=>t.due===d);
+  return `<h2>${esc(d)} <span class=hsub>· ${G.length} line${G.length>1?'s':''} · ${G.filter(t=>t.ladder==='ready').length} Run Now</span></h2><table class="odt tw"><thead><tr><th style="width:62px">Row</th><th>Task</th><th>Notes</th><th style="width:118px">Status</th><th style="width:66px">${odM.slice(0,3)}</th><th style="width:60px">${pm?pm.slice(0,3):'Prev'}</th><th style="width:170px">Automation</th><th style="width:200px">Run Now</th></tr></thead><tbody>`+
+  G.map(t=>{const n=t.notes.length>60?t.notes.slice(0,57)+'…':t.notes,op=odOpen.has(t.id);
+   return `<tr class="${t.ladder==='ready'?'rdy':''}"><td class=rowno>Row ${t.row}</td><td class=tk onclick="tog2('${t.id}')" style="cursor:pointer"><span class=caret>${op?'&#9662;':'&#9656;'}</span>${t.order!=null?`<span class=ord>#${t.order}</span>`:''}${esc(t.task)}${t.new?' <span class=newtag>New</span>':''}${fileTags(t)}${t.note&&t.note.text?` <span class=noteic title="Your notes: ${esc(t.note.text)}">${NOTEICON}</span>`:''}<span class=cat>${esc(t.category)}</span></td>
+   <td class=nt title="${esc(t.notes)}">${esc(n)||'<span style="color:#bbc">–</span>'}</td><td>${ldBadge(t.ladder)}</td><td>${st(monthVal(t,odM))}</td><td>${pm?st(monthVal(t,pm)):'–'}</td>
+   <td>${t.ladder==='ready'?`<span class=bot>&#8594; ${esc(t.bot)}</span>`:t.candidate?`<span class=cand title="${esc(t.why)}">Candidate &#8594; ${esc(t.bot)}</span><span class=candk>${esc(t.candidate)}</span>`:'<span class=muted2>No candidate yet</span>'}${t.qbo_write?'<span class=qa>QBO write: needs your approval</span>':''}</td>
+   <td>${runCell(t)}</td></tr>`+(op?`<tr class=det2><td></td><td colspan=7><div class=notes2><div class=yn><b>Your notes</b> <span class=muted2>(instructions for the bot every time this task runs)</span><textarea id="note-${t.id}" class=notebox rows=3 placeholder="e.g. Use the Month-to-Date report; post under the prior month" onblur="saveStanding('${t.id}')">${esc(t.note&&t.note.text||'')}</textarea><div class=nrow><button class=ok onclick="saveStanding('${t.id}')">Save</button><span class=nstamp>${stamp2(t.note)}</span></div></div><div class=sn><b>Sheet notes</b> <span class=muted2>(read-only, from the Notes column)</span><div class=noteview>${esc(t.notes)||'<span class=muted2>–</span>'}</div></div></div>${t.detail?`<div><b>How it runs:</b> ${esc(t.detail)}</div>`:''}<div><b>Why this guess:</b> ${esc(t.why)}</div>${filesSection(t)}<div><b>Run history:</b> ${histHtml(t)}</div><div class=muted2>Key: ${esc(t.key)} · first seen ${fmtTs(t.first_seen)}</div></td></tr>`:'')}).join('')+`</tbody></table>`}).join('')||'<p>No lines match.</p>';
+ odOthersSum.innerHTML=`Other people's lines (${O.length}) <span class=hsub>· read-only, no Run Now</span>`;
+ odOthersBody.innerHTML=`<table class="odt tw"><thead><tr><th>Row</th><th>Due</th><th>Task</th><th>Assigned</th><th>${odM.slice(0,3)}</th><th>${pm?pm.slice(0,3):'Prev'}</th></tr></thead><tbody>`+O.map(t=>`<tr><td class=rowno>Row ${t.row}</td><td>${esc(t.due)}</td><td>${esc(t.task)}${t.new?' <span class=newtag>New</span>':''}</td><td>${esc(t.assigned)}</td><td>${st(t.months[odM])}</td><td>${pm?st(t.months[pm]):'–'}</td></tr>`).join('')+'</tbody></table>';
+ odRemovedSum.innerHTML=`Removed from sheet (${OD.removed.length})`;
+ odRemovedBody.innerHTML=OD.removed.length?`<table class="odt tw"><thead><tr><th>Last row</th><th>Due</th><th>Task</th><th>Assigned</th><th>Removed</th><th>History</th></tr></thead><tbody>`+OD.removed.map(t=>`<tr><td class=rowno>Row ${t.last_row}</td><td>${esc(t.due)}</td><td>${esc(t.task)}</td><td>${esc(t.assigned)}</td><td>${fmtTs(t.removed_at)}</td><td>${histHtml(t)}</td></tr>`).join('')+'</tbody></table>':'<p class=muted2 style="padding:8px 12px">Nothing has been removed from the sheet since tracking started.</p>';
+ odLog.innerHTML=OD.log&&OD.log.length?OD.log.map(l=>`<tr><td>${esc(l.at)}</td><td>${esc(l.name)}</td><td>${esc(l.step)}</td><td>${esc(l.detail)}</td></tr>`).join(''):'<tr><td colspan=4>No Run Now clicks yet</td></tr>'}
+async function getDay(d){if(!cache[d])cache[d]=await (await fetch('/api/runs?date='+d)).json();return cache[d]}
+function step(n){go(addDays(cur,n))}
+function setGroup(g){group=g;const u=new URL(location);u.searchParams.set('group',g);history.replaceState(null,'',u);renderDaily()}
+function tb(b){collapsed[b]=!isCol(b);renderDaily()}
+let DCUR=null;function isCol(b){if(b in collapsed)return collapsed[b];const B=DCUR&&DCUR.find(x=>x.bot===b);return !B||!B.sched}
+function allBots(open){(DCUR||[]).forEach(B=>{if(B.rows.length)collapsed[B.bot]=!open});renderDaily()}
+function go(d){if(!d)return;cur=d;const u=new URL(location);u.searchParams.set('date',d);history.replaceState(null,'',u);renderDaily()}
+const BADGE={yes:['b-yes','Yes'],no:['b-no','No'],pending:['b-pending','No report yet'],missed:['b-no','Missed'],unknown:['b-unknown','Unknown'],none:['b-none','No runs'],ns:['b-ns','Not scheduled (weekend)']};
+function tr(r,byBot){const [c,l]=BADGE[r.ran]||BADGE.unknown;const op=openKeys.has(r.key);const grey=r.ran==='ns'||(byBot&&r.kind==='webhook');
+ const shown=r.result.length>120?r.result.slice(0,117)+'…':r.result;
+ return `<tr class="r ${grey?'nsr':''}" onclick="tog('${esc(r.key)}')"><td class=t><span class=caret>${op?'&#9662;':'&#9656;'}</span>${esc(r.time)}</td>${byBot?'':`<td class=cb>${esc(r.bot)}</td>`}<td class=cn>${esc(r.name)}${r.flag?'<span class=dup>Possible duplicate</span>':''}${r.freq?`<span class=fq>${esc(r.freq)}</span>`:''}</td><td class=cr><span class="badge ${c}">${l}</span></td><td class=ca>${esc(r.actual||'–')}</td><td class=res>${esc(shown)}</td></tr>`+
+ (op?`<tr class=det><td colspan=${byBot?5:6}><b>Result:</b> ${esc(r.result)}${r.flag?`<div class=flag style="margin-top:8px">${esc(r.flag)}</div>`:''}<dl><dt>What it does</dt><dd>${esc(r.does)}</dd><dt>Trigger</dt><dd>${esc(r.trigger)}</dd><dt>Delivers to</dt><dd>${esc(r.delivers_to)}</dd></dl></td></tr>`:'')}
+function tog(k){openKeys.has(k)?openKeys.delete(k):openKeys.add(k);renderDaily()}
+async function renderDaily(){const D=await getDay(cur);dpick.value=cur;dlabel.textContent=D.label;
+ dtag.textContent={today:'Today',past:cur===addDays(DASH.today,-1)?'Yesterday':'Past day',planned:'Planned schedule',no_history:'Past day',no_plan:'Future'}[D.state]||'';
+ btnToday.classList.toggle('on',cur===DASH.today);btnYest.classList.toggle('on',cur===addDays(DASH.today,-1));
+ let s=addDays(cur,-3);const days=[...Array(7)].map((_,i)=>addDays(s,i));const W=await Promise.all(days.map(getDay));
+ strip.innerHTML=W.map(w=>{const S=w.summary;const body=S?`<div class=c><span class=b-yes>${S.ok} ran</span><span class=b-no>${S.missed+S.issue} missed</span><span class=b-unknown>${S.unknown} unk</span>${S.pending?`<span class=b-pending>${S.pending} pending</span>`:''}</div>`:`<span class=muted>${w.state==='no_history'?'Not captured':'No plan'}</span>`;
+  return `<div class="day ${w.date===cur?'on':''}" onclick="go('${w.date}')"><b>${w.label.replace(/, \d{4}$/,'')}${w.is_today?' · Today':''}</b>${body}</div>`}).join('');
+ {const o=strip.querySelector('.day.on');if(o&&strip.scrollWidth>strip.clientWidth)strip.scrollLeft=Math.max(0,o.offsetLeft-40)}
+ if(!D.summary){chips.innerHTML='';grp.style.display='none';runsWrap.innerHTML=`<div class=empty>${esc(D.message||'')}</div>`;idle.style.display='none';return}
+ const S=D.summary;chips.innerHTML=[['c-sched','Scheduled',S.scheduled],['c-ok','Ran OK',S.ok],['c-issue','Ran with issue',S.issue],['c-miss','Missed / Failed',S.missed],['c-pend','Not yet / Upcoming',S.pending],['c-unk','Unknown',S.unknown]].map(([c,k,v])=>`<div class="chip ${c}"><b>${v}</b><small>${k}</small></div>`).join('');
+ gTime.classList.toggle('on',group==='time');gBot.classList.toggle('on',group==='bot');grp.style.display='';
+ const TH=b=>`<thead><tr><th>Time (ET)</th>${b?'':'<th>Bot</th>'}<th>Automation</th><th>Ran?</th><th>Actual run time</th><th>Result</th></tr></thead>`;
+ if(group==='bot'){
+  const BOTS=['Grok Bot','Ed','2.0','Don','Flo','CEO','Nathan','Purchase Order Dashboard Project','Time Edit Project','Chris','Warranty','Recruiter','Amber','Grok-Yoda'];
+  DCUR=BOTS.map(b=>{const rows=D.rows.filter(r=>r.bot===b),wk=D.weekend.filter(r=>r.bot===b),idl=D.idle.find(i=>i.bot===b);
+   const S=rows.filter(r=>r.kind==='schedule'),n=o=>S.filter(r=>r.outcome===o).length,whRan=rows.filter(r=>r.kind==='webhook'&&r.ran==='yes').length;
+   return {bot:b,rows:[...rows.filter(r=>r.kind==='schedule'),...rows.filter(r=>r.kind==='webhook'),...wk],sched:rows.filter(r=>r.kind==='schedule').length,
+    ran:n('ok')+n('issue'),unk:n('unknown'),pend:n('pending'),miss:rows.filter(r=>r.outcome==='missed'||r.ran==='no'||r.ran==='missed').length,issue:n('issue'),whRan,note:idl&&idl.note}});
+  DCUR.sort((a,b)=>(b.sched-a.sched)||a.bot.localeCompare(b.bot));
+  gx.innerHTML=`<span onclick="allBots(true)">Expand all</span> · <span onclick="allBots(false)">Collapse all</span>`;
+  runsWrap.innerHTML=DCUR.map(B=>{const col=isCol(B.bot),can=B.rows.length>0,bad=B.miss>0;
+   const badges=B.sched?`<span class="cnt s">${B.sched} scheduled</span>${B.ran?`<span class="cnt b-yes">${B.ran} ran</span>`:''}${B.pend?`<span class="cnt b-pending">${B.pend} pending</span>`:''}${B.unk?`<span class="cnt b-unknown">${B.unk} unknown</span>`:''}${B.whRan?`<span class="cnt b-none">+${B.whRan} on-demand run</span>`:''}${bad?`<span class="cnt miss">${B.miss} missed/failed</span>`:''}`
+    :`<span class="cnt b-ns">Nothing scheduled</span>${B.note?`<span style="font-size:12px;color:#889">${esc(B.note)}</span>`:''}`;
+   const wh=!B.sched&&B.rows.length?`<span style="font-size:12px;color:#889">${B.rows.length} greyed row${B.rows.length>1?'s':''} inside</span>`:'';
+   return `<div class="bsec ${bad?'miss':''} ${B.sched?'':'idle2'}"><div class="bhead ${can?'':'nox'}" ${can?`onclick="tb('${esc(B.bot)}')"`:''}><span class=caret>${can?(col?'&#9656;':'&#9662;'):''}</span><h4>${esc(B.bot)}</h4>${badges}${wh}</div>`+
+    (can&&!col?`<table id=runs>${TH(1)}<tbody>${B.rows.map(r=>tr(r,1)).join('')}</tbody></table>`:'')+`</div>`}).join('');
+  idle.style.display='none';return}
+ gx.innerHTML='';
+ const sch=D.rows.filter(r=>r.kind==='schedule'),wh=D.rows.filter(r=>r.kind==='webhook');
+ runsWrap.innerHTML=`<table id=runs>${TH(0)}<tbody>`+
+  sch.map(r=>tr(r)).join('')+(wh.length?`<tr class=sec><td colspan=6>On demand (webhooks)</td></tr>`+wh.map(r=>tr(r)).join(''):'')+
+  (D.weekend.length?`<tr class=sec><td colspan=6>Weekday routines: not scheduled (weekend)</td></tr>`+D.weekend.map(r=>tr(r)).join(''):'')+`</tbody></table>`;
+ idle.style.display='';idle.innerHTML=`<b>Bots with nothing scheduled ${D.is_today?'today':'this day'}:</b>`+D.idle.map(i=>`${esc(i.bot)}${i.note?` <span class=n>(${esc(i.note)})</span>`:''}`).join(' · ')}
+function editing(){const a=document.activeElement;if(!a)return false;if(fmodal&&!fmodal.classList.contains('hidden'))return true;const tag=a.tagName;return tag==='TEXTAREA'||tag==='INPUT'||tag==='SELECT'}
+setInterval(()=>{if(document.hidden||editing())return;if(!dailyView.classList.contains('hidden')){delete cache[cur];renderDaily()}else if(!odView.classList.contains('hidden'))loadOd(false);else if(!allView.classList.contains('hidden'))load()},15000);
+if(P.get('open'))P.get('open').split(',').forEach(k=>openKeys.add(k));
+if(P.get('group')==='bot')group='bot';
+cur=P.get('date')||(location.hash.match(/\d{4}-\d\d-\d\d/)||[DASH.today])[0];
+const _t=P.get('tab');showTab(_t==='all'||_t==='od'?_t:'daily');if(_t!=='daily'&&_t)renderDaily();
+load();
+
+</script><div id="fmodal" class="modal hidden" onclick="if(event.target===this)closeFiles()"><div class="mbox" id="fmodalBody"></div></div>
+</body></html>
