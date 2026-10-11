@@ -78,7 +78,13 @@ tr.gw td{color:#99a}
 .st{font-weight:600}.st-open{color:#b42318}.st-done{color:#1b7a3a}.st-na{color:#99a;font-weight:400}.st-note{color:#8a6d00;font-weight:400;font-style:italic}
 .rn{border:1px solid #1f2a44;background:#fff;color:#1f2a44;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer;font-size:12px;white-space:nowrap}
 .syncbar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;background:#e8f1ff;border:1px solid #b7c9e8;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;color:#243a5e}
-.syncbar button{border:1px solid #2456a6;background:#fff;color:#2456a6;border-radius:6px;padding:4px 12px;font-weight:700;cursor:pointer}.smsg{color:#1b7a3a;font-weight:600}
+.syncbar button{border:1px solid #2456a6;background:#fff;color:#2456a6;border-radius:6px;padding:4px 12px;font-weight:700;cursor:pointer}.smsg{color:#1b7a3a;font-weight:600}.smsg.bad{color:#b42318}.smsg a{color:inherit}
+.syncmsg{min-height:1.3em;margin:-4px 0 12px;font-size:14px}
+.setcard{background:#fff;border:1px solid #e4e7ec;border-radius:12px;padding:18px 20px;max-width:640px}
+.setcard label{display:block;font-weight:650;font-size:13px;margin:14px 0 6px}
+.setcard input{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d5dbe3;border-radius:8px;font:14px/1.4 ui-sans-serif,system-ui,sans-serif}
+.setcard .hint{color:#667;font-size:12.5px;margin:6px 0 0}
+.setcard button{margin-top:16px}
 .prog{background:#fff;border-radius:10px;box-shadow:0 1px 3px #0001;padding:12px 16px;margin-bottom:14px}.ptext{font-size:15px;margin-bottom:8px}.ptext b{font-size:18px}
 .pbar{height:14px;background:#eceef2;border-radius:7px;overflow:hidden;display:flex}.pready{background:#2e9e57;height:100%}.pbuild{background:#e0a100;height:100%}
 .plegend{font-size:12px;color:#667;margin-top:8px}
@@ -131,11 +137,12 @@ details.sect table{border-radius:0}
  .dbar .dl{font-size:15px;margin-left:0;width:100%}
 }
 </style></head><body>
-<header><h1>Grok Bot Automations</h1><span>The Service Company · <a href="#" onclick="logout();return false">Log out</a></span></header>
+<header><h1>Grok Bot Automations</h1><span>The Service Company · <a href="#" onclick="showTab('settings');return false">Settings</a> · <a href="#" onclick="logout();return false">Log out</a></span></header>
 <nav class="tabs"><button id="tabDaily" onclick="showTab('daily')">Today / Daily runs</button><button id="tabAll" onclick="showTab('all')">All automations</button><button id="tabOd" onclick="showTab('od')">On demand<span class=lg> / Month-end</span></button></nav>
 <div class="wrap hidden" id="odView">
 <div class="note">Run Now queues a request the bot can pick up, with the files and notes for that run. This dashboard does not write to the Google Sheet or to QuickBooks. A new sheet line shows up as Manual with a New tag. A line that leaves the sheet goes to Removed from sheet.</div>
-<div class="syncbar"><span>Source: Shared Accounting › <b>Month End- 2026</b> (read-only snapshot)</span><span>Last synced from sheet: <b id="odSynced"></b></span><button onclick="syncOd()">Sync now</button><span id="odSyncMsg" class="smsg"></span></div>
+<div class="syncbar"><span>Source: Shared Accounting › <b>Month End- 2026</b> (read-only snapshot)</span><span>Last synced from sheet: <b id="odSynced"></b></span><button onclick="syncOd()" title="Asks the sync webhook to push a fresh sheet snapshot">Sync now</button></div>
+<div id="odSyncMsg" class="smsg syncmsg"></div>
 <div class="prog"><div class="ptext" id="odProgText"></div><div class="pbar"><div class="pready" id="odProg"></div><div class="pbuild" id="odProgB"></div></div><div class="plegend"><span class="ld ld-manual">Manual: no automation yet</span> → <span class="ld ld-building">Being built</span> → <span class="ld ld-ready">Run Now ready</span></div></div>
 <div class="chips" id="odChips"></div>
 <div class="odbar"><label>Month <select id="odMonth" onchange="odM=this.value;renderOd()"></select></label><span class=lbl>Show</span><span id="odLadders"></span></div>
@@ -143,6 +150,22 @@ details.sect table{border-radius:0}
 <details class="sect" id="odOthers"><summary id="odOthersSum"></summary><div id="odOthersBody"></div></details>
 <details class="sect" id="odRemoved"><summary id="odRemovedSum"></summary><div id="odRemovedBody"></div></details>
 <h2>Run log</h2><table class="tw"><thead><tr><th>When</th><th>Task</th><th>Step</th><th>Detail</th></tr></thead><tbody id="odLog"></tbody></table>
+</div>
+<div class="wrap hidden" id="setView">
+<h2>Settings</h2>
+<div class="note">Sync now does not read Google Sheets. It asks the webhook below to push a fresh snapshot to this dashboard. The sheet list updates when that snapshot arrives.</div>
+<div class="setcard">
+<form onsubmit="saveSettings(event)">
+<label for="setUrl">Sync webhook URL</label>
+<input id="setUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…">
+<p class="hint" id="setUrlHint"></p>
+<label for="setKey">Sync webhook key</label>
+<input id="setKey" type="password" autocomplete="new-password" placeholder="Paste a new key">
+<p class="hint" id="setKeyHint"></p>
+<button type="submit">Save</button>
+<span id="setMsg" class="smsg"></span>
+</form>
+</div>
 </div>
 <div class="wrap" id="dailyView">
 <div class="note">Each row is a scheduled run. A bot report fills it in. Until the scheduled time passes, an empty row says no report yet. After that it says missed.</div>
@@ -191,18 +214,65 @@ let group='time';const collapsed={};
 let cur=DASH.today,openKeys=new Set();const cache={};
 const P=new URLSearchParams(location.search);
 function addDays(ds,n){const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
-function showTab(t){[['daily',dailyView,tabDaily],['all',allView,tabAll],['od',odView,tabOd]].forEach(([k,v,b])=>{v.classList.toggle('hidden',k!==t);b.classList.toggle('on',k===t)});
- const u=new URL(location);u.searchParams.set('tab',t);history.replaceState(null,'',u);if(t==='od')loadOd();if(t==='daily'){delete cache[DASH.today];renderDaily()}}
+function showTab(t){[['daily',dailyView,tabDaily],['all',allView,tabAll],['od',odView,tabOd],['settings',setView,null]].forEach(([k,v,b])=>{v.classList.toggle('hidden',k!==t);if(b)b.classList.toggle('on',k===t)});
+ const u=new URL(location);u.searchParams.set('tab',t);history.replaceState(null,'',u);if(t==='od')loadOd();if(t==='settings')loadSettings();if(t==='daily'){delete cache[DASH.today];renderDaily()}}
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DUE=['1st week','2nd Week','3rd Week','4th Week','End of Month','Weekly','Monthly','Yearly'];
 const LADDER={manual:['ld-manual','Manual: no automation yet'],building:['ld-building','Being built'],ready:['ld-ready','Run Now ready']};
 let OD=null,odM=DASH.month,odL='all';const odOpen=new Set();
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
 function hm(d){let h=d.getHours(),m=String(d.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';return `${h%12||12}:${m} ${ap}`}
-function fmtTs(iso){const d=new Date(iso);return isNaN(d)?iso:`${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]} ${d.getDate()}, ${hm(d)} ET`}
-async function loadOd(force){const r=await fetch(force?'/api/monthend/sync':'/api/monthend',force?{method:'POST'}:undefined);OD=await r.json();renderOd()}
-async function syncOd(){odSyncMsg.textContent='Syncing…';await loadOd(true);const c=OD.changes;
- odSyncMsg.textContent=`Synced: ${OD.tasks.length} lines · ${c.added.length} new · ${c.removed.length} removed${c.restored.length?' · '+c.restored.length+' back':''}`}
+function fmtTs(iso){const d=new Date(iso);if(isNaN(d))return String(iso||'');
+ const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}).formatToParts(d);
+ const g=t=>{const p=parts.find(x=>x.type===t);return p?p.value:''};
+ return `${g('month')} ${g('day')}, ${g('hour')}:${g('minute')} ${g('dayPeriod')} ET`}
+async function loadOd(){const r=await fetch('/api/monthend');OD=await r.json();renderOd()}
+let syncTimer=null;
+function syncFail(body){
+ odSyncMsg.classList.add('bad');
+ if(body&&body.error==='no_webhook'){odSyncMsg.innerHTML='No sync webhook is set. Add it in <a href="#" onclick="showTab(\'settings\');return false">Settings</a>.';return}
+ const code=body&&body.status;
+ odSyncMsg.textContent=code?`Sync request failed (HTTP ${code}).`:'Sync request failed (could not connect).'}
+function changeLine(c){
+ c=c||{};const parts=[];
+ if((c.added||[]).length)parts.push('Added: '+c.added.join(', '));
+ if((c.removed||[]).length)parts.push('Removed: '+c.removed.join(', '));
+ if((c.restored||[]).length)parts.push('Back: '+c.restored.join(', '));
+ return parts.length?parts.join(' · '):'Sheet updated. No lines added or removed.'}
+async function syncOd(){
+ if(syncTimer){clearInterval(syncTimer);syncTimer=null}
+ odSyncMsg.classList.remove('bad');odSyncMsg.textContent='Asking for a fresh sheet…';
+ let body={},res;
+ try{res=await fetch('/api/monthend/sync',{method:'POST'});body=await res.json()}catch(e){syncFail(null);return}
+ if(!res.ok){syncFail(body);return}
+ const baseAt=body.last_synced,baseId=body.snapshot_id;
+ odSyncMsg.textContent='Sync requested — your sheet will update in about a minute';
+ const deadline=Date.now()+3*60*1000;
+ syncTimer=setInterval(async()=>{
+  if(Date.now()>deadline){clearInterval(syncTimer);syncTimer=null;odSyncMsg.textContent='Sync requested — still waiting on the sheet. It will show here when the snapshot arrives.';return}
+  try{
+   const data=await (await fetch('/api/monthend')).json();
+   if(data.snapshot_id!==baseId||data.last_synced!==baseAt){
+    clearInterval(syncTimer);syncTimer=null;OD=data;renderOd();
+    odSyncMsg.classList.remove('bad');odSyncMsg.textContent=changeLine(data.changes)}
+  }catch(e){}
+ },10000)}
+async function loadSettings(){
+ const s=await (await fetch('/api/settings')).json();
+ setUrl.value=s.sync_webhook_url||'';
+ setKey.value='';
+ setUrlHint.textContent=s.url_source==='env'?'Using the URL from the server environment until you save a different one.':(s.sync_webhook_url?'':'No webhook URL yet.');
+ if(!s.sync_webhook_key_set)setKeyHint.textContent='No key saved. Leave this blank if the receiver does not need one.';
+ else setKeyHint.textContent=(s.key_source==='env'?'Using the key from the server environment ':'A key is saved ')+'('+s.sync_webhook_key_mask+'). Leave the box blank to keep it.';
+ setMsg.textContent=''}
+async function saveSettings(ev){
+ ev.preventDefault();setMsg.classList.remove('bad');setMsg.textContent='Saving…';
+ const body={sync_webhook_url:setUrl.value.trim()};
+ if(setKey.value)body.sync_webhook_key=setKey.value;
+ const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const data=await r.json();
+ if(!r.ok){setMsg.classList.add('bad');setMsg.textContent=data.error||'Could not save.';return}
+ setKey.value='';setMsg.classList.remove('bad');setMsg.textContent='Saved.';await loadSettings();setMsg.textContent='Saved.'}
 function monthVal(t,m){return t.months[m]||{kind:'open',text:'Open'}}
 function openState(t){return t.open_request||null}
 function startRun(id){const t=OD.tasks.find(x=>x.id===id);if(!t||t.ladder!=='ready'||t.open_request)return;
@@ -280,7 +350,7 @@ function histHtml(t){const H=t.history||[];
 function tog2(id){odOpen.has(id)?odOpen.delete(id):odOpen.add(id);renderOd()}
 function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='Luke'),O=T.filter(t=>t.assigned!=='Luke');
  const mi=MONTHS.indexOf(odM),pm=mi>0?MONTHS[mi-1]:null,N=L.length||1,c=l=>L.filter(t=>t.ladder===l).length;
- odSynced.textContent=fmtTs(OD.last_synced);
+ odSynced.textContent=OD.last_synced?fmtTs(OD.last_synced):'not yet';
  odProgText.innerHTML=`<b>${c('ready')} of ${L.length}</b> of your tasks are Run Now ready${c('building')?` · ${c('building')} being built`:''} · ${c('manual')} manual`;
  odProg.style.width=(100*c('ready')/N)+'%';odProgB.style.width=(100*c('building')/N)+'%';
  const mv=t=>monthVal(t,odM).kind;
@@ -348,11 +418,11 @@ async function renderDaily(){const D=await getDay(cur);dpick.value=cur;dlabel.te
   (D.weekend.length?`<tr class=sec><td colspan=6>Weekday routines: not scheduled (weekend)</td></tr>`+D.weekend.map(r=>tr(r)).join(''):'')+`</tbody></table>`;
  idle.style.display='';idle.innerHTML=`<b>Bots with nothing scheduled ${D.is_today?'today':'this day'}:</b>`+D.idle.map(i=>`${esc(i.bot)}${i.note?` <span class=n>(${esc(i.note)})</span>`:''}`).join(' · ')}
 function editing(){const a=document.activeElement;if(!a)return false;if(fmodal&&!fmodal.classList.contains('hidden'))return true;const tag=a.tagName;return tag==='TEXTAREA'||tag==='INPUT'||tag==='SELECT'}
-setInterval(()=>{if(document.hidden||editing())return;if(!dailyView.classList.contains('hidden')){delete cache[cur];renderDaily()}else if(!odView.classList.contains('hidden'))loadOd(false);else if(!allView.classList.contains('hidden'))load()},15000);
+setInterval(()=>{if(document.hidden||editing())return;if(!dailyView.classList.contains('hidden')){delete cache[cur];renderDaily()}else if(!odView.classList.contains('hidden'))loadOd();else if(!allView.classList.contains('hidden'))load()},15000);
 if(P.get('open'))P.get('open').split(',').forEach(k=>openKeys.add(k));
 if(P.get('group')==='bot')group='bot';
 cur=P.get('date')||(location.hash.match(/\d{4}-\d\d-\d\d/)||[DASH.today])[0];
-const _t=P.get('tab');showTab(_t==='all'||_t==='od'?_t:'daily');if(_t!=='daily'&&_t)renderDaily();
+const _t=P.get('tab');showTab(_t==='all'||_t==='od'||_t==='settings'?_t:'daily');if(_t!=='daily'&&_t)renderDaily();
 load();
 
 </script><div id="fmodal" class="modal hidden" onclick="if(event.target===this)closeFiles()"><div class="mbox" id="fmodalBody"></div></div>

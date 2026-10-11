@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import urllib.error
@@ -72,6 +73,8 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(self.client.get("/api/runs").status_code, 401)
         self.assertEqual(self.client.get("/api/automations").status_code, 401)
         self.assertEqual(self.client.get("/api/monthend").status_code, 401)
+        self.assertEqual(self.client.get("/api/settings").status_code, 401)
+        self.assertEqual(self.client.post("/api/monthend/sync").status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/runs", json={}).status_code, 401)
         bad = self.login(password="nope")
         self.assertEqual(bad.status_code, 401)
@@ -273,6 +276,11 @@ class DashboardSmoke(unittest.TestCase):
 
     def test_sheet_snapshot_syncs_by_task_and_due(self):
         self.authed()
+        first = self.client.get("/api/monthend").get_json()
+        second = self.client.get("/api/monthend").get_json()
+        self.assertEqual(first["last_synced"], second["last_synced"])
+        self.assertEqual(first["snapshot_id"], second["snapshot_id"])
+        self.assertTrue(first["snapshot_id"])
         seed = (ROOT / "seed" / "month_end_2026.csv").read_text(encoding="utf-8")
         rows = list(csv.reader(io.StringIO(seed)))
         header, data = rows[0], rows[1:]
@@ -296,6 +304,115 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(new["ladder"], "manual")
         self.assertEqual(new["assigned"], "Luke")
         self.assertTrue(any(t["task"] == removed_name for t in month["removed"]))
+        self.assertIn("Brand New Checklist Line", month["changes"]["added"])
+        self.assertNotEqual(month["snapshot_id"], first["snapshot_id"])
+        self.assertNotEqual(month["last_synced"], first["last_synced"])
+        again = self.client.get("/api/monthend").get_json()
+        self.assertEqual(again["last_synced"], month["last_synced"])
+        self.assertEqual(again["snapshot_id"], month["snapshot_id"])
+
+    def _webhook_server(self, status=204):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                self.server.got_body = self.rfile.read(n)
+                self.server.got_headers = {k.lower(): v for k, v in self.headers.items()}
+                self.send_response(status)
+                self.end_headers()
+
+            def log_message(self, fmt, *args):
+                return
+
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        httpd.got_body = b""
+        httpd.got_headers = {}
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(httpd.shutdown)
+        self.addCleanup(httpd.server_close)
+        return httpd
+
+    def test_sync_now_posts_webhook_and_masks_the_key(self):
+        httpd = self._webhook_server()
+        secret = "sync-key-9f3a"
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/hook"
+        self.authed()
+        missing = self.client.post("/api/monthend/sync")
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.get_json()["error"], "no_webhook")
+        bad_url = self.client.post("/api/settings", json={"sync_webhook_url": "javascript:alert(1)"})
+        self.assertEqual(bad_url.status_code, 400)
+
+        saved = self.client.post("/api/settings", json={"sync_webhook_url": url, "sync_webhook_key": secret})
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        shown = self.client.get("/api/settings")
+        self.assertNotIn(secret, shown.get_data(as_text=True))
+        payload = shown.get_json()
+        self.assertEqual(payload["sync_webhook_url"], url)
+        self.assertEqual(payload["sync_webhook_key_mask"], "••••9f3a")
+        self.assertEqual(payload["key_source"], "saved")
+        kept = self.client.post("/api/settings", json={"sync_webhook_url": url, "sync_webhook_key": ""})
+        self.assertEqual(kept.get_json()["settings"]["sync_webhook_key_mask"], "••••9f3a")
+
+        before = self.client.get("/api/monthend").get_json()
+        res = self.client.post("/api/monthend/sync")
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertTrue(body["requested"])
+        self.assertIn("about a minute", body["message"])
+        self.assertEqual(body["last_synced"], before["last_synced"])
+        sent = json.loads(httpd.got_body)
+        self.assertEqual(sent["source"], "automation-dashboard")
+        self.assertEqual(sent["action"], "month-end-sync")
+        self.assertTrue(sent["requested_at"])
+        self.assertEqual(httpd.got_headers.get("authorization"), f"Bearer {secret}")
+        self.assertEqual(httpd.got_headers.get("x-webhook-key"), secret)
+        self.assertEqual(httpd.got_headers.get("x-api-key"), secret)
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Sync webhook URL", page)
+        self.assertIn("Last synced from sheet:", page)
+        self.assertNotIn(secret, page)
+
+    def test_sync_webhook_failure_reports_status(self):
+        httpd = self._webhook_server(status=418)
+        self.authed()
+        self.client.post("/api/settings", json={
+            "sync_webhook_url": f"http://127.0.0.1:{httpd.server_address[1]}/hook",
+            "sync_webhook_key": "k",
+        })
+        res = self.client.post("/api/monthend/sync")
+        self.assertEqual(res.status_code, 502)
+        self.assertEqual(res.get_json()["status"], 418)
+        import socket
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        closed = sock.getsockname()[1]
+        sock.close()
+        down = self.client.post("/api/settings", json={"sync_webhook_url": f"http://127.0.0.1:{closed}/hook"})
+        self.assertEqual(down.status_code, 200)
+        failed = self.client.post("/api/monthend/sync")
+        self.assertEqual(failed.status_code, 502)
+        self.assertIsNone(failed.get_json()["status"])
+
+    def test_sync_webhook_env_fallback(self):
+        httpd = self._webhook_server()
+        secret = "env-secret-zz99"
+        cfg = config(self.tmp.name + "-env")
+        cfg["SYNC_WEBHOOK_URL"] = f"http://127.0.0.1:{httpd.server_address[1]}/hook"
+        cfg["SYNC_WEBHOOK_KEY"] = secret
+        client = create_app(cfg).test_client()
+        client.post("/login", data={"password": PASSWORD})
+        res = client.post("/api/monthend/sync")
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        self.assertEqual(httpd.got_headers.get("authorization"), f"Bearer {secret}")
+        shown = client.get("/api/settings")
+        self.assertNotIn(secret, shown.get_data(as_text=True))
+        payload = shown.get_json()
+        self.assertEqual(payload["url_source"], "env")
+        self.assertEqual(payload["key_source"], "env")
+        self.assertEqual(payload["sync_webhook_key_mask"], "••••zz99")
 
     def test_demo_seed_is_opt_in(self):
         app = create_app(config(self.tmp.name + "-demo", demo=True))

@@ -18,6 +18,8 @@ from app.catalog import annotated, apply_override, public_view
 from app.modules import MODULES
 from app.month_end import MONTHS, decorate
 from app.schedule import build_day, fmt_last_run
+from app.settings_store import public_settings, save_settings
+from app.sync_hook import request_month_end_sync
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -171,9 +173,49 @@ def register(app):
     def monthend():
         return jsonify(_month_payload())
 
+    @app.get("/api/settings")
+    def settings_get():
+        return jsonify(public_settings())
+
+    @app.post("/api/settings")
+    def settings_save():
+        body = _body()
+        try:
+            saved = save_settings(
+                body.get("sync_webhook_url", ""),
+                body.get("sync_webhook_key", ""),
+                update_key="sync_webhook_key" in body and bool(str(body.get("sync_webhook_key") or "").strip()),
+            )
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, settings=saved)
+
     @app.post("/api/monthend/sync")
     def monthend_sync():
-        return jsonify(_month_payload())
+        before = _month_payload()
+        ok, status, error = request_month_end_sync()
+        if error == "no_webhook":
+            return jsonify(
+                ok=False,
+                error="no_webhook",
+                message="No sync webhook is set. Add the URL and key in Settings.",
+            ), 400
+        if error == "invalid_url":
+            return jsonify(ok=False, error="invalid_url", message="The sync webhook URL is not valid."), 400
+        if not ok:
+            return jsonify(
+                ok=False,
+                error="webhook_failed",
+                status=status,
+                message="Sync request failed" + (f" (HTTP {status})." if status else " (could not connect)."),
+            ), 502
+        return jsonify(
+            ok=True,
+            requested=True,
+            last_synced=before.get("last_synced"),
+            snapshot_id=before.get("snapshot_id"),
+            message="Sync requested — your sheet will update in about a minute",
+        )
 
     @app.post("/api/monthend/note")
     @app.post("/api/monthend/filenote")

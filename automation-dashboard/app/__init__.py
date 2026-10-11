@@ -24,6 +24,8 @@ def create_app(overrides=None):
     app.config["SESSION_SECRET"] = os.environ.get("SESSION_SECRET", "")
     app.config["INGEST_TOKEN"] = os.environ.get("INGEST_TOKEN", "")
     app.config["DEMO_SEED"] = _flag(os.environ.get("DEMO_SEED", ""))
+    app.config["SYNC_WEBHOOK_URL"] = os.environ.get("SYNC_WEBHOOK_URL", "")
+    app.config["SYNC_WEBHOOK_KEY"] = os.environ.get("SYNC_WEBHOOK_KEY", "")
     if overrides:
         app.config.update(overrides)
         if "DEMO_SEED" in overrides:

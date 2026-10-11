@@ -206,7 +206,12 @@ class MonthEnd:
         def run():
             now_s = (now_dt or now()).isoformat(timespec="seconds")
             reg = self._read_reg()
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
             sheet = read_sheet(path)
+            previous = reg.get("sheet_hash")
+            if previous == digest:
+                stored = reg.get("last_changes") or {"added": [], "removed": [], "restored": []}
+                return reg, sheet, stored
             seen = set()
             added, removed, back = [], [], []
             for t in sheet:
@@ -228,9 +233,16 @@ class MonthEnd:
                 if k not in seen and not entry.get("removed_at"):
                     entry["removed_at"] = now_s
                     removed.append(entry.get("task"))
-            reg["last_synced"] = now_s
+            changes = {"added": added, "removed": removed, "restored": back}
+            reg["sheet_hash"] = digest
+            reg["last_changes"] = changes
+            # The seeded file is already reflected in the registry. Remember its
+            # hash without pretending this page load is a new sheet sync.
+            fresh = previous is not None or any(changes.values()) or not reg.get("last_synced")
+            if fresh:
+                reg["last_synced"] = now_s
             self._write_reg(reg)
-            return reg, sheet, {"added": added, "removed": removed, "restored": back}
+            return reg, sheet, changes
 
         return self._locked(run)
 
@@ -291,6 +303,7 @@ class MonthEnd:
             "tasks": tasks,
             "removed": removed,
             "last_synced": reg.get("last_synced"),
+            "snapshot_id": (reg.get("sheet_hash") or "")[:12],
             "snapshot_read": reg.get("snapshot_read") or SNAPSHOT_READ,
             "changes": changes or {"added": [], "removed": [], "restored": []},
             "luke_count": len(luke),

@@ -50,6 +50,8 @@ Attach a persistent disk mounted at `/var/data` (a 1 GB disk is enough) and set 
 | `INGEST_TOKEN` | yes | Bearer token for the machine API below |
 | `DATA_DIR` | yes | Set to `/var/data` so notes, uploads, run history, and month-end state survive deploys |
 | `DEMO_SEED` | no | Set to `1` only to load the Oct 9–10 sample run reports. Leave unset in production |
+| `SYNC_WEBHOOK_URL` | no | Fallback URL for **Sync now** when Settings has no URL saved |
+| `SYNC_WEBHOOK_KEY` | no | Fallback key sent with that request when Settings has no key saved |
 | `PORT` | set by Render | The start command binds to it |
 
 `render.yaml` in this folder is a reference for that service. Do not move it to the repo root.
@@ -63,6 +65,7 @@ Everything that has to survive a restart lives under `DATA_DIR`:
 - `month_end_registry.json` — task identity, standing notes, per-file notes, added file requirements
 - `uploads/` — files attached to Run Now
 - `sheet_snapshots/` — each snapshot a bot posts
+- `settings.json` — Sync webhook URL and key (mode `0600`). The API returns the URL and a masked key, never the full key
 
 The browser does not store notes, files, or run history.
 
@@ -130,7 +133,21 @@ or
 {"rows": [{"Due": "1st week", "Order": "", "Category": "Test", "Task": "New line", "Notes/ Questions": "", "Assigned To": "Luke", "January": "", "February": "", "March": "", "April": "", "May": "", "June": "", "July": "", "August": "", "September": "", "October": "", "November": "", "December": ""}]}
 ```
 
-The snapshot goes through the same sync as the in-app Sync button. New task-name + due keys are Manual and tagged New. Missing keys move to Removed from sheet. Notes already stored on a key are kept. Response: `{"ok": true, "changes": {"added": [], "removed": [], "restored": []}, "tasks": 0, "removed": 0}`.
+New task-name + due keys are Manual and tagged New. Missing keys move to Removed from sheet. Notes already stored on a key are kept. Response: `{"ok": true, "changes": {"added": [], "removed": [], "restored": []}, "tasks": 0, "removed": 0}`.
+
+This dashboard does not read Google Sheets. **Sync now** (Settings, behind login) asks an outside automation to read the sheet and call this endpoint.
+
+### Sync now
+
+`POST /api/monthend/sync` (session cookie, not the ingest token) reads the webhook from Settings, then from `SYNC_WEBHOOK_URL` / `SYNC_WEBHOOK_KEY` if a field was left empty. It POSTs:
+
+```json
+{"source": "automation-dashboard", "action": "month-end-sync", "requested_at": "2026-10-10T16:00:00-04:00"}
+```
+
+When a key is set, the same value is sent as `Authorization: Bearer <key>`, `X-Webhook-Key: <key>`, and `X-Api-Key: <key>`. The Month-End tab then says the sync was requested and checks `last_synced` about every 10 seconds for up to 3 minutes. When a new snapshot lands, the list refreshes and the added and removed task names are shown. If no webhook is configured, the response is `400` with `"error": "no_webhook"`. If the receiver returns an error, the status code is shown.
+
+`GET /api/settings` and `POST /api/settings` read and save `sync_webhook_url` and `sync_webhook_key`. A blank key on save keeps the key already stored. The key is not returned in full.
 
 ## Adding a tab
 
