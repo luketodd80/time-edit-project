@@ -62,9 +62,9 @@ Everything that has to survive a restart lives under `DATA_DIR`:
 
 - `dashboard.sqlite` — recorded runs, Run Now requests, pause/resume/retire, command log
 - `month_end_2026.csv` — latest sheet snapshot
-- `month_end_registry.json` — task identity, the permanent id (`ME-001`, …), standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), which week groups are collapsed, which new lines have had the link suggestion dismissed, the captions for history images, and the sheet write-back queue
+- `month_end_registry.json` — task identity, the permanent id (`ME-001`, …), standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), which week groups are collapsed, which new lines have had the link suggestion dismissed, the captions for history files, and the sheet write-back queue
 - `uploads/` — files attached to Run Now
-- `attachments/` — PNG and JPEG images on a task's month history (10 MB each)
+- `attachments/` — PNG, JPEG, and PDF files on a task's month history (10 MB each)
 - `sheet_snapshots/` — each snapshot a bot posts
 - `settings.json` — Sync webhook URL and key (mode `0600`). The API returns the URL and a masked key, never the full key
 - `vehicle_lease.json` and `vehicle_lease/` — fleet registry, ignored units, journal settings, and each month's JE CSV, fleet-report PDF, and detail CSV
@@ -230,11 +230,11 @@ curl -s -X POST "$BASE/api/ingest/month-end/link/dismiss" \
 
 `id` is the new line. `task` and `due` work the same way as the other month-end calls. An unknown id is `404`. The dismissal is cleared on the next snapshot whose task name or due for that line is different.
 
-### Attach an image to a month's history
+### Attach a file to a month's history
 
 `POST /api/ingest/month-end/attachment`
 
-Sends one PNG or JPEG for a task and a month (`2026-10`). A task-month can hold several images. Each file is at most 10 MB. The bytes have to be a PNG or JPEG. The image is stored under `DATA_DIR` and shows as a thumbnail in that month's history entry on the Month-End tab. Click the thumbnail to open it full size. **Delete** on the thumbnail removes that image. The image URL works for a logged-in session only.
+Sends one PNG, JPEG, or PDF for a task and a month (`2026-10`). A task-month can hold several files. Each file is at most 10 MB. The bytes have to match the type. The file is stored under `DATA_DIR`. A PNG or JPEG shows as a thumbnail in that month's history entry on the Month-End tab; click it to open the image full size. A PDF shows as a file chip that opens in a new tab. **Delete** on the chip removes that file. The file URL works for a logged-in session only.
 
 ```bash
 curl -s -X POST "$BASE/api/ingest/month-end/attachment" \
@@ -245,9 +245,9 @@ curl -s -X POST "$BASE/api/ingest/month-end/attachment" \
   -F "file=@close.png;type=image/png"
 ```
 
-`caption` is optional. An unknown id is `404`. A bad month, an empty file, a file over 10 MB, or a file that is not a PNG or JPEG is `400`.
+`caption` is optional. An unknown id is `404`. A bad month, an empty file, a file over 10 MB, or a file that is not a PNG, JPEG, or PDF is `400`. A PDF uses `type=application/pdf`.
 
-`GET /api/ingest/month-end/attachments?id=ME-029&month=2026-10` lists the images for that task and month (`id`, `caption`, `content_type`, `size`, `name`, `created_at`). It does not return the file bytes.
+`GET /api/ingest/month-end/attachments?id=ME-029&month=2026-10` lists the files for that task and month (`id`, `caption`, `content_type`, `size`, `name`, `created_at`). It does not return the file bytes.
 
 ### Write a manual Done back to the sheet
 
@@ -281,7 +281,26 @@ The monthly charge is the standard loan payment on starting value, term, and rat
 
 Generate a month on the page (or `POST /api/vehicle-lease/runs` with `{"month":"2026-09"}`). That stores one history entry: the JE CSV, the Fleet Manager Report PDF, the detail CSV, branch totals, a fleet-check result, and a QBO JE # Don can fill in later. September 2026 on the seeded fleet is **$6,910.61** across 13 active units. The JE columns match `JournalNo,JournalDate,Account,Debits,Credits,Description,Name,Location`, with journal number `VEH-LEASE-SEP2026` and date `09/30/2026`.
 
-`GET /api/ingest/vehicle-lease/registry` and `GET /api/ingest/vehicle-lease/ignored` return the fleet and the ignored list.
+`GET /api/ingest/vehicle-lease/registry` and `GET /api/ingest/vehicle-lease/ignored` return the fleet and the ignored list. Each vehicle includes `note` (optional text, also shown on the fleet table).
+
+`POST /api/ingest/vehicle-lease/registry` adds one unit. Send the same fields the page requires: `unit`, `nickname`, `branch`, `value`, `start_date` (`YYYY-MM-DD`), `term`, `rate`, and `service_pct`. `note` is optional. A unit that is already in the registry is `409`. A missing or invalid field is `400`.
+
+```bash
+curl -s -X POST "$BASE/api/ingest/vehicle-lease/registry" \
+  -H "Authorization: Bearer $INGEST_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"unit":"55","nickname":"All locations runner","branch":"All Locations","value":35000,"start_date":"2026-09-01","term":60,"rate":7,"service_pct":50,"note":"shop spare"}'
+```
+
+`PATCH /api/ingest/vehicle-lease/registry/55` updates the fields you send and leaves the rest. The same validation applies. An unknown unit is `404`. Changing the unit number onto one that already exists is `409`.
+
+`DELETE /api/ingest/vehicle-lease/registry/55` removes that unit. An unknown unit is `404`.
+
+`POST /api/ingest/vehicle-lease/ignored` adds units. Send `{"unit":"ZZ9"}`, `{"units":["ZZ9","ZZ8"]}`, or a JSON list. A unit already on the list is left as it is. A blank unit is `400`.
+
+`DELETE /api/ingest/vehicle-lease/ignored/ZZ9` removes that one unit. An unknown unit is `404`.
+
+Adding an All Locations unit worth $35,000, starting 2026-09-01, for 60 months at 7% with service 50%, changes September 2026 from **$6,910.61** across 13 units to **$7,603.66** across 14. The seed files stay the 13-unit registry.
 
 `POST /api/ingest/vehicle-lease/runs` stores a month the bot already computed. Send multipart fields `month`, `je`, `pdf`, and `detail`, plus either a `payload` JSON string or the fields `total`, `active_units`, `branches`, `fleet_check`, `fleet_status` (`ok`, `flagged`, or `skipped`), and `qbo_je`.
 

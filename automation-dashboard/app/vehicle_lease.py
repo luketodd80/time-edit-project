@@ -27,6 +27,10 @@ MONTHS = [
 ]
 GL_ACCOUNT = "611-3 Vehicle Lease Expense (Internal)"
 CREDIT_LOCATION = "Truck Sales"
+
+
+class UnitExists(ValueError):
+    """The registry already has this unit number."""
 TSC_CUSTOMER = "The Service Company(use for non-pro projects)(FMS)"
 _MONTH = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 JE_HEADERS = ["JournalNo", "JournalDate", "Account", "Debits", "Credits", "Description", "Name", "Location"]
@@ -412,7 +416,13 @@ def _clean_vehicle(body, settings, existing=None):
         datetime.date.fromisoformat(start)
     except ValueError:
         raise ValueError("start date must be YYYY-MM-DD")
-    notes = str(body.get("notes") or "").strip()[:500]
+    if "note" in body:
+        note_raw = body.get("note")
+    elif "notes" in body:
+        note_raw = body.get("notes")
+    else:
+        note_raw = ""
+    note = str(note_raw or "").strip()[:500]
     return {
         "id": (existing or {}).get("id") or uuid.uuid4().hex[:12],
         "unit": unit[:40],
@@ -423,8 +433,43 @@ def _clean_vehicle(body, settings, existing=None):
         "term": term,
         "rate": rate,
         "service_pct": service,
-        "notes": notes,
+        "note": note,
     }
+
+
+def _match_unit(vehicles, unit):
+    want = " ".join(str(unit or "").split()).lower()
+    if not want:
+        raise KeyError(unit)
+    for vehicle in vehicles:
+        if " ".join(str(vehicle.get("unit") or "").split()).lower() == want:
+            return vehicle
+    raise KeyError(unit)
+
+
+def _merge_vehicle(existing, body):
+    """PATCH keeps omitted fields. A present note replaces the stored one."""
+    if not isinstance(body, dict):
+        raise ValueError("vehicle required")
+    merged = {
+        "unit": existing.get("unit"),
+        "nickname": existing.get("nickname"),
+        "branch": existing.get("branch"),
+        "value": existing.get("value"),
+        "start_date": existing.get("start_date"),
+        "term": existing.get("term"),
+        "rate": existing.get("rate"),
+        "service_pct": existing.get("service_pct"),
+        "note": existing.get("note") if existing.get("note") is not None else existing.get("notes") or "",
+    }
+    for key in ("unit", "nickname", "branch", "value", "start_date", "term", "rate", "service_pct"):
+        if key in body:
+            merged[key] = body[key]
+    if "note" in body:
+        merged["note"] = body.get("note")
+    elif "notes" in body:
+        merged["note"] = body.get("notes")
+    return merged
 
 
 def _clean_ignored(units):
@@ -472,7 +517,7 @@ class VehicleLease:
                     "term": int(float(row.get("Term (months)") or 60)),
                     "rate": float(row.get("Interest Rate (%)") or 7),
                     "service_pct": float(row.get("Service %") or 0),
-                    "notes": (row.get("Notes") or "").strip(),
+                    "note": (row.get("Notes") or "").strip(),
                 })
         ignored = [
             line.strip()
@@ -486,7 +531,14 @@ class VehicleLease:
             state = self._blank()
             self._write(state)
             return state
-        return json.loads(self.path.read_text(encoding="utf-8"))
+        state = json.loads(self.path.read_text(encoding="utf-8"))
+        for vehicle in state.get("vehicles") or []:
+            if "note" not in vehicle:
+                vehicle["note"] = str(vehicle.pop("notes", "") or "").strip()
+            else:
+                vehicle.pop("notes", None)
+                vehicle["note"] = str(vehicle.get("note") or "").strip()
+        return state
 
     def _write(self, state):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -547,8 +599,9 @@ class VehicleLease:
             clean = _clean_vehicle(body, state["settings"], existing)
             for other in state["vehicles"]:
                 if other["id"] != clean["id"] and other["unit"].lower() == clean["unit"].lower():
-                    raise ValueError(f"unit {clean['unit']} is already in the registry")
+                    raise UnitExists(f"unit {clean['unit']} is already in the registry")
             if existing:
+                existing.pop("notes", None)
                 existing.update(clean)
                 saved = existing
             else:
@@ -556,6 +609,74 @@ class VehicleLease:
                 saved = clean
             self._write(state)
             return saved
+        return self._locked(run)
+
+    def update_by_unit(self, unit, body):
+        def run():
+            state = self._read()
+            existing = _match_unit(state["vehicles"], unit)
+            clean = _clean_vehicle(_merge_vehicle(existing, body), state["settings"], existing)
+            for other in state["vehicles"]:
+                if other["id"] != clean["id"] and other["unit"].lower() == clean["unit"].lower():
+                    raise UnitExists(f"unit {clean['unit']} is already in the registry")
+            existing.pop("notes", None)
+            existing.update(clean)
+            self._write(state)
+            return existing
+        return self._locked(run)
+
+    def delete_by_unit(self, unit):
+        def run():
+            state = self._read()
+            existing = _match_unit(state["vehicles"], unit)
+            state["vehicles"] = [v for v in state["vehicles"] if v["id"] != existing["id"]]
+            self._write(state)
+            return existing["unit"]
+        return self._locked(run)
+
+    def add_ignored(self, raw_units):
+        def run():
+            state = self._read()
+            existing = list(state.get("ignored") or [])
+            known = {" ".join(str(item).split()).lower() for item in existing}
+            added = []
+            saw_text = False
+            for raw in raw_units:
+                unit = " ".join(str(raw or "").split())[:40]
+                if not unit:
+                    continue
+                saw_text = True
+                key = unit.lower()
+                if key in known:
+                    continue
+                known.add(key)
+                existing.append(unit)
+                added.append(unit)
+            if not saw_text:
+                raise ValueError("unit is required")
+            state["ignored"] = existing
+            self._write(state)
+            return added, existing
+        return self._locked(run)
+
+    def remove_ignored(self, unit):
+        def run():
+            state = self._read()
+            want = " ".join(str(unit or "").split()).lower()
+            if not want:
+                raise KeyError(unit)
+            kept = []
+            removed = None
+            for item in state.get("ignored") or []:
+                if removed is None and " ".join(str(item).split()).lower() == want:
+                    removed = item
+                    continue
+                kept.append(item)
+            if removed is None:
+                raise KeyError(unit)
+            state["ignored"] = kept
+            self._write(state)
+            return removed, kept
         return self._locked(run)
 
     def delete_vehicle(self, vehicle_id):

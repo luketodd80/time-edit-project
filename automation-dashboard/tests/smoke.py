@@ -94,7 +94,12 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(self.client.get("/vehicle-lease").status_code, 302)
         self.assertEqual(self.client.get("/api/vehicle-lease").status_code, 401)
         self.assertEqual(self.client.get("/api/ingest/vehicle-lease/registry").status_code, 401)
+        self.assertEqual(self.client.post("/api/ingest/vehicle-lease/registry", json={}).status_code, 401)
+        self.assertEqual(self.client.patch("/api/ingest/vehicle-lease/registry/55", json={}).status_code, 401)
+        self.assertEqual(self.client.delete("/api/ingest/vehicle-lease/registry/55").status_code, 401)
         self.assertEqual(self.client.get("/api/ingest/vehicle-lease/ignored").status_code, 401)
+        self.assertEqual(self.client.post("/api/ingest/vehicle-lease/ignored", json={}).status_code, 401)
+        self.assertEqual(self.client.delete("/api/ingest/vehicle-lease/ignored/55").status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/vehicle-lease/runs").status_code, 401)
         self.assertEqual(self.client.patch("/api/ingest/vehicle-lease/runs/2026-09").status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/runs", json={}).status_code, 401)
@@ -993,6 +998,30 @@ class DashboardSmoke(unittest.TestCase):
         bad_month = upload(self.client, TOKEN, png, "close.png", "image/png", month_s="October")
         self.assertEqual(bad_month.status_code, 400)
 
+        pdf = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+        posted = upload(self.client, TOKEN, pdf, "close.pdf", "application/pdf", "September packet")
+        self.assertEqual(posted.status_code, 200, posted.get_data(as_text=True))
+        saved_pdf = posted.get_json()["attachment"]
+        self.assertEqual(saved_pdf["content_type"], "application/pdf")
+        self.assertEqual(saved_pdf["caption"], "September packet")
+        self.assertEqual(saved_pdf["name"], "close.pdf")
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertIn("a.pdflink", page)
+        self.assertIn('target="_blank"', page)
+        self.assertEqual(guest.get(saved_pdf["url"]).status_code, 401)
+        opened = self.client.get(saved_pdf["url"])
+        self.assertEqual(opened.status_code, 200)
+        self.assertEqual(opened.mimetype, "application/pdf")
+        self.assertTrue(opened.data.startswith(b"%PDF-"))
+        self.assertEqual(opened.headers["X-Content-Type-Options"], "nosniff")
+        self.assertIn("inline", opened.headers.get("Content-Disposition", ""))
+        fresh = self.client.get("/api/monthend").get_json()
+        row = next(t for t in fresh["tasks"] if t["me_id"] == kept_id)
+        stored = row["attachments"]["2026-10"]
+        self.assertTrue(any(item["content_type"] == "application/pdf" and item["name"] == "close.pdf" for item in stored))
+        declared = upload(self.client, TOKEN, pdf, "close.png", "image/png")
+        self.assertEqual(declared.status_code, 400)
+
     def test_month_end_writebacks(self):
         httpd = self._webhook_server()
         secret = "sheet-writer"
@@ -1170,8 +1199,10 @@ class DashboardSmoke(unittest.TestCase):
         self.assertIn("Fleet registry", html)
         self.assertIn("Ignored units", html)
         self.assertIn("Generate", html)
+        self.assertIn('id="v-note"', html)
         state = self.client.get("/api/vehicle-lease").get_json()
         self.assertEqual(len(state["vehicles"]), 13)
+        self.assertTrue(all("note" in vehicle for vehicle in state["vehicles"]))
         self.assertEqual(len(state["ignored"]), 71)
         self.assertEqual(state["settings"]["gl_account"], "611-3 Vehicle Lease Expense (Internal)")
         self.assertEqual(state["settings"]["credit_location"], "Truck Sales")
@@ -1303,6 +1334,104 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(september["total"], 6910.61)
         self.assertEqual(september["qbo_je"], "1577201")
         self.assertTrue(client2.get("/api/vehicle-lease/runs/2026-09/report.pdf").data.startswith(b"%PDF"))
+
+    def test_vehicle_lease_ingest_writes_and_september_change(self):
+        self.authed()
+        headers = {"Authorization": f"Bearer {TOKEN}"}
+        before = self.client.post("/api/vehicle-lease/runs", json={"month": "2026-09"})
+        self.assertEqual(before.status_code, 200, before.get_data(as_text=True))
+        self.assertEqual(before.get_json()["run"]["total"], 6910.61)
+        self.assertEqual(before.get_json()["run"]["active_units"], 13)
+
+        payload = {
+            "unit": "55",
+            "nickname": "All locations runner",
+            "branch": "All Locations",
+            "value": 35000,
+            "start_date": "2026-09-01",
+            "term": 60,
+            "rate": 7,
+            "service_pct": 50,
+            "note": "shop spare",
+        }
+        added = self.client.post("/api/ingest/vehicle-lease/registry", json=payload, headers=headers)
+        self.assertEqual(added.status_code, 200, added.get_data(as_text=True))
+        vehicle = added.get_json()["vehicle"]
+        self.assertEqual(vehicle["unit"], "55")
+        self.assertEqual(vehicle["note"], "shop spare")
+        self.assertEqual(vehicle["value"], 35000)
+        self.assertEqual(vehicle["service_pct"], 50)
+        duplicate = self.client.post("/api/ingest/vehicle-lease/registry", json=payload, headers=headers)
+        self.assertEqual(duplicate.status_code, 409)
+        incomplete = self.client.post("/api/ingest/vehicle-lease/registry", json={"unit": "56", "value": 35000}, headers=headers)
+        self.assertEqual(incomplete.status_code, 400)
+
+        patched = self.client.patch(
+            "/api/ingest/vehicle-lease/registry/55",
+            json={"note": "posted by Don"},
+            headers=headers,
+        )
+        self.assertEqual(patched.status_code, 200, patched.get_data(as_text=True))
+        self.assertEqual(patched.get_json()["vehicle"]["note"], "posted by Don")
+        self.assertEqual(patched.get_json()["vehicle"]["nickname"], "All locations runner")
+        self.assertEqual(patched.get_json()["vehicle"]["value"], 35000)
+        bad_value = self.client.patch("/api/ingest/vehicle-lease/registry/55", json={"value": 0}, headers=headers)
+        self.assertEqual(bad_value.status_code, 400)
+        clash = self.client.patch("/api/ingest/vehicle-lease/registry/55", json={"unit": "39"}, headers=headers)
+        self.assertEqual(clash.status_code, 409)
+        unknown = self.client.patch("/api/ingest/vehicle-lease/registry/nope", json={"note": "x"}, headers=headers)
+        self.assertEqual(unknown.status_code, 404)
+
+        run = self.client.post("/api/vehicle-lease/runs", json={"month": "2026-09"})
+        self.assertEqual(run.status_code, 200, run.get_data(as_text=True))
+        saved = run.get_json()["run"]
+        self.assertEqual(saved["active_units"], 14)
+        self.assertEqual(saved["total"], 7603.66)
+        self.assertEqual(saved["branches"], {
+            "Covington": 348.5,
+            "Greenville": 859.37,
+            "Dayton": 2332.58,
+            "Springfield": 633.64,
+            "Columbus": 1853.39,
+            "Mobile": 1576.18,
+        })
+        je = self.client.get("/api/vehicle-lease/runs/2026-09/je.csv").get_data(as_text=True)
+        self.assertIn("7,603.66", je)
+        detail = self.client.get("/api/vehicle-lease/runs/2026-09/detail.csv").get_data(as_text=True)
+        self.assertIn("55", detail)
+
+        listed = self.client.get("/api/ingest/vehicle-lease/registry", headers=headers).get_json()
+        unit = next(item for item in listed["vehicles"] if item["unit"] == "55")
+        self.assertEqual(unit["note"], "posted by Don")
+        self.assertEqual(len(listed["vehicles"]), 14)
+        page = self.client.get("/api/vehicle-lease").get_json()
+        shown = next(item for item in page["vehicles"] if item["unit"] == "55")
+        self.assertEqual(shown["note"], "posted by Don")
+
+        removed = self.client.delete("/api/ingest/vehicle-lease/registry/55", headers=headers)
+        self.assertEqual(removed.status_code, 200, removed.get_data(as_text=True))
+        self.assertEqual(removed.get_json()["unit"], "55")
+        self.assertEqual(self.client.delete("/api/ingest/vehicle-lease/registry/55", headers=headers).status_code, 404)
+        self.assertEqual(len(self.client.get("/api/vehicle-lease").get_json()["vehicles"]), 13)
+        restored = self.client.post("/api/vehicle-lease/runs", json={"month": "2026-09"})
+        self.assertEqual(restored.get_json()["run"]["total"], 6910.61)
+        self.assertEqual(restored.get_json()["run"]["active_units"], 13)
+
+        one = self.client.post("/api/ingest/vehicle-lease/ignored", json={"unit": "ZZ9"}, headers=headers)
+        self.assertEqual(one.status_code, 200, one.get_data(as_text=True))
+        self.assertEqual(one.get_json()["added"], ["ZZ9"])
+        self.assertEqual(len(one.get_json()["ignored"]), 72)
+        many = self.client.post("/api/ingest/vehicle-lease/ignored", json=["ZZ9", "ZZ8"], headers=headers)
+        self.assertEqual(many.status_code, 200, many.get_data(as_text=True))
+        self.assertEqual(many.get_json()["added"], ["ZZ8"])
+        self.assertEqual(len(many.get_json()["ignored"]), 73)
+        blank = self.client.post("/api/ingest/vehicle-lease/ignored", json={"unit": " "}, headers=headers)
+        self.assertEqual(blank.status_code, 400)
+        dropped = self.client.delete("/api/ingest/vehicle-lease/ignored/zz9", headers=headers)
+        self.assertEqual(dropped.status_code, 200, dropped.get_data(as_text=True))
+        self.assertEqual(dropped.get_json()["unit"], "ZZ9")
+        self.assertNotIn("ZZ9", dropped.get_json()["ignored"])
+        self.assertEqual(self.client.delete("/api/ingest/vehicle-lease/ignored/ZZ9", headers=headers).status_code, 404)
 
     def test_demo_seed_is_opt_in(self):
         app = create_app(config(self.tmp.name + "-demo", demo=True))

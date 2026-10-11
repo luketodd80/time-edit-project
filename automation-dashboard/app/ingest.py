@@ -6,6 +6,7 @@ from flask import current_app, jsonify, request, send_file
 
 from app import clock
 from app.attachments import add_attachment, list_attachments, parse_month, read_image
+from app.vehicle_lease import UnitExists
 from app.catalog import by_id
 from app.month_end import MONTHS, decorate, done_text, parse_automation_badge, parse_completion_request, task_key_from
 from app.schedule import assign_slot, fmt_actual
@@ -384,7 +385,7 @@ def register(app):
 
     @app.post("/api/ingest/month-end/attachment")
     def ingest_month_end_attachment():
-        """Store a PNG or JPEG on a task's history for one month. Several are allowed."""
+        """Store a PNG, JPEG, or PDF on a task's history for one month. Several are allowed."""
         me = _me()
         if request.content_length and request.content_length > 10 * 1024 * 1024 + 256 * 1024:
             return jsonify(error="file is over 10 MB"), 400
@@ -411,7 +412,7 @@ def register(app):
 
     @app.get("/api/ingest/month-end/attachments")
     def ingest_month_end_attachments():
-        """List images stored for one task and month. The files themselves need a logged-in session."""
+        """List files stored for one task and month. The files themselves need a logged-in session."""
         try:
             me, task_key, month = _attachment_target()
             items = list_attachments(me, task_key, month)
@@ -499,6 +500,72 @@ def register(app):
     @app.get("/api/ingest/vehicle-lease/ignored")
     def ingest_vehicle_lease_ignored():
         return jsonify(ok=True, ignored=_vl().state()["ignored"])
+
+    def _ignored_units(raw):
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, str):
+            return [raw]
+        if not isinstance(raw, dict):
+            raise ValueError("unit is required")
+        if "units" in raw:
+            value = raw["units"]
+        elif "unit" in raw:
+            value = raw["unit"]
+        elif "ignored" in raw:
+            value = raw["ignored"]
+        else:
+            raise ValueError("unit is required")
+        if isinstance(value, list):
+            return value
+        return [value]
+
+    @app.post("/api/ingest/vehicle-lease/registry")
+    def ingest_vehicle_lease_add():
+        try:
+            saved = _vl().save_vehicle(_json())
+        except UnitExists as exc:
+            return jsonify(error=str(exc)), 409
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, vehicle=saved)
+
+    @app.patch("/api/ingest/vehicle-lease/registry/<unit>")
+    def ingest_vehicle_lease_edit(unit):
+        try:
+            saved = _vl().update_by_unit(unit, _json())
+        except UnitExists as exc:
+            return jsonify(error=str(exc)), 409
+        except KeyError:
+            return jsonify(error="unknown unit"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, vehicle=saved)
+
+    @app.delete("/api/ingest/vehicle-lease/registry/<unit>")
+    def ingest_vehicle_lease_remove(unit):
+        try:
+            removed = _vl().delete_by_unit(unit)
+        except KeyError:
+            return jsonify(error="unknown unit"), 404
+        return jsonify(ok=True, unit=removed)
+
+    @app.post("/api/ingest/vehicle-lease/ignored")
+    def ingest_vehicle_lease_ignore():
+        raw = request.get_json(silent=True) if request.is_json else None
+        try:
+            added, ignored = _vl().add_ignored(_ignored_units(raw))
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, added=added, ignored=ignored)
+
+    @app.delete("/api/ingest/vehicle-lease/ignored/<unit>")
+    def ingest_vehicle_lease_unignore(unit):
+        try:
+            removed, ignored = _vl().remove_ignored(unit)
+        except KeyError:
+            return jsonify(error="unknown unit"), 404
+        return jsonify(ok=True, unit=removed, ignored=ignored)
 
     @app.post("/api/ingest/vehicle-lease/runs")
     def ingest_vehicle_lease_run():

@@ -130,6 +130,9 @@ a.vlink{color:#2456a6;font-weight:700;font-size:12px;margin-left:8px;text-decora
 .thumbbtn img{display:block;width:120px;height:72px;object-fit:cover;border-radius:5px;background:#eef1f6}
 .thumb figcaption{font-size:11px;color:#445;max-width:120px}
 .thumbx{border:0;background:none;padding:0;color:#889;font-size:11px;font-weight:650;cursor:pointer;text-decoration:underline}
+a.pdflink{display:inline-flex;align-items:center;gap:6px;max-width:220px;border:1px solid #ccd;border-radius:8px;padding:6px 8px;text-decoration:none;color:#1f2a44;background:#fff}
+.pdfchip{background:#b42318;color:#fff;border-radius:4px;font-size:10px;font-weight:800;padding:2px 5px;letter-spacing:.03em}
+.pdfname{font-size:12px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #attView .mbox{max-width:860px}
 #attFull{max-width:100%;max-height:70vh;display:block;margin:0 auto;background:#eef1f6}
 #attCap{margin-top:8px;font-size:13px;color:#334}
@@ -452,11 +455,14 @@ function runCell(t){if(t.ladder!=='ready')return `<span class=muted2>Not on Run 
  const prev=last&&(last.state==='succeeded'||last.state==='failed')?`<div class="rs ${last.state==='succeeded'?'rs-ok':'rs-bad'}">${last.state==='succeeded'?'&#10003; ':'&#10007; '}${esc(last.result)}</div>`:'';
  return `<button class=rn onclick="startRun('${t.id}')">Run Now</button><div class=rnopt><label title="Which month column the done date goes in">Log under <select id="mo-${t.id}">${opts}</select></label></div>`+prev}
 function monthLabel(iso){const m=/^(\d{4})-(\d{2})$/.exec(iso||'');if(!m)return iso||'';const name=MONTHS[Number(m[2])-1]||m[2];return name+' '+m[1]}
-function attStrip(atts){return '<div class=thumbs>'+atts.map(a=>{const cap=esc(a.caption||'');const name=esc(a.name||'image');
- return `<figure class=thumb><button type=button class=thumbbtn data-src="${esc(a.url)}" data-cap="${cap}" onclick="openAtt(this)" title="${cap||name}"><img src="${esc(a.url)}" alt="${cap||name}"></button>${cap?`<figcaption>${cap}</figcaption>`:''}<button type=button class=thumbx onclick="deleteAttachment('${esc(a.id)}')">Delete</button></figure>`}).join('')+'</div>'}
+function attStrip(atts){return '<div class=thumbs>'+atts.map(a=>{const cap=esc(a.caption||'');const name=esc(a.name||'file');
+ const pdf=(a.content_type||'')==='application/pdf';
+ const file=pdf?`<a class=pdflink href="${esc(a.url)}" target="_blank" rel="noopener" title="${cap||name}"><span class=pdfchip>PDF</span><span class=pdfname>${name}</span></a>`
+  :`<button type=button class=thumbbtn data-src="${esc(a.url)}" data-cap="${cap}" onclick="openAtt(this)" title="${cap||name}"><img src="${esc(a.url)}" alt="${cap||name}"></button>`;
+ return `<figure class=thumb>${file}${cap?`<figcaption>${cap}</figcaption>`:''}<button type=button class=thumbx onclick="deleteAttachment('${esc(a.id)}')">Delete</button></figure>`}).join('')+'</div>'}
 function openAtt(btn){attFull.src=btn.getAttribute('data-src');attCap.textContent=btn.getAttribute('data-cap')||'';attView.classList.remove('hidden')}
 function closeAtt(){attView.classList.add('hidden');attFull.removeAttribute('src')}
-async function deleteAttachment(id){if(!confirm('Delete this image?'))return;
+async function deleteAttachment(id){if(!confirm('Delete this file?'))return;
  const r=await (await fetch('/api/monthend/attachments/'+id,{method:'DELETE'})).json();
  if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;renderOd()}
 function histHtml(t){const H=t.history||[];const groups=t.attachments||{};const used={};
@@ -464,7 +470,7 @@ function histHtml(t){const H=t.history||[];const groups=t.attachments||{};const 
   return `<li><b>${esc(h.when)}</b> · ${esc(h.state)} · ${esc(h.result)}${h.files?`<br><span class=muted2>Files: ${esc(h.files)}</span>`:''}${h.run_note?`<br><span class=rnote>Run note: ${esc(h.run_note)}</span>`:''}${h.standing?`<br><span class=muted2>Standing notes used: ${esc(h.standing)}</span>`:''}${extra}</li>`};
  const rows=H.map(li);
  Object.keys(groups).sort().forEach(iso=>{if(used[iso]||!(groups[iso]||[]).length)return;
-  rows.push(`<li><b>${esc(monthLabel(iso))}</b> · images${attStrip(groups[iso])}</li>`)});
+  rows.push(`<li><b>${esc(monthLabel(iso))}</b> · files${attStrip(groups[iso])}</li>`)});
  return rows.length?'<ul class=hist>'+rows.join('')+'</ul>':'<span class=muted2>No runs yet.</span>'}
 function tog2(id){odOpen.has(id)?odOpen.delete(id):odOpen.add(id);renderOd()}
 function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='Luke'),O=T.filter(t=>t.assigned!=='Luke');

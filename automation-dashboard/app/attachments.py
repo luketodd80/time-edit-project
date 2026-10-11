@@ -1,7 +1,7 @@
-"""PNG and JPEG attachments for one month of a month-end task.
+"""PNG, JPEG, and PDF attachments for one month of a month-end task.
 
 Files live under DATA_DIR/attachments. The registry keeps the caption and the
-relative path. Images are served only to a logged-in session.
+relative path. Files are served only to a logged-in session.
 """
 import os
 import re
@@ -12,7 +12,8 @@ from app.clock import now
 
 MAX_BYTES = 10 * 1024 * 1024
 _MONTH = re.compile(r"^(\d{4})-(\d{2})$")
-_FILE = re.compile(r"^attachments/[a-f0-9]{32}\.(png|jpg)$")
+_FILE = re.compile(r"^attachments/[a-f0-9]{32}\.(png|jpg|pdf)$")
+_KIND = "file must be a PNG, JPEG, or PDF"
 _ID = re.compile(r"^[a-f0-9]{32}$")
 
 
@@ -31,6 +32,8 @@ def sniff_image(raw):
         return "image/png", "png"
     if raw.startswith(b"\xff\xd8\xff"):
         return "image/jpeg", "jpg"
+    if raw.startswith(b"%PDF-"):
+        return "application/pdf", "pdf"
     return None, None
 
 
@@ -41,13 +44,17 @@ def _declared_type(content_type, filename):
         return "png"
     if ctype in ("image/jpeg", "image/jpg"):
         return "jpg"
+    if ctype == "application/pdf":
+        return "pdf"
     if ctype in ("", "application/octet-stream"):
         if ext == ".png":
             return "png"
         if ext in (".jpg", ".jpeg"):
             return "jpg"
+        if ext == ".pdf":
+            return "pdf"
         return ""
-    raise ValueError("file must be a PNG or JPEG")
+    raise ValueError(_KIND)
 
 
 def read_image(storage):
@@ -64,15 +71,16 @@ def read_image(storage):
         raise ValueError("file is over 10 MB")
     sniffed, ext = sniff_image(raw)
     if not sniffed:
-        raise ValueError("file must be a PNG or JPEG")
+        raise ValueError(_KIND)
     try:
         declared = _declared_type(getattr(storage, "content_type", "") or getattr(storage, "mimetype", ""), storage.filename)
     except ValueError:
         raise
     if declared and declared != ext:
-        raise ValueError("file must be a PNG or JPEG")
-    name = os.path.basename(str(storage.filename or "image." + ext))
-    name = re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:80] or ("image." + ext)
+        raise ValueError(_KIND)
+    fallback = "file." + ext
+    name = os.path.basename(str(storage.filename or fallback))
+    name = re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:80] or fallback
     return raw, sniffed, ext, name
 
 
