@@ -89,6 +89,8 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(self.client.get("/api/ingest/month-end/attachments").status_code, 401)
         self.assertEqual(self.client.get("/api/monthend/attachments/abc").status_code, 401)
         self.assertEqual(self.client.delete("/api/monthend/attachments/abc").status_code, 401)
+        self.assertEqual(self.client.get("/api/ingest/month-end/writebacks").status_code, 401)
+        self.assertEqual(self.client.post("/api/ingest/month-end/writebacks/abc/result", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/runs", json={}).status_code, 401)
         bad = self.login(password="nope")
         self.assertEqual(bad.status_code, 401)
@@ -463,6 +465,8 @@ class DashboardSmoke(unittest.TestCase):
         self.assertIn("openAtt", page)
         self.assertIn("deleteAttachment", page)
         self.assertIn("thumbbtn", page)
+        self.assertIn("Couldn't write to sheet", page)
+        self.assertIn("writeWarn", page)
         self.assertNotIn("Candidate", page)
         self.assertNotIn("Being built", page)
         month = self.client.get("/api/monthend").get_json()
@@ -980,6 +984,175 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(unknown.status_code, 404)
         bad_month = upload(self.client, TOKEN, png, "close.png", "image/png", month_s="October")
         self.assertEqual(bad_month.status_code, 400)
+
+    def test_month_end_writebacks(self):
+        httpd = self._webhook_server()
+        secret = "sheet-writer"
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/hook"
+        self.authed()
+        saved = self.client.post("/api/settings", json={"sync_webhook_url": url, "sync_webhook_key": secret})
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        month = self.client.get("/api/monthend").get_json()
+        bonuses = next(t for t in month["tasks"] if t["task"].startswith("Review Tech Bonuses"))
+        payroll = next(t for t in month["tasks"] if t["task"] == "Payroll Report")
+        headers = {"Authorization": f"Bearer {TOKEN}"}
+
+        bot = self.client.post("/api/ingest/month-end/status", json={
+            "id": payroll["me_id"], "month": "October", "status": "done", "date": "2026-10-10",
+        }, headers=headers)
+        self.assertEqual(bot.status_code, 200, bot.get_data(as_text=True))
+        quiet = self.client.get("/api/ingest/month-end/writebacks?status=pending", headers=headers)
+        self.assertEqual(quiet.status_code, 200, quiet.get_data(as_text=True))
+        self.assertEqual(quiet.get_json()["writebacks"], [])
+        self.assertEqual(httpd.got_body, b"")
+
+        marked = self.client.post("/api/monthend/completion", json={
+            "key": bonuses["key"], "month": "October", "status": "done", "date": "2026-10-11", "note": "office",
+        })
+        self.assertEqual(marked.status_code, 200, marked.get_data(as_text=True))
+        self.assertEqual(marked.get_json()["writeback"], "queued")
+        self.assertTrue(marked.get_json()["webhook"]["ok"])
+        posted = json.loads(httpd.got_body)
+        self.assertEqual(posted["source"], "automation-dashboard")
+        self.assertEqual(posted["action"], "month-end-sync")
+        self.assertEqual(httpd.got_headers.get("authorization"), f"Bearer {secret}")
+        self.assertEqual(httpd.got_headers.get("x-webhook-key"), secret)
+        self.assertEqual(httpd.got_headers.get("x-api-key"), secret)
+
+        listed = self.client.get("/api/ingest/month-end/writebacks?status=pending", headers=headers)
+        items = listed.get_json()["writebacks"]
+        self.assertEqual(len(items), 1)
+        item = items[0]
+        self.assertEqual(item["id"], bonuses["me_id"])
+        self.assertEqual(item["task"], bonuses["task"])
+        self.assertEqual(item["due"], bonuses["due"])
+        self.assertEqual(item["month"], "2026-10")
+        self.assertEqual(item["done_date"], "10/11")
+        self.assertEqual(item["status"], "pending")
+        self.assertEqual(item["row"], bonuses["row"])
+        self.assertTrue(item["writeback_id"])
+        self.assertTrue(item["created_at"])
+        same = self.client.get("/api/ingest/month-end/writebacks", headers=headers)
+        self.assertEqual(same.get_json()["writebacks"], items)
+
+        again = self.client.post("/api/monthend/completion", json={
+            "key": bonuses["key"], "month": "October", "status": "done", "date": "2026-10-12",
+        })
+        self.assertEqual(again.status_code, 200)
+        updated = self.client.get("/api/ingest/month-end/writebacks?status=pending", headers=headers).get_json()["writebacks"]
+        self.assertEqual(len(updated), 1)
+        self.assertEqual(updated[0]["writeback_id"], item["writeback_id"])
+        self.assertEqual(updated[0]["done_date"], "10/12")
+        self.assertEqual(updated[0]["created_at"], item["created_at"])
+
+        undone = self.client.post("/api/monthend/completion", json={
+            "key": bonuses["key"], "month": "October", "status": "not_started",
+        })
+        self.assertEqual(undone.get_json()["writeback"], "cancelled")
+        self.assertNotIn("webhook", undone.get_json())
+        empty = self.client.get("/api/ingest/month-end/writebacks?status=pending", headers=headers)
+        self.assertEqual(empty.get_json()["writebacks"], [])
+        cancelled = self.client.post(
+            f"/api/ingest/month-end/writebacks/{item['writeback_id']}/result",
+            json={"status": "written"},
+            headers=headers,
+        )
+        self.assertEqual(cancelled.status_code, 400)
+
+        remarked = self.client.post("/api/monthend/completion", json={
+            "key": bonuses["key"], "month": "October", "status": "done", "date": "2026-10-11",
+        })
+        self.assertEqual(remarked.status_code, 200)
+        fresh = self.client.get("/api/ingest/month-end/writebacks?status=pending", headers=headers).get_json()["writebacks"]
+        self.assertEqual(len(fresh), 1)
+        self.assertNotEqual(fresh[0]["writeback_id"], item["writeback_id"])
+        flagged = self.client.post(
+            f"/api/ingest/month-end/writebacks/{fresh[0]['writeback_id']}/result",
+            json={"status": "flagged", "note": "row was empty"},
+            headers=headers,
+        )
+        self.assertEqual(flagged.status_code, 200, flagged.get_data(as_text=True))
+        self.assertEqual(flagged.get_json()["writeback"]["status"], "flagged")
+        self.assertEqual(flagged.get_json()["writeback"]["row"], bonuses["row"])
+        shown = self.client.get("/api/monthend").get_json()
+        row = next(t for t in shown["tasks"] if t["key"] == bonuses["key"])
+        self.assertEqual(row["writebacks"]["October"]["note"], "row was empty")
+        self.assertEqual(row["writebacks"]["October"]["status"], "flagged")
+        self.assertEqual(self.client.get("/api/ingest/month-end/writebacks?status=pending", headers=headers).get_json()["writebacks"], [])
+
+        skipped = self.client.post("/api/monthend/completion", json={
+            "key": bonuses["key"], "month": "November", "status": "done", "date": "2026-11-02",
+        })
+        self.assertEqual(skipped.status_code, 200)
+        nov = self.client.get("/api/ingest/month-end/writebacks?status=pending", headers=headers).get_json()["writebacks"]
+        self.assertEqual(len(nov), 1)
+        self.assertEqual(nov[0]["month"], "2026-11")
+        self.assertEqual(nov[0]["done_date"], "11/2")
+        result = self.client.post(
+            f"/api/ingest/month-end/writebacks/{nov[0]['writeback_id']}/result",
+            json={"status": "skipped", "note": "cell is locked"},
+            headers=headers,
+        )
+        self.assertEqual(result.status_code, 200)
+        both = self.client.get("/api/monthend").get_json()
+        row = next(t for t in both["tasks"] if t["key"] == bonuses["key"])
+        self.assertEqual(row["writebacks"]["November"]["status"], "skipped")
+        self.assertEqual(row["writebacks"]["October"]["note"], "row was empty")
+
+        written = self.client.post("/api/monthend/completion", json={
+            "key": payroll["key"], "month": "November", "status": "done",
+        })
+        self.assertEqual(written.status_code, 200)
+        waiting = self.client.get("/api/ingest/month-end/writebacks?status=pending", headers=headers).get_json()["writebacks"]
+        self.assertEqual(len(waiting), 1)
+        self.assertEqual(waiting[0]["id"], payroll["me_id"])
+        self.assertEqual(waiting[0]["done_date"], "10/10")
+        done = self.client.post(
+            f"/api/ingest/month-end/writebacks/{waiting[0]['writeback_id']}/result",
+            json={"status": "written", "note": "P column"},
+            headers=headers,
+        )
+        self.assertEqual(done.status_code, 200)
+        clear = self.client.get("/api/monthend").get_json()
+        pay = next(t for t in clear["tasks"] if t["key"] == payroll["key"])
+        self.assertEqual(pay["writebacks"], {})
+
+        missing = self.client.post(
+            "/api/ingest/month-end/writebacks/does-not-exist/result",
+            json={"status": "written"},
+            headers=headers,
+        )
+        self.assertEqual(missing.status_code, 404)
+        bad = self.client.post(
+            f"/api/ingest/month-end/writebacks/{fresh[0]['writeback_id']}/result",
+            json={"status": "pending"},
+            headers=headers,
+        )
+        self.assertEqual(bad.status_code, 400)
+        weird = self.client.get("/api/ingest/month-end/writebacks?status=nope", headers=headers)
+        self.assertEqual(weird.status_code, 400)
+
+        failed = self._webhook_server(status=503)
+        self.client.post("/api/settings", json={
+            "sync_webhook_url": f"http://127.0.0.1:{failed.server_address[1]}/hook",
+            "sync_webhook_key": "k",
+        })
+        still = self.client.post("/api/monthend/completion", json={
+            "key": payroll["key"], "month": "December", "status": "done", "date": "2026-12-01",
+        })
+        self.assertEqual(still.status_code, 200, still.get_data(as_text=True))
+        self.assertFalse(still.get_json()["webhook"]["ok"])
+        self.assertEqual(still.get_json()["webhook"]["status"], 503)
+        held = self.client.get("/api/ingest/month-end/writebacks?status=pending", headers=headers).get_json()["writebacks"]
+        self.assertEqual(len(held), 1)
+        self.assertEqual(held[0]["month"], "2026-12")
+        self.assertEqual(held[0]["done_date"], "12/1")
+
+        app2 = create_app(config(self.tmp.name))
+        client2 = app2.test_client()
+        kept = client2.get("/api/ingest/month-end/writebacks?status=pending", headers=headers)
+        self.assertEqual(kept.status_code, 200)
+        self.assertEqual(kept.get_json()["writebacks"][0]["writeback_id"], held[0]["writeback_id"])
 
     def test_demo_seed_is_opt_in(self):
         app = create_app(config(self.tmp.name + "-demo", demo=True))

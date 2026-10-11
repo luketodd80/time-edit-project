@@ -62,7 +62,7 @@ Everything that has to survive a restart lives under `DATA_DIR`:
 
 - `dashboard.sqlite` — recorded runs, Run Now requests, pause/resume/retire, command log
 - `month_end_2026.csv` — latest sheet snapshot
-- `month_end_registry.json` — task identity, the permanent id (`ME-001`, …), standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), which week groups are collapsed, which new lines have had the link suggestion dismissed, and the captions for history images
+- `month_end_registry.json` — task identity, the permanent id (`ME-001`, …), standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), which week groups are collapsed, which new lines have had the link suggestion dismissed, the captions for history images, and the sheet write-back queue
 - `uploads/` — files attached to Run Now
 - `attachments/` — PNG and JPEG images on a task's month history (10 MB each)
 - `sheet_snapshots/` — each snapshot a bot posts
@@ -247,6 +247,30 @@ curl -s -X POST "$BASE/api/ingest/month-end/attachment" \
 `caption` is optional. An unknown id is `404`. A bad month, an empty file, a file over 10 MB, or a file that is not a PNG or JPEG is `400`.
 
 `GET /api/ingest/month-end/attachments?id=ME-029&month=2026-10` lists the images for that task and month (`id`, `caption`, `content_type`, `size`, `name`, `created_at`). It does not return the file bytes.
+
+### Write a manual Done back to the sheet
+
+The dashboard has no Google credentials and does not write the sheet. When someone marks a task **Done** for a month with the This month control (the Done button, or Change then Done), that queues a write-back under `DATA_DIR` and POSTs the same sync webhook as Sync now, so the routine that already has Sheets access can run promptly. If no webhook is set, or the call fails, the Done mark still saves and the item stays pending. Marking the same month Done again while that item is pending updates its date. Not started, In progress, Skipped, or Use the sheet cancels a pending item. A status set by the machine API, or by a finished Run Now, does not queue a write-back.
+
+`GET /api/ingest/month-end/writebacks?status=pending`
+
+```bash
+curl -s "$BASE/api/ingest/month-end/writebacks?status=pending" \
+  -H "Authorization: Bearer $INGEST_TOKEN"
+```
+
+Each item has `writeback_id`, `id` (such as `ME-014`), `task` (column D), `due`, `month` (`2026-10`), `done_date` (`10/11`), `created_at`, `status`, and `row`. `row` is that task's row on the latest snapshot. If the line has left the sheet, it is the last row number that snapshot stored. Omit `status` to list pending items. `status` can also be `written`, `skipped`, `flagged`, `cancelled`, or `all`.
+
+`POST /api/ingest/month-end/writebacks/<writeback_id>/result`
+
+```bash
+curl -s -X POST "$BASE/api/ingest/month-end/writebacks/WRITEBACK_ID/result" \
+  -H "Authorization: Bearer $INGEST_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"flagged","note":"row was empty"}'
+```
+
+`status` is `written`, `skipped`, or `flagged`. `note` is optional. An unknown id is `404`. A cancelled item, or any other status, is `400`. Flagged and skipped show on that task for the month: `Couldn't write to sheet: <note>`. Written does not.
 
 ## Adding a tab
 

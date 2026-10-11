@@ -429,3 +429,24 @@ def register(app):
             month=month,
             attachments=listed,
         )
+
+    @app.get("/api/ingest/month-end/writebacks")
+    def ingest_month_end_writebacks():
+        """List sheet write-backs queued when someone marks Done on the dashboard."""
+        status = " ".join(str(request.args.get("status") or "pending").split()).lower()
+        allowed = {"pending", "written", "skipped", "flagged", "cancelled", "all"}
+        if status not in allowed:
+            return jsonify(error="status must be pending, written, skipped, flagged, cancelled, or all"), 400
+        return jsonify(ok=True, writebacks=_me().list_writebacks(status))
+
+    @app.post("/api/ingest/month-end/writebacks/<writeback_id>/result")
+    def ingest_month_end_writeback_result(writeback_id):
+        """Record that the sheet routine wrote, skipped, or flagged a queued Done."""
+        body = _json()
+        try:
+            saved = _me().finish_writeback(writeback_id, body.get("status"), body.get("note"))
+        except KeyError:
+            return jsonify(error="unknown write-back"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, writeback=saved)

@@ -237,12 +237,19 @@ def register(app):
             task_key, month, status, date, note = parse_completion_request(
                 body, MONTHS[moment.month - 1], moment.date().isoformat(), _me().registry(),
             )
-            _me().set_completion(task_key, month, status, date=date, note=note, source="manual")
+            action = _me().set_manual_completion(task_key, month, status, date=date, note=note)
         except KeyError:
             return jsonify(error="unknown task"), 400
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
-        return jsonify(ok=True, monthend=_month_payload())
+        payload = {"ok": True, "monthend": _month_payload(), "writeback": action}
+        if action == "queued":
+            ok, status_code, error = request_month_end_sync()
+            hook = {"ok": bool(ok), "error": error}
+            if status_code is not None:
+                hook["status"] = status_code
+            payload["webhook"] = hook
+        return jsonify(payload)
 
     @app.post("/api/monthend/automation")
     def monthend_automation():

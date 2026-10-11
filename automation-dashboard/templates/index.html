@@ -111,6 +111,7 @@ tr.gw td{color:#99a}
 .odt tr.isdone td{background:#eef6f0;color:#5c6b63}.odt tr.isdone .taskname{text-decoration:line-through;text-decoration-color:#7d9a88}
 .cmp{font-size:12.5px;font-weight:700;line-height:1.35}.cmp-done{color:#137333}.cmp-not_started{color:#8a93a3;font-weight:650}.cmp-in_progress{color:#8a5a00}.cmp-skipped{color:#667;font-weight:650}
 .chk{font-weight:800}.cmpnote{font-weight:500;color:#667;font-size:11px;margin-top:2px}
+.wbwarn{font-weight:650;color:#8a5a00;font-size:11px;margin-top:3px;line-height:1.35}
 .cmpbtn,.cmpform button{margin-top:4px;border:1px solid #c5d0c8;background:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;color:#1f2a44}
 .cmpform{margin-top:6px;display:flex;flex-direction:column;gap:4px;min-width:150px}.cmpform input{font:12px/1.3 inherit;padding:3px 6px;border:1px solid #ccd;border-radius:6px}
 .cmpform .row{display:flex;flex-wrap:wrap;gap:4px}.cmpform button.ok{background:#137333;color:#fff;border-color:#137333}
@@ -417,17 +418,24 @@ async function dismissLink(id){const t=OD.tasks.find(x=>x.id===id);if(!t)return;
  const r=await (await fetch('/api/monthend/link/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:t.key})})).json();
  if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;linkOpen=null;renderOd()}
 function compOf(t,m){return (t.completion&&t.completion[m])||{status:'not_started',text:'Not started',note:'',source:null}}
-function compTip(c){const src={sheet:'From the sheet snapshot. The sheet was not changed from here.',run:'A Run Now for this month finished.',manual:'Marked on this dashboard. The sheet was not changed.',bot:'A bot marked this through the machine API. The sheet was not changed.'}[c.source]||'';
+function compTip(c){const src={sheet:'From the sheet snapshot. The sheet was not changed from here.',run:'A Run Now for this month finished.',manual:'Marked on this dashboard.',bot:'A bot marked this through the machine API. The sheet was not changed.'}[c.source]||'';
  return [c.text||c.status,src,c.note||'','Separate from the automation badge (Manual, Run Now- Ready, or New).'].filter(Boolean).join(' · ')}
+function writeWarn(t){const w=t.writebacks&&t.writebacks[odM];if(!w||(w.status!=='flagged'&&w.status!=='skipped'))return '';
+ const note=w.note?': '+w.note:'';
+ return `<div class=wbwarn>Couldn't write to sheet${esc(note)}</div>`}
 function compCell(t){const c=compOf(t,odM);const label=c.status==='done'?`<span class=chk>&#10003;</span> Done${c.text&&c.text!=='Done'?' · '+esc(c.text):''}`:esc(c.text||'Not started');
  const note=c.note?`<div class=cmpnote>${esc(c.note)}</div>`:'';
  const form=cmpEdit===t.id?`<div class=cmpform><input type=date id="cmpd-${t.id}" value="${esc(c.date||DASH.today)}"><input id="cmpn-${t.id}" placeholder="Optional note" value="${esc(c.note||'')}"><div class=row><button type=button class=ok onclick="saveCmp('${t.id}','done')">Done</button><button type=button onclick="saveCmp('${t.id}','in_progress')">In progress</button><button type=button onclick="saveCmp('${t.id}','skipped')">Skipped / N/A</button><button type=button onclick="saveCmp('${t.id}','not_started')">Not started</button>${c.source==='manual'||c.source==='bot'?'<button type=button onclick="saveCmp(\''+t.id+'\',\'auto\')">Use the sheet</button>':''}<button type=button onclick="cmpEdit=null;renderOd()">Cancel</button></div></div>`:'';
  const btn=cmpEdit===t.id?'':`<button type=button class=cmpbtn onclick="cmpEdit='${t.id}';renderOd()">${c.status==='done'?'Change':'Mark done'}</button>`;
- return `<div class="cmp cmp-${c.status}" title="${esc(compTip(c))}">${label}</div>${note}${btn}${form}`}
+ return `<div class="cmp cmp-${c.status}" title="${esc(compTip(c))}">${label}</div>${note}${writeWarn(t)}${btn}${form}`}
 async function saveCmp(id,status){const t=OD.tasks.find(x=>x.id===id);if(!t)return;const dateEl=document.getElementById('cmpd-'+id),noteEl=document.getElementById('cmpn-'+id);
  const body={key:t.key,month:odM,status};if(dateEl&&dateEl.value)body.date=dateEl.value;if(noteEl)body.note=noteEl.value;
  const r=await (await fetch('/api/monthend/completion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
- if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;cmpEdit=null;renderOd()}
+ if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;cmpEdit=null;renderOd();
+ if(status==='done'&&r.webhook&&r.webhook.ok===false){
+  const http=r.webhook.status?` (HTTP ${r.webhook.status})`:'';
+  alert(r.webhook.error==='no_webhook'?'Marked done. The sheet write is queued. No sync webhook is set. Add the URL and key in Settings.':'Marked done. The sheet write is queued, but the sync request failed'+http+'.');
+ }}
 function weekIsCollapsed(norm){const saved=OD.week_collapsed||{};if(Object.prototype.hasOwnProperty.call(saved,norm))return !!saved[norm];
  const rows=(OD.tasks||[]).filter(t=>t.assigned==='Luke'&&t.due_norm===norm);return rows.length>0&&rows.every(t=>compOf(t,odM).status==='done')}
 function toggleWeek(norm){const next=!weekIsCollapsed(norm);OD.week_collapsed=Object.assign({},OD.week_collapsed||{},{[norm]:next});renderOd();

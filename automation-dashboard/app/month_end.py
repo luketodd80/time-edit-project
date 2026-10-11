@@ -2,7 +2,9 @@
 
 Source: Google Sheet 'Shared Accounting' > 'Month End- 2026'.
 This app never writes to the sheet or to QuickBooks. A bot may POST a fresh
-snapshot; sync() diffs it by Task name + Due (not row number).
+snapshot; sync() diffs it by Task name + Due (not row number). Marking Done
+on the dashboard queues a write-back for an outside routine that does have
+the sheet.
 
 New sheet tasks arrive with the automation badge New. Tasks that disappear go to
 the Removed-from-sheet list. Notes, file requirements, and run history stay
@@ -20,6 +22,7 @@ import hashlib
 import json
 import os
 import re
+import uuid
 from pathlib import Path
 
 from app.attachments import public_attachments
@@ -36,6 +39,8 @@ HEADERS = [
 ]
 SNAPSHOT_READ = "2026-10-10T16:03:00-04:00"
 SEEDED_AT = "2026-10-10T15:05:00-04:00"
+SHEET_YEAR = 2026
+WRITEBACK_RESULTS = ("written", "skipped", "flagged")
 
 SEED_FILES = ("month_end_2026.csv", "month_end_registry.json", "month_end_candidates.json")
 
@@ -419,6 +424,116 @@ def default_automation(is_ready, is_new):
     return "Manual"
 
 
+def month_iso(name, year=SHEET_YEAR):
+    if name not in MONTHS:
+        raise ValueError("unknown month")
+    return f"{int(year):04d}-{MONTHS.index(name) + 1:02d}"
+
+
+def _store_completion(reg, task_key, month, status, date, note, source):
+    if task_key not in reg["tasks"]:
+        raise KeyError(task_key)
+    if source not in ("manual", "bot"):
+        source = "manual"
+    bucket = reg.setdefault("completion", {}).setdefault(task_key, {})
+    if status == "auto":
+        bucket.pop(month, None)
+        if not bucket:
+            reg["completion"].pop(task_key, None)
+    else:
+        bucket[month] = {
+            "status": status,
+            "date": date or "",
+            "note": note or "",
+            "source": source,
+            "set_at": now().isoformat(timespec="seconds"),
+        }
+    return bucket.get(month)
+
+
+def apply_writeback(reg, task_key, month, status, date):
+    """Queue a sheet write when the dashboard marks Done, or cancel it if that is undone."""
+    entry = reg["tasks"][task_key]
+    iso = month_iso(month)
+    items = reg.setdefault("writebacks", [])
+    pending = [
+        item for item in items
+        if item.get("task_key") == task_key and item.get("month") == iso and item.get("status") == "pending"
+    ]
+    if status == "done":
+        fields = {
+            "id": entry.get("me_id"),
+            "task": entry.get("task") or "",
+            "due": entry.get("due") or "",
+            "month": iso,
+            "done_date": done_text(date) if date else done_text(now().date().isoformat()),
+            "row": entry.get("last_row"),
+            "task_key": task_key,
+        }
+        if pending:
+            pending[-1].update(fields)
+            return "queued"
+        items.append({
+            "writeback_id": uuid.uuid4().hex,
+            "created_at": now().isoformat(timespec="seconds"),
+            "status": "pending",
+            "note": "",
+            **fields,
+        })
+        return "queued"
+    if not pending:
+        return None
+    stamp = now().isoformat(timespec="seconds")
+    for item in pending:
+        item["status"] = "cancelled"
+        item["cancelled_at"] = stamp
+    return "cancelled"
+
+
+def public_writeback(reg, item, rows):
+    task_key = item.get("task_key")
+    entry = (reg.get("tasks") or {}).get(task_key) or {}
+    row = rows.get(task_key)
+    if row is None:
+        row = entry.get("last_row")
+    if row is None:
+        row = item.get("row")
+    return {
+        "writeback_id": item.get("writeback_id"),
+        "id": entry.get("me_id") or item.get("id"),
+        "task": entry.get("task") or item.get("task") or "",
+        "due": entry.get("due") or item.get("due") or "",
+        "month": item.get("month"),
+        "done_date": item.get("done_date"),
+        "created_at": item.get("created_at"),
+        "status": item.get("status"),
+        "row": row,
+        "note": item.get("note") or "",
+    }
+
+
+def writeback_alerts(reg, task_key):
+    """Latest flagged or skipped write-back for each month, when that is still the latest outcome."""
+    latest = {}
+    for item in reg.get("writebacks") or []:
+        if item.get("task_key") == task_key:
+            latest[item.get("month")] = item
+    alerts = {}
+    for iso, item in latest.items():
+        if item.get("status") not in ("flagged", "skipped"):
+            continue
+        try:
+            name = MONTHS[int(str(iso)[5:7]) - 1]
+        except (ValueError, IndexError):
+            continue
+        alerts[name] = {
+            "status": item["status"],
+            "note": item.get("note") or "",
+            "writeback_id": item.get("writeback_id"),
+        }
+    return alerts
+
+
 def month_name(iso_date):
     d = datetime.date.fromisoformat(iso_date)
     return MONTHS[d.month - 1]
@@ -576,6 +691,7 @@ class MonthEnd:
                 "detail": ladder.get("detail") if is_ready else None,
                 "history": [],
                 "attachments": public_attachments(reg, t["key"]),
+                "writebacks": writeback_alerts(reg, t["key"]),
                 "cols": COLS,
                 "files": self.files_for(t["key"], reg),
                 "note": reg.get("notes", {}).get(t["key"]),
@@ -710,28 +826,70 @@ class MonthEnd:
             raise ValueError("unknown month")
         if status not in COMPLETION_STATUSES and status != "auto":
             raise ValueError("unknown status")
-        if source not in ("manual", "bot"):
-            source = "manual"
 
         def run():
             reg = self._read_reg()
-            if task_key not in reg["tasks"]:
-                raise KeyError(task_key)
-            bucket = reg.setdefault("completion", {}).setdefault(task_key, {})
-            if status == "auto":
-                bucket.pop(month, None)
-                if not bucket:
-                    reg["completion"].pop(task_key, None)
-            else:
-                bucket[month] = {
-                    "status": status,
-                    "date": date or "",
-                    "note": note or "",
-                    "source": source,
-                    "set_at": now().isoformat(timespec="seconds"),
-                }
+            saved = _store_completion(reg, task_key, month, status, date, note, source)
             self._write_reg(reg)
-            return bucket.get(month)
+            return saved
+
+        return self._locked(run)
+
+    def set_manual_completion(self, task_key, month, status, date=None, note=""):
+        """Dashboard Done/Change. Queues a sheet write-back, or cancels one still pending."""
+        if month not in MONTHS:
+            raise ValueError("unknown month")
+        if status not in COMPLETION_STATUSES and status != "auto":
+            raise ValueError("unknown status")
+
+        def run():
+            reg = self._read_reg()
+            _store_completion(reg, task_key, month, status, date, note, "manual")
+            ensure_me_ids(reg)
+            action = apply_writeback(reg, task_key, month, status, date)
+            self._write_reg(reg)
+            return action
+
+        return self._locked(run)
+
+    def _sheet_rows(self):
+        if not self.sheet.exists():
+            return {}
+        return {t["key"]: t["row"] for t in read_sheet(self.sheet)}
+
+    def list_writebacks(self, status="pending"):
+        def run():
+            reg = self._read_reg()
+            rows = self._sheet_rows()
+            items = []
+            for item in reg.get("writebacks") or []:
+                if status != "all" and item.get("status") != status:
+                    continue
+                items.append(public_writeback(reg, item, rows))
+            items.sort(key=lambda item: item.get("created_at") or "")
+            return items
+
+        return self._locked(run)
+
+    def finish_writeback(self, writeback_id, status, note=""):
+        status = " ".join(str(status or "").split()).lower()
+        if status not in WRITEBACK_RESULTS:
+            raise ValueError("status must be written, skipped, or flagged")
+        note = str(note or "").strip()[:500]
+        wid = str(writeback_id or "").strip()
+
+        def run():
+            reg = self._read_reg()
+            item = next((w for w in reg.get("writebacks") or [] if w.get("writeback_id") == wid), None)
+            if item is None:
+                raise KeyError(wid)
+            if item.get("status") == "cancelled":
+                raise ValueError("that write-back was cancelled")
+            item["status"] = status
+            item["note"] = note
+            item["result_at"] = now().isoformat(timespec="seconds")
+            self._write_reg(reg)
+            return public_writeback(reg, item, self._sheet_rows())
 
         return self._locked(run)
 
@@ -789,6 +947,15 @@ class MonthEnd:
                 dest = atts.setdefault(new_key, {})
                 for month, items in atts.pop(old_key).items():
                     dest.setdefault(month, []).extend(items or [])
+            for item in reg.get("writebacks") or []:
+                if item.get("task_key") != old_key:
+                    continue
+                item["task_key"] = new_key
+                item["id"] = old_id
+                item["task"] = new_entry.get("task") or item.get("task")
+                item["due"] = new_entry.get("due") or item.get("due")
+                if new_entry.get("last_row") is not None:
+                    item["row"] = new_entry.get("last_row")
             reg.setdefault("automation", {})[new_key] = badge
             new_entry["first_seen"] = old_entry.get("first_seen") or new_entry.get("first_seen")
             new_entry["files_key"] = old_entry.get("files_key") or old_key
