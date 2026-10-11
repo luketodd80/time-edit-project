@@ -351,3 +351,17 @@ def register(app):
             due=task["due"] if task else None,
             badge=task.get("automation") if task else None,
         )
+
+    @app.post("/api/ingest/month-end/link/dismiss")
+    def ingest_month_end_link_dismiss():
+        """Hide the link suggestion for a new line until its task name or due changes."""
+        body = _json()
+        me = _me()
+        try:
+            task_key = task_key_from(body, me.registry())
+            saved = me.dismiss_link(task_key)
+        except KeyError:
+            return jsonify(error="unknown task"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, id=saved["id"], task=saved["task"], due=saved["due"], dismissed=True)

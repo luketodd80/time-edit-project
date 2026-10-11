@@ -270,6 +270,19 @@ def register(app):
             return jsonify(error=str(exc)), 400
         return jsonify(ok=True, id=linked["id"], monthend=_month_payload())
 
+    @app.post("/api/monthend/link/dismiss")
+    def monthend_link_dismiss():
+        body = _body()
+        try:
+            me = _me()
+            task_key = task_key_from(body, me.registry())
+            saved = me.dismiss_link(task_key)
+        except KeyError:
+            return jsonify(error="unknown task"), 400
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, id=saved["id"], dismissed=True, monthend=_month_payload())
+
     @app.post("/api/monthend/weeks")
     def monthend_weeks():
         body = _body()

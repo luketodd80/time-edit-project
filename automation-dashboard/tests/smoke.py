@@ -83,6 +83,8 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(self.client.get("/api/ingest/month-end/tasks").status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/month-end/link", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/monthend/link", json={}).status_code, 401)
+        self.assertEqual(self.client.post("/api/monthend/link/dismiss", json={}).status_code, 401)
+        self.assertEqual(self.client.post("/api/ingest/month-end/link/dismiss", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/runs", json={}).status_code, 401)
         bad = self.login(password="nope")
         self.assertEqual(bad.status_code, 401)
@@ -447,6 +449,8 @@ class DashboardSmoke(unittest.TestCase):
         self.assertIn("comment on the Notes cell", page)
         self.assertIn("copyMeId", page)
         self.assertIn("linkRemoved", page)
+        self.assertIn("dismissLink", page)
+        self.assertIn("Link to removed task…", page)
         self.assertNotIn("Candidate", page)
         self.assertNotIn("Being built", page)
         month = self.client.get("/api/monthend").get_json()
@@ -760,6 +764,92 @@ class DashboardSmoke(unittest.TestCase):
         still = client2.get("/api/monthend").get_json()
         self.assertEqual(next(t for t in still["tasks"] if t["task"] == "Sales Commissions Renamed")["me_id"], kept_id)
         self.assertEqual(next(t for t in still["tasks"] if t["task"] == "Sales Commissions Renamed")["note"]["text"], "use the latest export")
+
+    def test_link_suggestion_dismiss_lasts_until_the_text_changes(self):
+        self.authed()
+        month = self.client.get("/api/monthend").get_json()
+        commissions = next(t for t in month["tasks"] if t["task"] == "Run SalesPeople Commissions")
+        kept_id = commissions["me_id"]
+        seed = (ROOT / "seed" / "month_end_2026.csv").read_text(encoding="utf-8")
+        rows = list(csv.reader(io.StringIO(seed)))
+        renamed = None
+        for row in rows[1:]:
+            if row[3].strip() == "Run SalesPeople Commissions":
+                row[0] = "2nd Week"
+                row[3] = "Sales Commissions Renamed"
+                renamed = row
+        buf = io.StringIO()
+        csv.writer(buf).writerows(rows)
+        synced = self.client.post(
+            "/api/ingest/month-end",
+            data=buf.getvalue(),
+            headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "text/csv"},
+        )
+        self.assertEqual(synced.status_code, 200, synced.get_data(as_text=True))
+        fresh = next(t for t in self.client.get("/api/monthend").get_json()["tasks"] if t["task"] == "Sales Commissions Renamed")
+        self.assertFalse(fresh["link_dismissed"])
+        denied = self.client.post("/api/ingest/month-end/link/dismiss", json={"id": fresh["me_id"]})
+        self.assertEqual(denied.status_code, 401)
+        hidden = self.client.post("/api/monthend/link/dismiss", json={"key": fresh["key"]})
+        self.assertEqual(hidden.status_code, 200, hidden.get_data(as_text=True))
+        self.assertTrue(hidden.get_json()["dismissed"])
+        fresh = next(t for t in hidden.get_json()["monthend"]["tasks"] if t["key"] == fresh["key"])
+        self.assertTrue(fresh["link_dismissed"])
+
+        renamed[4] = (renamed[4] or "") + " note only"
+        buf = io.StringIO()
+        csv.writer(buf).writerows(rows)
+        kept = self.client.post(
+            "/api/ingest/month-end",
+            data=buf.getvalue(),
+            headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "text/csv"},
+        )
+        self.assertEqual(kept.status_code, 200, kept.get_data(as_text=True))
+        still = next(t for t in self.client.get("/api/monthend").get_json()["tasks"] if t["task"] == "Sales Commissions Renamed")
+        self.assertTrue(still["link_dismissed"])
+        self.assertEqual(still["due"], "2nd Week")
+        app2 = create_app(config(self.tmp.name))
+        client2 = app2.test_client()
+        client2.post("/login", data={"password": PASSWORD})
+        again = next(t for t in client2.get("/api/monthend").get_json()["tasks"] if t["key"] == still["key"])
+        self.assertTrue(again["link_dismissed"])
+
+        renamed[0] = "2nd week"
+        buf = io.StringIO()
+        csv.writer(buf).writerows(rows)
+        changed = self.client.post(
+            "/api/ingest/month-end",
+            data=buf.getvalue(),
+            headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "text/csv"},
+        )
+        self.assertEqual(changed.status_code, 200, changed.get_data(as_text=True))
+        revived = next(t for t in self.client.get("/api/monthend").get_json()["tasks"] if t["task"] == "Sales Commissions Renamed")
+        self.assertEqual(revived["due"], "2nd week")
+        self.assertEqual(revived["key"], still["key"])
+        self.assertFalse(revived["link_dismissed"])
+
+        bot = self.client.post(
+            "/api/ingest/month-end/link/dismiss",
+            json={"id": revived["me_id"]},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(bot.status_code, 200, bot.get_data(as_text=True))
+        self.assertTrue(bot.get_json()["dismissed"])
+        self.assertEqual(bot.get_json()["id"], revived["me_id"])
+        missing = self.client.post(
+            "/api/ingest/month-end/link/dismiss",
+            json={"id": "ME-999"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(missing.status_code, 404)
+        linked = self.client.post(
+            "/api/monthend/link",
+            json={"id": revived["me_id"], "link_to": kept_id},
+        )
+        self.assertEqual(linked.status_code, 200, linked.get_data(as_text=True))
+        moved = next(t for t in linked.get_json()["monthend"]["tasks"] if t["task"] == "Sales Commissions Renamed")
+        self.assertEqual(moved["me_id"], kept_id)
+        self.assertFalse(moved["new"])
 
     def test_demo_seed_is_opt_in(self):
         app = create_app(config(self.tmp.name + "-demo", demo=True))

@@ -324,6 +324,30 @@ def displayed_badge(reg, task_key, entry):
     return default_automation(LADDER.get(identity, {}).get("ladder") == "ready", is_new)
 
 
+def link_suggestion_hidden(reg, task_key, entry):
+    saved = (reg.get("link_dismissed") or {}).get(task_key)
+    if not isinstance(saved, dict):
+        return False
+    return saved.get("task") == (entry or {}).get("task") and saved.get("due") == (entry or {}).get("due")
+
+
+def prune_link_dismissals(reg):
+    """Drop a dismissal once the line's task name or due text changes, or the line leaves the sheet."""
+    saved = reg.get("link_dismissed")
+    if not isinstance(saved, dict):
+        return False
+    drop = []
+    for task_key, rec in saved.items():
+        entry = reg.get("tasks", {}).get(task_key)
+        if not entry or entry.get("removed_at") or not link_suggestion_hidden(reg, task_key, entry):
+            drop.append(task_key)
+    for task_key in drop:
+        saved.pop(task_key, None)
+    if not saved:
+        reg.pop("link_dismissed", None)
+    return bool(drop)
+
+
 def ensure_me_ids(reg):
     """Assign ME-001, ME-002, … once, in sheet order. Never reuse a number."""
     used = set()
@@ -494,6 +518,7 @@ class MonthEnd:
             changes = {"added": added, "removed": removed, "restored": back}
             reg["sheet_hash"] = digest
             reg["last_changes"] = changes
+            prune_link_dismissals(reg)
             ensure_me_ids(reg)
             # The seeded file is already reflected in the registry. Remember its
             # hash without pretending this page load is a new sheet sync.
@@ -536,6 +561,7 @@ class MonthEnd:
                 "due_label": due_label(t["due"]),
                 "me_id": entry.get("me_id"),
                 "files_key": entry.get("files_key"),
+                "link_dismissed": link_suggestion_hidden(reg, t["key"], entry),
                 "id": "me-" + hashlib.md5(t["key"].encode()).hexdigest()[:10],
                 "ladder": "ready" if is_ready else "manual",
                 "automation": automation,
@@ -767,6 +793,23 @@ class MonthEnd:
             ensure_me_ids(reg)
             self._write_reg(reg)
             return {"id": old_id, "old_key": old_key, "new_key": new_key}
+
+        return self._locked(run)
+
+    def dismiss_link(self, task_key):
+        """Hide the link suggestion until this line's task name or due changes."""
+
+        def run():
+            reg = self._read_reg()
+            entry = reg.get("tasks", {}).get(task_key)
+            if not entry or entry.get("removed_at"):
+                raise KeyError(task_key)
+            reg.setdefault("link_dismissed", {})[task_key] = {
+                "task": entry.get("task") or "",
+                "due": entry.get("due") or "",
+            }
+            self._write_reg(reg)
+            return {"id": entry.get("me_id"), "task": entry.get("task"), "due": entry.get("due")}
 
         return self._locked(run)
 

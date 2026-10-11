@@ -62,7 +62,7 @@ Everything that has to survive a restart lives under `DATA_DIR`:
 
 - `dashboard.sqlite` — recorded runs, Run Now requests, pause/resume/retire, command log
 - `month_end_2026.csv` — latest sheet snapshot
-- `month_end_registry.json` — task identity, the permanent id (`ME-001`, …), standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), and which week groups are collapsed
+- `month_end_registry.json` — task identity, the permanent id (`ME-001`, …), standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), which week groups are collapsed, and which new lines have had the link suggestion dismissed
 - `uploads/` — files attached to Run Now
 - `sheet_snapshots/` — each snapshot a bot posts
 - `settings.json` — Sync webhook URL and key (mode `0600`). The API returns the URL and a masked key, never the full key
@@ -215,7 +215,18 @@ curl -s -X POST "$BASE/api/ingest/month-end/link" \
 
 `link_to` is the id still on the removed line. The new line can be named with `id`, or with `task` and `due`. An unknown id is `404`. Linking an id that is still on the sheet, or linking a line that was already here when tracking started, is `400`.
 
-On the Month-End tab, a new line shows **Link to a removed task** while something is in Removed from sheet. The id on each row is click-to-copy. The signed-in route is `POST /api/monthend/link` with `key` and `link_to`.
+On the Month-End tab, a new line shows **Link to a removed task** while something is in Removed from sheet. **Dismiss** hides that suggestion for this line. It stays hidden, under `DATA_DIR`, until the line's task name or due text changes. A smaller **Link to removed task…** action stays on the row so Luke can still link a rename or a move on purpose. The id on each row is click-to-copy. The signed-in routes are `POST /api/monthend/link` (`key`, `link_to`) and `POST /api/monthend/link/dismiss` (`key` or `id`).
+
+`POST /api/ingest/month-end/link/dismiss`
+
+```bash
+curl -s -X POST "$BASE/api/ingest/month-end/link/dismiss" \
+  -H "Authorization: Bearer $INGEST_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"ME-048"}'
+```
+
+`id` is the new line. `task` and `due` work the same way as the other month-end calls. An unknown id is `404`. The dismissal is cleared on the next snapshot whose task name or due for that line is different.
 
 ## Adding a tab
 
