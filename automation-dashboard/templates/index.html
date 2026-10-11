@@ -366,9 +366,13 @@ function teachPhrase(t){return 'Teach you '+t.task}
 function toggleTeach(id){teachOpen=teachOpen===id?null:id;renderOd()}
 function teachBox(t){const phrase=teachPhrase(t);
  return `<div class=teachbox>Open the Month-End bot in Grok Bot and say: "<span class=phrase>${esc(phrase)}</span>" — then walk it through the task once. It saves the how-to on the sheet (comment on the Notes cell) and flips this task to Run Now- Ready.<div class=teachacts><button type=button class=cmpbtn id="teachcopy-${t.id}" onclick="copyTeach('${t.id}')">Copy</button><a href="${MONTH_END_BOT}">Open Month-End bot</a></div></div>`}
-async function copyTeach(id){const t=(OD.tasks||[]).find(x=>x.id===id);if(!t)return;const phrase=teachPhrase(t);let ok=false;
- try{await navigator.clipboard.writeText(phrase);ok=true}catch(e){const ta=document.createElement('textarea');ta.value=phrase;document.body.appendChild(ta);ta.select();try{ok=document.execCommand('copy')}catch(err){ok=false}ta.remove()}
- const btn=document.getElementById('teachcopy-'+id);if(btn)btn.textContent=ok?'Copied':'Copy failed'}
+function copyTeach(id){const t=(OD.tasks||[]).find(x=>x.id===id);if(!t)return;const phrase=teachPhrase(t);
+ const btn=document.getElementById('teachcopy-'+id);
+ const ta=document.createElement('textarea');ta.value=phrase;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.left='-9999px';
+ document.body.appendChild(ta);ta.select();let ok=false;try{ok=document.execCommand('copy')}catch(e){ok=false}ta.remove();
+ if(ok){if(btn)btn.textContent='Copied';return}
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(phrase).then(()=>{if(btn)btn.textContent='Copied'}).catch(()=>{if(btn)btn.textContent='Copy failed'});return}
+ if(btn)btn.textContent='Copy failed'}
 function autoHint(t){const label=autoOf(t);if(label!=='Manual'&&label!=='New')return '';
  return `<button type=button class=teachlink onclick="toggleTeach('${t.id}')">How to automate this</button>`}
 function compOf(t,m){return (t.completion&&t.completion[m])||{status:'not_started',text:'Not started',note:'',source:null}}
