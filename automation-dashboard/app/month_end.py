@@ -7,6 +7,11 @@ snapshot; sync() diffs it by Task name + Due (not row number).
 New sheet tasks arrive with the automation badge New. Tasks that disappear go to
 the Removed-from-sheet list. Notes, file requirements, and run history stay
 on the task key.
+
+Each task also has a permanent id, ME-001, ME-002, …, stored in the registry.
+The number is assigned once and never reused. A rename on the sheet looks like
+a removed line plus a new line; link_line moves the old id onto the new line
+and brings the notes, files, status, and badge with it.
 """
 import csv
 import datetime
@@ -257,7 +262,7 @@ def resolve_completion(cell, month, override, recs, year=2026):
     return _blank_status()
 
 
-def parse_completion_request(body, default_month, default_date):
+def parse_completion_request(body, default_month, default_date, reg=None):
     raw_status = " ".join(str(body.get("status") or "").split()).lower()
     status = STATUS_ALIASES.get(raw_status)
     if not status:
@@ -274,7 +279,7 @@ def parse_completion_request(body, default_month, default_date):
     elif status == "done":
         date = default_date
     note = str(body.get("note") if body.get("note") is not None else "").strip()[:1000]
-    return task_key_from(body), month, status, date, note
+    return task_key_from(body, reg), month, status, date, note
 
 
 AUTOMATION_BADGES = ("Manual", "Run Now- Ready", "New")
@@ -288,12 +293,87 @@ _AUTOMATION_ALIASES = {
 }
 
 
-def task_key_from(body):
+def canonical_me_id(value):
+    raw = "".join(str(value or "").split()).upper()
+    match = re.fullmatch(r"ME-(\d{1,6})", raw)
+    if not match:
+        return None
+    return f"ME-{int(match.group(1)):03d}"
+
+
+def task_key_from(body, reg=None):
+    me_id = canonical_me_id(body.get("id") or body.get("me_id"))
+    if me_id:
+        found = ((reg or {}).get("me_index") or {}).get(me_id)
+        if not found:
+            raise KeyError(me_id)
+        return found
     if body.get("key"):
         return str(body["key"])
     if str(body.get("task") or "").strip() and body.get("due") is not None:
         return key(str(body["task"]), str(body["due"]))
-    raise ValueError("send task and due, or key")
+    raise ValueError("send id, or task and due, or key")
+
+
+def displayed_badge(reg, task_key, entry):
+    stored = (reg.get("automation") or {}).get(task_key)
+    if stored in AUTOMATION_BADGES:
+        return stored
+    identity = (entry or {}).get("files_key") or task_key
+    is_new = (entry or {}).get("first_seen") != (reg or {}).get("seeded_at")
+    return default_automation(LADDER.get(identity, {}).get("ladder") == "ready", is_new)
+
+
+def ensure_me_ids(reg):
+    """Assign ME-001, ME-002, … once, in sheet order. Never reuse a number."""
+    used = set()
+    highest = 0
+    for entry in reg.get("tasks", {}).values():
+        me_id = entry.get("me_id")
+        if me_id and canonical_me_id(me_id) == me_id:
+            used.add(me_id)
+            highest = max(highest, int(me_id.split("-", 1)[1]))
+    retired = []
+    for me_id in reg.get("retired_me_ids") or []:
+        canon = canonical_me_id(me_id)
+        if canon and canon not in retired:
+            retired.append(canon)
+            used.add(canon)
+            highest = max(highest, int(canon.split("-", 1)[1]))
+    if retired != (reg.get("retired_me_ids") or []):
+        reg["retired_me_ids"] = retired
+    nxt = max(int(reg.get("next_me_id") or 1), highest + 1)
+    def _already(entry):
+        me_id = entry.get("me_id")
+        return bool(me_id) and canonical_me_id(me_id) == me_id
+
+    pending = [k for k, entry in reg.get("tasks", {}).items() if not _already(entry)]
+    pending.sort(key=lambda k: (
+        1 if reg["tasks"][k].get("removed_at") else 0,
+        reg["tasks"][k].get("last_row") or 10**9,
+        k,
+    ))
+    changed = False
+    for task_key in pending:
+        while True:
+            me_id = f"ME-{nxt:03d}"
+            nxt += 1
+            if me_id not in used:
+                break
+        reg["tasks"][task_key]["me_id"] = me_id
+        used.add(me_id)
+        changed = True
+    index = {
+        entry["me_id"]: task_key
+        for task_key, entry in reg.get("tasks", {}).items()
+        if entry.get("me_id")
+    }
+    if reg.get("me_index") != index or reg.get("next_me_id") != nxt or "retired_me_ids" not in reg:
+        reg["me_index"] = index
+        reg["next_me_id"] = nxt
+        reg.setdefault("retired_me_ids", retired)
+        changed = True
+    return changed
 
 
 def parse_automation_badge(value):
@@ -386,6 +466,8 @@ class MonthEnd:
             sheet = read_sheet(path)
             previous = reg.get("sheet_hash")
             if previous == digest:
+                if ensure_me_ids(reg):
+                    self._write_reg(reg)
                 stored = reg.get("last_changes") or {"added": [], "removed": [], "restored": []}
                 return reg, sheet, stored
             seen = set()
@@ -412,6 +494,7 @@ class MonthEnd:
             changes = {"added": added, "removed": removed, "restored": back}
             reg["sheet_hash"] = digest
             reg["last_changes"] = changes
+            ensure_me_ids(reg)
             # The seeded file is already reflected in the registry. Remember its
             # hash without pretending this page load is a new sheet sync.
             fresh = previous is not None or any(changes.values()) or not reg.get("last_synced")
@@ -423,7 +506,8 @@ class MonthEnd:
         return self._locked(run)
 
     def files_for(self, k, reg):
-        base = FILES.get(k, {})
+        entry = reg.get("tasks", {}).get(k) or {}
+        base = FILES.get(entry.get("files_key") or k, {})
         custom = reg.get("file_reqs", {}).get(k, [])
         fn = reg.get("file_notes", {}).get(k, {})
         needs = [dict(n, note=fn.get(n["name"])) for n in base.get("needs", []) + custom]
@@ -431,7 +515,7 @@ class MonthEnd:
             "needs": needs,
             "outputs": base.get("outputs", []),
             "note": base.get("note"),
-            "seeded": k in FILES,
+            "seeded": (entry.get("files_key") or k) in FILES,
             "custom_count": len(custom),
         }
 
@@ -441,15 +525,17 @@ class MonthEnd:
         for t in sheet:
             entry = reg["tasks"][t["key"]]
             cand = cands.get(t["key"])
-            ladder = LADDER.get(t["key"], {})
+            identity = entry.get("files_key") or t["key"]
+            ladder = LADDER.get(identity, {})
             is_new = entry["first_seen"] != reg["seeded_at"]
-            stored = (reg.get("automation") or {}).get(t["key"])
-            automation = stored if stored in AUTOMATION_BADGES else default_automation(ladder.get("ladder") == "ready", is_new)
+            automation = displayed_badge(reg, t["key"], entry)
             is_ready = automation == "Run Now- Ready"
             tasks.append({
                 **t,
                 "due_norm": due_norm(t["due"]),
                 "due_label": due_label(t["due"]),
+                "me_id": entry.get("me_id"),
+                "files_key": entry.get("files_key"),
                 "id": "me-" + hashlib.md5(t["key"].encode()).hexdigest()[:10],
                 "ladder": "ready" if is_ready else "manual",
                 "automation": automation,
@@ -472,15 +558,28 @@ class MonthEnd:
             t["order"] or 0,
             t["row"],
         ))
-        removed = [{
-            "key": k,
-            "task": e["task"],
-            "due": e["due"],
-            "assigned": e.get("assigned"),
-            "last_row": e.get("last_row"),
-            "removed_at": e["removed_at"],
-            "history": [],
-        } for k, e in reg["tasks"].items() if e.get("removed_at")]
+        removed = []
+        for k, e in reg["tasks"].items():
+            if not e.get("removed_at"):
+                continue
+            overrides = (reg.get("completion") or {}).get(k) or {}
+            removed.append({
+                "key": k,
+                "me_id": e.get("me_id"),
+                "files_key": e.get("files_key"),
+                "task": e["task"],
+                "due": e["due"],
+                "assigned": e.get("assigned"),
+                "last_row": e.get("last_row"),
+                "removed_at": e["removed_at"],
+                "automation": displayed_badge(reg, k, e),
+                "note": (reg.get("notes") or {}).get(k),
+                "completion": {
+                    month: resolve_completion(None, month, overrides.get(month), [])
+                    for month in MONTHS
+                },
+                "history": [],
+            })
         luke = [t for t in tasks if t["assigned"] == "Luke"]
         return {
             "tasks": tasks,
@@ -619,6 +718,58 @@ class MonthEnd:
 
         return self._locked(run)
 
+    def registry(self):
+        def run():
+            reg = self._read_reg()
+            if ensure_me_ids(reg):
+                self._write_reg(reg)
+            return reg
+
+        return self._locked(run)
+
+    def link_line(self, new_key, link_to):
+        """Move a removed task's permanent id onto a new sheet line."""
+        old_id = canonical_me_id(link_to)
+        if not old_id:
+            raise ValueError("link_to must look like ME-014")
+
+        def run():
+            reg = self._read_reg()
+            ensure_me_ids(reg)
+            old_key = (reg.get("me_index") or {}).get(old_id)
+            if new_key not in reg["tasks"] or not old_key or old_key not in reg["tasks"]:
+                raise KeyError(new_key if new_key not in reg["tasks"] else old_id)
+            if new_key == old_key:
+                raise ValueError("that line already has this ID")
+            new_entry = reg["tasks"][new_key]
+            old_entry = reg["tasks"][old_key]
+            if not old_entry.get("removed_at"):
+                raise ValueError("link to a task in Removed from sheet")
+            if new_entry.get("removed_at"):
+                raise ValueError("the new line is not on the sheet")
+            if new_entry.get("first_seen") == reg.get("seeded_at"):
+                raise ValueError("only a new sheet line can be linked")
+            badge = displayed_badge(reg, old_key, old_entry)
+            for name in ("notes", "file_notes", "file_reqs", "completion", "automation"):
+                bucket = reg.get(name)
+                if isinstance(bucket, dict) and old_key in bucket:
+                    bucket[new_key] = bucket.pop(old_key)
+            reg.setdefault("automation", {})[new_key] = badge
+            new_entry["first_seen"] = old_entry.get("first_seen") or new_entry.get("first_seen")
+            new_entry["files_key"] = old_entry.get("files_key") or old_key
+            temp_id = new_entry.get("me_id")
+            new_entry["me_id"] = old_id
+            if temp_id and temp_id != old_id:
+                retired = reg.setdefault("retired_me_ids", [])
+                if temp_id not in retired:
+                    retired.append(temp_id)
+            reg["tasks"].pop(old_key, None)
+            ensure_me_ids(reg)
+            self._write_reg(reg)
+            return {"id": old_id, "old_key": old_key, "new_key": new_key}
+
+        return self._locked(run)
+
     def task_by_key(self, k, payload=None):
         data = payload or self.load_and_sync()
         return next((t for t in data["tasks"] if t["key"] == k), None)
@@ -676,7 +827,7 @@ def decorate(payload, requests):
         by_key.setdefault(rec["task_key"], []).append(rec)
     for task in payload["tasks"]:
         recs = by_key.get(task["key"], [])
-        task["history"] = history_items(task["key"], recs)
+        task["history"] = history_items(task.get("files_key") or task["key"], recs)
         task["requests"] = [public_request(r) for r in recs]
         task["open_request"] = next(
             (p for p in reversed(task["requests"]) if p["state"] in ("queued", "awaiting", "approved")),
@@ -695,5 +846,5 @@ def decorate(payload, requests):
             if month in task["months"]:
                 task["months"][month] = {"kind": "done", "text": text}
     for task in payload["removed"]:
-        task["history"] = history_items(task["key"], by_key.get(task["key"], []))
+        task["history"] = history_items(task.get("files_key") or task["key"], by_key.get(task["key"], []))
     return payload

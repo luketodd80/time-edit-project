@@ -6,7 +6,7 @@ Three tabs, same ones Luke approved:
 
 1. **Today / Daily runs.** Every scheduled bot run for the day. A 7-day strip, Today / Yesterday, and previous / next arrows move through history. Group by Time or by Bot. A row stays **no report yet** until its scheduled time passes, then **missed**, unless a bot has posted a result.
 2. **All automations.** The 30 automations across 13 bots. Pause, resume, and retire are saved here. They are not sent to the bots.
-3. **On demand / Month-end.** Every line assigned to Luke on Shared Accounting → Month End- 2026. Tasks are keyed by task name + due, not by row number. A line that shows up on a new snapshot gets the automation badge New until you change it. The badges are Manual, Run Now- Ready, and New. Luke can switch any line among those three on the row, and a bot can set the same badge with the machine API. That choice is stored under `DATA_DIR` and kept when a new sheet snapshot arrives. A former candidate bot is not labeled. A line that disappears goes to Removed from sheet. Run Now queues a request while the badge is Run Now- Ready. It does not write the Google Sheet or QuickBooks.
+3. **On demand / Month-end.** Every line assigned to Luke on Shared Accounting → Month End- 2026. Tasks are keyed by task name + due, not by row number, and each one also has a permanent id (`ME-001`, `ME-002`, …) assigned once in the registry and never reused. The id stays put when the row number changes. A line that shows up on a new snapshot gets the automation badge New until you change it. The badges are Manual, Run Now- Ready, and New. Luke can switch any line among those three on the row, and a bot can set the same badge with the machine API. That choice is stored under `DATA_DIR` and kept when a new sheet snapshot arrives. A former candidate bot is not labeled. A line that disappears goes to Removed from sheet. A rename or a move to another week looks like a removed line plus a new line; Luke or a bot can link the new line to the old id so it keeps that id, its notes, files, status, and badge. Run Now queues a request while the badge is Run Now- Ready. It does not write the Google Sheet or QuickBooks.
 
 The time-edit app can become another tab later. See [Adding a tab](#adding-a-tab).
 
@@ -62,7 +62,7 @@ Everything that has to survive a restart lives under `DATA_DIR`:
 
 - `dashboard.sqlite` — recorded runs, Run Now requests, pause/resume/retire, command log
 - `month_end_2026.csv` — latest sheet snapshot
-- `month_end_registry.json` — task identity, standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), and which week groups are collapsed
+- `month_end_registry.json` — task identity, the permanent id (`ME-001`, …), standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), and which week groups are collapsed
 - `uploads/` — files attached to Run Now
 - `sheet_snapshots/` — each snapshot a bot posts
 - `settings.json` — Sync webhook URL and key (mode `0600`). The API returns the URL and a masked key, never the full key
@@ -164,6 +164,8 @@ curl -s -X POST "$BASE/api/ingest/month-end/status" \
 
 `status` is `done`, `in_progress`, `skipped` (`n/a` is the same), `not_started`, or `auto`. `auto` clears a status set through this API or the dashboard and lets the sheet decide again. A date in that month's sheet column (January is column G, October is column P) already shows Done, with that date, without this call. A successful Run Now completion also shows Done for the month it was logged under.
 
+Send `id` instead of `task` and `due` when you already know the permanent id: `{"id":"ME-014","month":"October","status":"done"}`. `ME-14` is the same id as `ME-014`.
+
 The signed-in dashboard has the same action at `POST /api/monthend/completion` (`key`, `month`, `status`, `date`, `note`). Week groups on the Month-End tab remember collapsed or expanded with `POST /api/monthend/weeks` (`due`, `collapsed`). A week with no saved choice starts collapsed when every task in it is Done for the month on screen.
 
 ### Set a month-end automation badge
@@ -181,7 +183,39 @@ curl -s -X POST "$BASE/api/ingest/month-end/automation" \
 
 `automation` (or `badge`) is one of those three strings. `ready` and `run now ready` mean Run Now- Ready. An unknown task is `404`. A value outside those three is `400`.
 
-The signed-in dashboard uses `POST /api/monthend/automation` with `key` (or `task` and `due`) and `automation`. Each row on the Month-End tab has the same control.
+The signed-in dashboard uses `POST /api/monthend/automation` with `key` (or `task` and `due`) and `automation`. Each row on the Month-End tab has the same control. This endpoint also accepts `id` (`ME-014`) in place of the task name and due.
+
+### List month-end tasks
+
+`GET /api/ingest/month-end/tasks`
+
+Returns every line on the current snapshot, plus `removed` for lines that have left the sheet. `month` is the current month in Eastern Time, and `status` is that month's checklist status (`not_started`, `in_progress`, `done`, or `skipped`). `notes` is the standing note saved on the dashboard. `badge` is Manual, Run Now- Ready, or New.
+
+```bash
+curl -s "$BASE/api/ingest/month-end/tasks" \
+  -H "Authorization: Bearer $INGEST_TOKEN"
+```
+
+```json
+{"ok": true, "month": "October", "tasks": [{"id": "ME-001", "task": "Prep COT & Send to Sheldon", "due": "1st week", "badge": "Manual", "status": "done", "notes": ""}], "removed": []}
+```
+
+### Link a renamed line to its old id
+
+A task name or due change on the sheet shows up here as a new line and a line under Removed from sheet. Linking gives the new line the old permanent id and moves the standing notes, file requirements, file notes, checklist status, and automation badge onto it. The old line leaves Removed from sheet. The temporary id the new line had is never used again.
+
+`POST /api/ingest/month-end/link`
+
+```bash
+curl -s -X POST "$BASE/api/ingest/month-end/link" \
+  -H "Authorization: Bearer $INGEST_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"ME-048","link_to":"ME-014"}'
+```
+
+`link_to` is the id still on the removed line. The new line can be named with `id`, or with `task` and `due`. An unknown id is `404`. Linking an id that is still on the sheet, or linking a line that was already here when tracking started, is `400`.
+
+On the Month-End tab, a new line shows **Link to a removed task** while something is in Removed from sheet. The id on each row is click-to-copy. The signed-in route is `POST /api/monthend/link` with `key` and `link_to`.
 
 ## Adding a tab
 

@@ -192,6 +192,15 @@ class DB:
             rows = self.conn.execute("SELECT * FROM run_requests ORDER BY created_at, id").fetchall()
         return [self._request(r) for r in rows]
 
+    def retarget_task(self, old_key, new_key):
+        if not old_key or old_key == new_key:
+            return
+        with self._lock:
+            self.conn.execute(
+                "UPDATE run_requests SET task_key=? WHERE task_key=?",
+                (new_key, old_key),
+            )
+
     def open_request_for(self, task_key):
         open_states = ("queued", "awaiting_approval", "approved")
         for rec in reversed(self.all_requests()):

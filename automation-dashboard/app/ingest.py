@@ -261,7 +261,7 @@ def register(app):
         me = _me()
         try:
             task_key, month, status, date, note = parse_completion_request(
-                body, MONTHS[moment.month - 1], moment.date().isoformat(),
+                body, MONTHS[moment.month - 1], moment.date().isoformat(), me.registry(),
             )
             me.set_completion(task_key, month, status, date=date, note=note, source="bot")
         except KeyError:
@@ -273,6 +273,7 @@ def register(app):
         completion = (task or {}).get("completion", {}).get(month)
         return jsonify(
             ok=True,
+            id=task.get("me_id") if task else None,
             task=task["task"] if task else body.get("task"),
             due=task["due"] if task else body.get("due"),
             month=month,
@@ -285,7 +286,7 @@ def register(app):
         body = _json()
         me = _me()
         try:
-            task_key = task_key_from(body)
+            task_key = task_key_from(body, me.registry())
             badge = parse_automation_badge(body.get("automation") or body.get("badge"))
             me.set_automation(task_key, badge)
         except KeyError:
@@ -296,8 +297,57 @@ def register(app):
         task = next((t for t in payload["tasks"] if t["key"] == task_key), None)
         return jsonify(
             ok=True,
+            id=task.get("me_id") if task else None,
             task=task["task"] if task else body.get("task"),
             due=task["due"] if task else body.get("due"),
             automation=task["automation"] if task else badge,
             ladder=task["ladder"] if task else None,
+        )
+
+    def _task_brief(task, month):
+        completion = (task.get("completion") or {}).get(month) or {}
+        note = task.get("note") or {}
+        return {
+            "id": task.get("me_id"),
+            "task": task.get("task"),
+            "due": task.get("due"),
+            "badge": task.get("automation"),
+            "status": completion.get("status") or "not_started",
+            "notes": note.get("text") or "",
+        }
+
+    @app.get("/api/ingest/month-end/tasks")
+    def ingest_month_end_tasks():
+        """List month-end tasks by permanent id. Includes lines removed from the sheet."""
+        moment = clock.now()
+        month = MONTHS[moment.month - 1]
+        payload = decorate(_me().load_and_sync(), _db().all_requests())
+        return jsonify(
+            ok=True,
+            month=month,
+            tasks=[_task_brief(t, month) for t in payload["tasks"]],
+            removed=[_task_brief(t, month) for t in payload["removed"]],
+        )
+
+    @app.post("/api/ingest/month-end/link")
+    def ingest_month_end_link():
+        """Give a new sheet line the permanent id of a task that just left the sheet."""
+        body = _json()
+        me = _me()
+        try:
+            task_key = task_key_from(body, me.registry())
+            linked = me.link_line(task_key, body.get("link_to"))
+            _db().retarget_task(linked["old_key"], linked["new_key"])
+        except KeyError:
+            return jsonify(error="unknown task"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        payload = decorate(me.load_and_sync(), _db().all_requests())
+        task = next((t for t in payload["tasks"] if t["key"] == linked["new_key"]), None)
+        return jsonify(
+            ok=True,
+            id=task.get("me_id") if task else linked["id"],
+            task=task["task"] if task else None,
+            due=task["due"] if task else None,
+            badge=task.get("automation") if task else None,
         )

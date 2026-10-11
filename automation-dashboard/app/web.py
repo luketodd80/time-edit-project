@@ -234,7 +234,7 @@ def register(app):
         moment = clock.now()
         try:
             task_key, month, status, date, note = parse_completion_request(
-                body, MONTHS[moment.month - 1], moment.date().isoformat(),
+                body, MONTHS[moment.month - 1], moment.date().isoformat(), _me().registry(),
             )
             _me().set_completion(task_key, month, status, date=date, note=note, source="manual")
         except KeyError:
@@ -247,7 +247,7 @@ def register(app):
     def monthend_automation():
         body = _body()
         try:
-            task_key = task_key_from(body)
+            task_key = task_key_from(body, _me().registry())
             badge = parse_automation_badge(body.get("automation") or body.get("badge"))
             _me().set_automation(task_key, badge)
         except KeyError:
@@ -255,6 +255,20 @@ def register(app):
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
         return jsonify(ok=True, monthend=_month_payload())
+
+    @app.post("/api/monthend/link")
+    def monthend_link():
+        body = _body()
+        try:
+            me = _me()
+            task_key = task_key_from(body, me.registry())
+            linked = me.link_line(task_key, body.get("link_to"))
+            _db().retarget_task(linked["old_key"], linked["new_key"])
+        except KeyError:
+            return jsonify(error="unknown task"), 400
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, id=linked["id"], monthend=_month_payload())
 
     @app.post("/api/monthend/weeks")
     def monthend_weeks():

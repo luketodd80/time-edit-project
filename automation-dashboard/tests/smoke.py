@@ -8,6 +8,7 @@ import csv
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -79,6 +80,9 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(self.client.post("/api/monthend/automation", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/month-end/status", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/month-end/automation", json={}).status_code, 401)
+        self.assertEqual(self.client.get("/api/ingest/month-end/tasks").status_code, 401)
+        self.assertEqual(self.client.post("/api/ingest/month-end/link", json={}).status_code, 401)
+        self.assertEqual(self.client.post("/api/monthend/link", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/runs", json={}).status_code, 401)
         bad = self.login(password="nope")
         self.assertEqual(bad.status_code, 401)
@@ -441,6 +445,8 @@ class DashboardSmoke(unittest.TestCase):
         self.assertIn("grokbot://app/v1/agent?id=5061c392-f770-44b7-835a-85eba2d15217", page)
         self.assertIn("Teach you ", page)
         self.assertIn("comment on the Notes cell", page)
+        self.assertIn("copyMeId", page)
+        self.assertIn("linkRemoved", page)
         self.assertNotIn("Candidate", page)
         self.assertNotIn("Being built", page)
         month = self.client.get("/api/monthend").get_json()
@@ -626,6 +632,134 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(restored["automation"], "Run Now- Ready")
         self.assertEqual(restored["bot"], "Grok Bot / Month-End")
         self.assertEqual(next(t for t in again["tasks"] if t["task"] == "Brand New Checklist Line")["automation"], "New")
+
+    def test_permanent_ids_survive_sync_and_can_be_linked(self):
+        self.authed()
+        month = self.client.get("/api/monthend").get_json()
+        ids = [t["me_id"] for t in month["tasks"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertTrue(all(re.fullmatch(r"ME-\d{3,}", i) for i in ids))
+        first = min(month["tasks"], key=lambda t: t["row"])
+        self.assertEqual(first["task"], "Prep COT & Send to Sheldon")
+        self.assertEqual(first["me_id"], "ME-001")
+        commissions = next(t for t in month["tasks"] if t["task"] == "Run SalesPeople Commissions")
+        kept_id = commissions["me_id"]
+        self.client.post("/api/monthend/note", json={"key": commissions["key"], "text": "use the latest export"})
+        self.client.post("/api/monthend/completion", json={
+            "key": commissions["key"], "month": "October", "status": "done",
+            "date": "2026-10-11", "note": "office",
+        })
+        self.client.post("/api/monthend/automation", json={"key": commissions["key"], "automation": "Run Now- Ready"})
+        self.client.post("/api/monthend/filereq", json={
+            "key": commissions["key"],
+            "item": {"name": "Commission workbook", "hint": "from the share", "types": ".xlsx", "required": True},
+        })
+
+        seed = (ROOT / "seed" / "month_end_2026.csv").read_text(encoding="utf-8")
+        rows = list(csv.reader(io.StringIO(seed)))
+        renamed = None
+        for row in rows[1:]:
+            if row[3].strip() == "Run SalesPeople Commissions":
+                row[0] = "2nd Week"
+                row[3] = "Sales Commissions Renamed"
+                row[4] = (row[4] or "") + " moved"
+                renamed = row
+        self.assertIsNotNone(renamed)
+        buf = io.StringIO()
+        csv.writer(buf).writerows(rows)
+        synced = self.client.post(
+            "/api/ingest/month-end",
+            data=buf.getvalue(),
+            headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "text/csv"},
+        )
+        self.assertEqual(synced.status_code, 200, synced.get_data(as_text=True))
+        after = self.client.get("/api/monthend").get_json()
+        self.assertEqual(next(t for t in after["tasks"] if t["task"] == "Prep COT & Send to Sheldon")["me_id"], "ME-001")
+        fresh = next(t for t in after["tasks"] if t["task"] == "Sales Commissions Renamed")
+        temp_id = fresh["me_id"]
+        self.assertNotEqual(temp_id, kept_id)
+        self.assertTrue(fresh["new"])
+        self.assertEqual(fresh["automation"], "New")
+        gone = next(t for t in after["removed"] if t["task"] == "Run SalesPeople Commissions")
+        self.assertEqual(gone["me_id"], kept_id)
+
+        denied = self.client.post("/api/ingest/month-end/link", json={"id": temp_id, "link_to": kept_id})
+        self.assertEqual(denied.status_code, 401)
+        linked = self.client.post(
+            "/api/ingest/month-end/link",
+            json={"task": "Sales Commissions Renamed", "due": "2nd Week", "link_to": kept_id},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(linked.status_code, 200, linked.get_data(as_text=True))
+        self.assertEqual(linked.get_json()["id"], kept_id)
+        self.assertEqual(linked.get_json()["badge"], "Run Now- Ready")
+        month = self.client.get("/api/monthend").get_json()
+        moved = next(t for t in month["tasks"] if t["task"] == "Sales Commissions Renamed")
+        self.assertEqual(moved["me_id"], kept_id)
+        self.assertEqual(moved["note"]["text"], "use the latest export")
+        self.assertEqual(moved["completion"]["October"]["note"], "office")
+        self.assertEqual(moved["completion"]["October"]["source"], "manual")
+        self.assertEqual(moved["automation"], "Run Now- Ready")
+        self.assertTrue(any(n["name"] == "Commission workbook" for n in moved["files"]["needs"]))
+        self.assertFalse(moved["new"])
+        self.assertFalse(any(t["task"] == "Run SalesPeople Commissions" for t in month["removed"]))
+        self.assertNotIn(temp_id, [t["me_id"] for t in month["tasks"] + month["removed"]])
+
+        listed = self.client.get("/api/ingest/month-end/tasks", headers={"Authorization": f"Bearer {TOKEN}"})
+        self.assertEqual(listed.status_code, 200, listed.get_data(as_text=True))
+        body = listed.get_json()
+        self.assertEqual(body["month"], "October")
+        found = next(t for t in body["tasks"] if t["id"] == kept_id)
+        self.assertEqual(set(found), {"id", "task", "due", "badge", "status", "notes"})
+        self.assertEqual(found["task"], "Sales Commissions Renamed")
+        self.assertEqual(found["due"], "2nd Week")
+        self.assertEqual(found["badge"], "Run Now- Ready")
+        self.assertEqual(found["notes"], "use the latest export")
+        self.assertEqual(found["status"], "done")
+
+        by_id = self.client.post(
+            "/api/ingest/month-end/status",
+            json={"id": "ME-" + str(int(kept_id.split("-")[1])), "month": "November", "status": "in_progress"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(by_id.status_code, 200, by_id.get_data(as_text=True))
+        self.assertEqual(by_id.get_json()["id"], kept_id)
+        self.assertEqual(by_id.get_json()["completion"]["status"], "in_progress")
+        badged = self.client.post(
+            "/api/ingest/month-end/automation",
+            json={"id": kept_id, "automation": "Manual"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(badged.status_code, 200, badged.get_data(as_text=True))
+        self.assertEqual(badged.get_json()["automation"], "Manual")
+        missing = self.client.post(
+            "/api/ingest/month-end/automation",
+            json={"id": "ME-999", "automation": "Manual"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(missing.status_code, 404)
+
+        rows.append(["3rd Week", "", "Test", "Second Brand New Line", "", "Luke", *([""] * 12)])
+        buf = io.StringIO()
+        csv.writer(buf).writerows(rows)
+        again = self.client.post(
+            "/api/ingest/month-end",
+            data=buf.getvalue(),
+            headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "text/csv"},
+        )
+        self.assertEqual(again.status_code, 200, again.get_data(as_text=True))
+        latest = self.client.get("/api/monthend").get_json()
+        newer = next(t for t in latest["tasks"] if t["task"] == "Second Brand New Line")
+        self.assertNotEqual(newer["me_id"], temp_id)
+        self.assertNotEqual(newer["me_id"], kept_id)
+        self.assertGreater(int(newer["me_id"].split("-")[1]), int(temp_id.split("-")[1]))
+
+        app2 = create_app(config(self.tmp.name))
+        client2 = app2.test_client()
+        client2.post("/login", data={"password": PASSWORD})
+        still = client2.get("/api/monthend").get_json()
+        self.assertEqual(next(t for t in still["tasks"] if t["task"] == "Sales Commissions Renamed")["me_id"], kept_id)
+        self.assertEqual(next(t for t in still["tasks"] if t["task"] == "Sales Commissions Renamed")["note"]["text"], "use the latest export")
 
     def test_demo_seed_is_opt_in(self):
         app = create_app(config(self.tmp.name + "-demo", demo=True))
