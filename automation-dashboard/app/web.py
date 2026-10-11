@@ -21,6 +21,7 @@ from app.month_end import MONTHS, decorate, parse_automation_badge, parse_comple
 from app.schedule import build_day, fmt_last_run
 from app.settings_store import public_settings, save_settings
 from app.sync_hook import request_month_end_sync
+from app.vehicle_lease import parse_month
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -43,6 +44,10 @@ def _db():
 
 def _me():
     return current_app.extensions["month_end"]
+
+
+def _vl():
+    return current_app.extensions["vehicle_lease"]
 
 
 def _body():
@@ -129,6 +134,10 @@ def register(app):
             "tabs": MODULES,
         }
         return _page("index.html").replace("__DASH_JSON__", json.dumps(dash))
+
+    @app.get("/vehicle-lease")
+    def vehicle_lease_page():
+        return _page("vehicle_lease.html")
 
     @app.get("/api/automations")
     def automations():
@@ -407,3 +416,95 @@ def register(app):
             )
             _db().add_run_log(rid, name, "Rejected", result)
         return jsonify(ok=True, request={"id": updated["id"], "status": updated["status"]}, monthend=_month_payload())
+
+    @app.get("/api/vehicle-lease")
+    def vehicle_lease_state():
+        return jsonify(_vl().public())
+
+    @app.post("/api/vehicle-lease/vehicles")
+    def vehicle_lease_add():
+        try:
+            saved = _vl().save_vehicle(_body())
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, vehicle=saved, vehicle_lease=_vl().public())
+
+    @app.patch("/api/vehicle-lease/vehicles/<vehicle_id>")
+    def vehicle_lease_edit(vehicle_id):
+        try:
+            saved = _vl().save_vehicle(_body(), vehicle_id)
+        except KeyError:
+            return jsonify(error="unknown vehicle"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, vehicle=saved, vehicle_lease=_vl().public())
+
+    @app.delete("/api/vehicle-lease/vehicles/<vehicle_id>")
+    def vehicle_lease_delete(vehicle_id):
+        try:
+            _vl().delete_vehicle(vehicle_id)
+        except KeyError:
+            return jsonify(error="unknown vehicle"), 404
+        return jsonify(ok=True, vehicle_lease=_vl().public())
+
+    @app.put("/api/vehicle-lease/ignored")
+    def vehicle_lease_ignored():
+        try:
+            saved = _vl().save_ignored(_body().get("ignored"))
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, ignored=saved)
+
+    @app.put("/api/vehicle-lease/settings")
+    def vehicle_lease_settings():
+        try:
+            saved = _vl().save_settings(_body())
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, settings=saved)
+
+    @app.post("/api/vehicle-lease/runs")
+    def vehicle_lease_generate():
+        if request.content_type and "multipart/form-data" in request.content_type:
+            month = request.form.get("month")
+            upload = request.files.get("fleet")
+            fleet_csv = upload.read().decode("utf-8-sig", errors="replace") if upload else ""
+        else:
+            body = _body()
+            month = body.get("month")
+            fleet_csv = body.get("fleet_csv") or ""
+        try:
+            saved = _vl().generate(month, fleet_csv)
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, run=saved, vehicle_lease=_vl().public())
+
+    @app.patch("/api/vehicle-lease/runs/<month>")
+    def vehicle_lease_qbo(month):
+        try:
+            parse_month(month)
+            saved = _vl().set_qbo(month, _body().get("qbo_je"))
+        except KeyError:
+            return jsonify(error="unknown run"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, run=saved)
+
+    @app.get("/api/vehicle-lease/runs/<month>/<kind>")
+    def vehicle_lease_file(month, kind):
+        names = {"je.csv": "je", "report.pdf": "pdf", "detail.csv": "detail"}
+        slot = names.get(kind)
+        if not slot:
+            return jsonify(error="unknown file"), 404
+        try:
+            path = _vl().open_file(month, slot)
+            payload = path.read_bytes()
+        except KeyError:
+            return jsonify(error="unknown run"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        types = {"je": "text/csv", "pdf": "application/pdf", "detail": "text/csv"}
+        resp = Response(payload, mimetype=types[slot])
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{path.name}"'
+        return resp

@@ -67,6 +67,7 @@ Everything that has to survive a restart lives under `DATA_DIR`:
 - `attachments/` — PNG and JPEG images on a task's month history (10 MB each)
 - `sheet_snapshots/` — each snapshot a bot posts
 - `settings.json` — Sync webhook URL and key (mode `0600`). The API returns the URL and a masked key, never the full key
+- `vehicle_lease.json` and `vehicle_lease/` — fleet registry, ignored units, journal settings, and each month's JE CSV, fleet-report PDF, and detail CSV
 
 The browser does not store notes, files, or run history.
 
@@ -271,6 +272,30 @@ curl -s -X POST "$BASE/api/ingest/month-end/writebacks/WRITEBACK_ID/result" \
 ```
 
 `status` is `written`, `skipped`, or `flagged`. `note` is optional. An unknown id is `404`. A cancelled item, or any other status, is `400`. Flagged and skipped show on that task for the month: `Couldn't write to sheet: <note>`. Written does not.
+
+### Vehicle lease (ME task)
+
+The Month-End tab links to `/vehicle-lease`, and so does the vehicle-lease line (and `ME-030`). The page keeps the fleet registry, the ignored-unit list, and the journal settings under `DATA_DIR`. The first run seeds 13 vehicles from `seed/fleet_registry.csv` and 71 ignored units from `seed/ignored_units.txt`.
+
+The monthly charge is the standard loan payment on starting value, term, and rate. A vehicle is active from its start month through the term. **All Locations** splits that payment by Covington 22 / Greenville 18 / Dayton 16 / Springfield 15 / Columbus 17 / Mobile 12. Those percents are editable and must total 100. The GL account `611-3 Vehicle Lease Expense (Internal)` is used on every debit and on the credit. The credit location is Truck Sales. Default rate is 7% and the default term is 60 months.
+
+Generate a month on the page (or `POST /api/vehicle-lease/runs` with `{"month":"2026-09"}`). That stores one history entry: the JE CSV, the Fleet Manager Report PDF, the detail CSV, branch totals, a fleet-check result, and a QBO JE # Don can fill in later. September 2026 on the seeded fleet is **$6,910.61** across 13 active units. The JE columns match `JournalNo,JournalDate,Account,Debits,Credits,Description,Name,Location`, with journal number `VEH-LEASE-SEP2026` and date `09/30/2026`.
+
+`GET /api/ingest/vehicle-lease/registry` and `GET /api/ingest/vehicle-lease/ignored` return the fleet and the ignored list.
+
+`POST /api/ingest/vehicle-lease/runs` stores a month the bot already computed. Send multipart fields `month`, `je`, `pdf`, and `detail`, plus either a `payload` JSON string or the fields `total`, `active_units`, `branches`, `fleet_check`, `fleet_status` (`ok`, `flagged`, or `skipped`), and `qbo_je`.
+
+```bash
+curl -s -X POST "$BASE/api/ingest/vehicle-lease/runs" \
+  -H "Authorization: Bearer $INGEST_TOKEN" \
+  -F "month=2026-09" \
+  -F 'payload={"total":6910.61,"active_units":13,"branches":{"Covington":196.03},"fleet_check":"13 active units","fleet_status":"ok","qbo_je":""}' \
+  -F "je=@veh_lease_JE_SEP2026.csv;type=text/csv" \
+  -F "pdf=@Fleet-Report-September-2026.pdf;type=application/pdf" \
+  -F "detail=@Fleet-Report-September-2026.csv;type=text/csv"
+```
+
+`PATCH /api/ingest/vehicle-lease/runs/2026-09` with `{"qbo_je":"1577201"}` sets the QuickBooks journal number after Don posts it. The signed-in page has the same field. An unknown month is `404`.
 
 ## Adding a tab
 

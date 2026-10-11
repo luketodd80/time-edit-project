@@ -44,10 +44,12 @@ def create_app(overrides=None):
     from app.db import DB
     from app.ingest import register as register_ingest
     from app.month_end import MonthEnd
+    from app.vehicle_lease import VehicleLease
     from app.web import register as register_web
 
     app.extensions["db"] = DB(data / "dashboard.sqlite")
     app.extensions["month_end"] = MonthEnd(data, SEED)
+    app.extensions["vehicle_lease"] = VehicleLease(data, SEED)
     register_auth(app)
     register_web(app)
     register_ingest(app)

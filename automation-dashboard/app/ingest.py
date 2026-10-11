@@ -1,5 +1,6 @@
 """Token-authenticated endpoints for Luke's bots. Nothing here writes to Sheets or QuickBooks."""
 import datetime
+import json
 
 from flask import current_app, jsonify, request, send_file
 
@@ -450,3 +451,77 @@ def register(app):
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
         return jsonify(ok=True, writeback=saved)
+
+    def _vl():
+        return current_app.extensions["vehicle_lease"]
+
+    def _lease_upload(name):
+        upload = request.files.get(name)
+        if upload is None:
+            raise ValueError(f"{name} file is required")
+        payload = upload.read(15 * 1024 * 1024 + 1)
+        if not payload:
+            raise ValueError(f"{name} file is empty")
+        if len(payload) > 15 * 1024 * 1024:
+            raise ValueError(f"{name} is over 15 MB")
+        return payload
+
+    def _lease_fields():
+        raw = request.form.get("payload")
+        if raw:
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                raise ValueError("payload must be JSON")
+            if not isinstance(data, dict):
+                raise ValueError("payload must be a JSON object")
+            return data
+        branches = request.form.get("branches")
+        if branches:
+            try:
+                branches = json.loads(branches)
+            except json.JSONDecodeError:
+                raise ValueError("branches must be JSON")
+        return {
+            "total": request.form.get("total"),
+            "active_units": request.form.get("active_units"),
+            "branches": branches or {},
+            "fleet_check": request.form.get("fleet_check"),
+            "fleet_status": request.form.get("fleet_status"),
+            "qbo_je": request.form.get("qbo_je"),
+        }
+
+    @app.get("/api/ingest/vehicle-lease/registry")
+    def ingest_vehicle_lease_registry():
+        state = _vl().state()
+        return jsonify(ok=True, vehicles=state["vehicles"], settings=state["settings"])
+
+    @app.get("/api/ingest/vehicle-lease/ignored")
+    def ingest_vehicle_lease_ignored():
+        return jsonify(ok=True, ignored=_vl().state()["ignored"])
+
+    @app.post("/api/ingest/vehicle-lease/runs")
+    def ingest_vehicle_lease_run():
+        try:
+            fields = _lease_fields()
+            saved = _vl().store_upload(
+                request.form.get("month") or fields.get("month"),
+                fields,
+                _lease_upload("je"),
+                _lease_upload("pdf"),
+                _lease_upload("detail"),
+            )
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, run=saved)
+
+    @app.patch("/api/ingest/vehicle-lease/runs/<month>")
+    def ingest_vehicle_lease_qbo(month):
+        body = _json()
+        try:
+            saved = _vl().set_qbo(month, body.get("qbo_je"))
+        except KeyError:
+            return jsonify(error="unknown run"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, run=saved)
