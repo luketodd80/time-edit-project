@@ -166,7 +166,7 @@ curl -s -X POST "$BASE/api/ingest/month-end/status" \
 
 Send `id` instead of `task` and `due` when you already know the permanent id: `{"id":"ME-014","month":"October","status":"done"}`. `ME-14` is the same id as `ME-014`.
 
-The signed-in dashboard has the same action at `POST /api/monthend/completion` (`key`, `month`, `status`, `date`, `note`). Week groups on the Month-End tab remember collapsed or expanded with `POST /api/monthend/weeks` (`due`, `collapsed`). A week with no saved choice starts collapsed when every task in it is Done for the month on screen.
+The signed-in dashboard has the same action at `POST /api/monthend/completion` (`key`, `month`, `status`, `date`, `note`). Week groups on the Month-End tab remember collapsed or expanded with `POST /api/monthend/weeks` (`due`, `collapsed`). A week with no saved choice starts collapsed when every task in it is Done for the month on screen. **Hide Finished Tasks**, at the top of that tab, hides every line that is Done for the month on screen. A week with nothing left stays as a collapsed header with a count such as `3 done hidden`. The choice is kept in this browser.
 
 ### Set a month-end automation badge
 

@@ -66,6 +66,8 @@ table{width:100%;background:#fff;border-collapse:collapse;border-radius:10px;ove
 .bsec #runs td.res,.bsec td.res{width:330px}
 tr.gw td{color:#99a}
 .odbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;font-size:13px}.odbar .lbl{font-size:12px;color:#667;text-transform:uppercase;letter-spacing:.05em;margin:0 4px 0 14px}
+.hidefin{display:inline-flex;align-items:center;gap:6px;font-weight:750;color:#1f2a44;margin-right:10px;cursor:pointer;white-space:nowrap}
+.hidefin input{margin:0;accent-color:#1f2a44}
 .odbar select{padding:5px 8px;border:1px solid #ccd;border-radius:6px;font-size:13px;margin-left:4px}
 .odbar span button{border:1px solid #ccd;background:#fff;border-radius:16px;padding:4px 11px;cursor:pointer;font-size:12px;margin:2px}.odbar span button.on{background:#1f2a44;color:#fff;border-color:#1f2a44}
 .runsel{margin-left:auto;background:#1f2a44;color:#fff;border:0;border-radius:6px;padding:7px 14px;font-weight:700;cursor:pointer}.runsel:disabled{opacity:.35;cursor:default}
@@ -104,7 +106,8 @@ tr.gw td{color:#99a}
 .linkquiet{display:inline-block;margin-top:4px;background:none;border:0;padding:0;color:#889;font-size:11px;font-weight:650;cursor:pointer;text-decoration:underline}
 .linkbox .dismiss{color:#667;font-weight:650}
 .weekhead{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#fff;border:0;border-radius:10px;box-shadow:0 1px 3px #0001;padding:10px 14px;margin:14px 0 6px;cursor:pointer;font:inherit;color:#1f2a44}
-.weekhead b{font-size:15px}.weekcount{margin-left:auto;font-weight:750;font-size:13px;color:#1f2a44}.weekcount.all{color:#137333}
+.weekhead.empty{cursor:default}.weekhead b{font-size:15px}.weekmeta{margin-left:auto;display:flex;align-items:center;gap:10px}.weekcount{font-weight:750;font-size:13px;color:#1f2a44}.weekcount.all{color:#137333}
+.weekhide{font-weight:650;font-size:12px;color:#137333;white-space:nowrap}
 .odt tr.isdone td{background:#eef6f0;color:#5c6b63}.odt tr.isdone .taskname{text-decoration:line-through;text-decoration-color:#7d9a88}
 .cmp{font-size:12.5px;font-weight:700;line-height:1.35}.cmp-done{color:#137333}.cmp-not_started{color:#8a93a3;font-weight:650}.cmp-in_progress{color:#8a5a00}.cmp-skipped{color:#667;font-weight:650}
 .chk{font-weight:800}.cmpnote{font-weight:500;color:#667;font-size:11px;margin-top:2px}
@@ -169,7 +172,7 @@ details.sect table{border-radius:0}
 <div class="prog"><div class="ptext" id="odProgText"></div><div class="pbar"><div class="pready" id="odProg"></div><div class="pbuild" id="odProgB"></div></div><div class="plegend"><b>Automation</b> <span class="ld ld-manual" title="Automation badge. Separate from whether this month is done.">Manual</span> <span class="ld ld-ready" title="Automation badge. Run Now can queue this. Separate from whether this month is done.">Run Now- Ready</span> <span class="ld ld-new" title="Automation badge. A new sheet line starts here. Separate from whether this month is done.">New</span> Change the badge on a row. That choice is stored on this server and stays through a sheet sync. It is not written to the sheet.
 <div class="cmpkey"><b>This month</b> is separate: <span class="cmp cmp-not_started">Not started</span> · <span class="cmp cmp-in_progress">In progress</span> · <span class="cmp cmp-done">&#10003; Done</span> with a date · <span class="cmp cmp-skipped">Skipped / N/A</span>. A date in that month's sheet column (October is column P) shows Done on its own. Mark done is stored here and is not written to the sheet.</div></div></div>
 <div class="chips" id="odChips"></div>
-<div class="odbar"><label>Month <select id="odMonth" onchange="odM=this.value;renderOd()"></select></label><span class=lbl>Show</span><span id="odLadders"></span></div>
+<div class="odbar"><label class=hidefin for="odHideFinished"><input type="checkbox" id="odHideFinished" onchange="setHideFinished(this.checked)"> Hide Finished Tasks</label><label>Month <select id="odMonth" onchange="odM=this.value;renderOd()"></select></label><span class=lbl>Show</span><span id="odLadders"></span></div>
 <div id="odGroups"></div>
 <details class="sect" id="odOthers"><summary id="odOthersSum"></summary><div id="odOthersBody"></div></details>
 <details class="sect" id="odRemoved"><summary id="odRemovedSum"></summary><div id="odRemovedBody"></div></details>
@@ -243,7 +246,9 @@ function showTab(t){[['daily',dailyView,tabDaily],['all',allView,tabAll],['od',o
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DUE=['1st week','2nd Week','3rd Week','4th Week','End of Month','Weekly','Monthly','Yearly'];
 const LADDER={manual:['ld-manual','Manual'],ready:['ld-ready','Run Now- Ready'],'new':['ld-new','New']};
-let OD=null,odM=DASH.month,odL='all',cmpEdit=null,teachOpen=null,linkOpen=null;const odOpen=new Set();
+let OD=null,odM=DASH.month,odL='all',cmpEdit=null,teachOpen=null,linkOpen=null,hideFinished=false;const odOpen=new Set();
+try{hideFinished=localStorage.getItem('monthend.hideFinished')==='1'}catch(e){}
+function setHideFinished(on){hideFinished=!!on;try{localStorage.setItem('monthend.hideFinished',hideFinished?'1':'0')}catch(e){}renderOd()}
 const MONTH_END_BOT='grokbot://app/v1/agent?id=5061c392-f770-44b7-835a-85eba2d15217';
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
 function hm(d){let h=d.getHours(),m=String(d.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';return `${h%12||12}:${m} ${ap}`}
@@ -438,6 +443,7 @@ function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='L
  const cs=t=>compOf(t,odM).status;
  odChips.innerHTML=[['c-sched','Your lines (Assigned To = Luke)',L.length],['c-ok',`Done in ${odM}`,L.filter(t=>cs(t)==='done').length],['c-pend',`In progress in ${odM}`,L.filter(t=>cs(t)==='in_progress').length],['c-miss',`Not started in ${odM}`,L.filter(t=>cs(t)==='not_started').length],['c-unk','Manual',nAuto('Manual')],['c-ok','Run Now- Ready',nAuto('Run Now- Ready')]].map(([cl,k,v])=>`<div class="chip ${cl}"><b>${v}</b><small>${k}</small></div>`).join('');
  odMonth.innerHTML=MONTHS.map(m=>`<option ${m===odM?'selected':''}>${m}</option>`).join('');
+ if(odHideFinished)odHideFinished.checked=hideFinished;
  const F=[['all','All',L.length],['ready','Run Now- Ready',nAuto('Run Now- Ready')],['manual','Manual',nAuto('Manual')],['new','New',nAuto('New')]];
  odLadders.innerHTML=F.map(([k,l,n])=>`<button class="${k===odL?'on':''}" onclick="odL='${k}';renderOd()">${l} (${n})</button>`).join('');
  const S=L.filter(t=>odL==='all'||autoOf(t)===(odL==='ready'?'Run Now- Ready':odL==='new'?'New':'Manual'));
@@ -446,17 +452,24 @@ function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='L
  const norms=[];S.forEach(t=>{const n=t.due_norm||'';if(!norms.includes(n))norms.push(n)});
  norms.sort((a,b)=>(order.indexOf(a)<0?99:order.indexOf(a))-(order.indexOf(b)<0?99:order.indexOf(b))||a.localeCompare(b));
  odGroups.innerHTML=norms.map(norm=>{const G=S.filter(t=>t.due_norm===norm),all=L.filter(t=>t.due_norm===norm),done=all.filter(t=>compOf(t,odM).status==='done').length,label=(G[0]&&G[0].due_label)||norm;
+  const hidden=hideFinished?G.filter(t=>compOf(t,odM).status==='done'):[];
+  const shown=hideFinished?G.filter(t=>compOf(t,odM).status!=='done'):G;
+  const normJs=norm.replace(/'/g,"\\'");
+  if(hideFinished&&!shown.length)return `<div class="weekhead empty"><span class=caret>&#9656;</span><b>${esc(label)}</b><span class="weekmeta"><span class="weekcount all">${hidden.length} done hidden</span></span></div>`;
   const shut=weekIsCollapsed(norm);
-  const head=`<button type=button class=weekhead onclick="toggleWeek('${norm.replace(/'/g,"\\'")}')"><span class=caret>${shut?'&#9656;':'&#9662;'}</span><b>${esc(label)}</b><span class="weekcount ${done===all.length&&all.length?'all':''}">${done} of ${all.length} done</span></button>`;
+  const hideNote=hidden.length?`<span class=weekhide>${hidden.length} done hidden</span>`:'';
+  const head=`<button type=button class=weekhead onclick="toggleWeek('${normJs}')"><span class=caret>${shut?'&#9656;':'&#9662;'}</span><b>${esc(label)}</b><span class=weekmeta><span class="weekcount ${done===all.length&&all.length?'all':''}">${done} of ${all.length} done</span>${hideNote}</span></button>`;
   if(shut)return head;
   return head+`<table class="odt tw"><thead><tr><th style="width:86px">ID</th><th style="width:62px">Row</th><th>Task</th><th>Notes</th><th style="width:168px">This month</th><th style="width:66px">${odM.slice(0,3)}</th><th style="width:60px">${pm?pm.slice(0,3):'Prev'}</th><th style="width:210px">Automation</th><th style="width:200px">Run Now</th></tr></thead><tbody>`+
-  G.map(t=>{const n=t.notes.length>60?t.notes.slice(0,57)+'…':t.notes,op=odOpen.has(t.id),isDone=compOf(t,odM).status==='done';
+  shown.map(t=>{const n=t.notes.length>60?t.notes.slice(0,57)+'…':t.notes,op=odOpen.has(t.id),isDone=compOf(t,odM).status==='done';
    return `<tr class="${t.ladder==='ready'?'rdy':''} ${isDone?'isdone':''}"><td>${meIdButton(t.me_id)}</td><td class=rowno>Row ${t.row}</td><td class=tk onclick="tog2('${t.id}')" style="cursor:pointer"><span class=caret>${op?'&#9662;':'&#9656;'}</span>${t.order!=null?`<span class=ord>#${t.order}</span>`:''}<span class=taskname>${esc(t.task)}</span>${fileTags(t)}${t.note&&t.note.text?` <span class=noteic title="Your notes: ${esc(t.note.text)}">${NOTEICON}</span>`:''}${linkControl(t)}<span class=cat>${esc(t.category)}</span></td>
    <td class=nt title="${esc(t.notes)}">${esc(n)||'<span style="color:#bbc">–</span>'}</td><td>${compCell(t)}</td><td title="Sheet column, read only">${st(monthVal(t,odM))}</td><td>${pm?st(monthVal(t,pm)):'–'}</td>
    <td>${ldBadge(t)}${autoHint(t)}${t.ladder==='ready'&&t.bot?`<span class=bot>&#8594; ${esc(t.bot)}</span>`:''}${t.qbo_write?'<span class=qa>QBO write: needs your approval</span>':''}</td>
    <td>${runCell(t)}</td></tr>`+(teachOpen===t.id&&(autoOf(t)==='Manual'||autoOf(t)==='New')?`<tr class=det2><td></td><td colspan=8>${teachBox(t)}</td></tr>`:'')+(op?`<tr class=det2><td></td><td colspan=8><div class=notes2><div class=yn><b>Your notes</b> <span class=muted2>(instructions for the bot every time this task runs)</span><textarea id="note-${t.id}" class=notebox rows=3 placeholder="e.g. Use the Month-to-Date report; post under the prior month" onblur="saveStanding('${t.id}')">${esc(t.note&&t.note.text||'')}</textarea><div class=nrow><button class=ok onclick="saveStanding('${t.id}')">Save</button><span class=nstamp>${stamp2(t.note)}</span></div></div><div class=sn><b>Sheet notes</b> <span class=muted2>(read-only, from the Notes column)</span><div class=noteview>${esc(t.notes)||'<span class=muted2>–</span>'}</div></div></div>${t.detail?`<div><b>How it runs:</b> ${esc(t.detail)}</div>`:''}${filesSection(t)}<div><b>Run history:</b> ${histHtml(t)}</div><div class=muted2>Key: ${esc(t.key)} · first seen ${fmtTs(t.first_seen)}</div></td></tr>`:'')}).join('')+`</tbody></table>`}).join('')||'<p>No lines match.</p>';
- odOthersSum.innerHTML=`Other people's lines (${O.length}) <span class=hsub>· read-only, no Run Now</span>`;
- odOthersBody.innerHTML=`<table class="odt tw"><thead><tr><th>ID</th><th>Row</th><th>Due</th><th>Task</th><th>Assigned</th><th>${odM.slice(0,3)}</th><th>${pm?pm.slice(0,3):'Prev'}</th></tr></thead><tbody>`+O.map(t=>`<tr><td>${meIdButton(t.me_id)}</td><td class=rowno>Row ${t.row}</td><td>${esc(t.due)}</td><td>${esc(t.task)}</td><td>${esc(t.assigned)}</td><td>${st(t.months[odM])}</td><td>${pm?st(t.months[pm]):'–'}</td></tr>`).join('')+'</tbody></table>';
+ const oHidden=hideFinished?O.filter(t=>compOf(t,odM).status==='done'):[];
+ const oShown=hideFinished?O.filter(t=>compOf(t,odM).status!=='done'):O;
+ odOthersSum.innerHTML=`Other people's lines (${O.length}) <span class=hsub>· read-only, no Run Now${oHidden.length?` · ${oHidden.length} done hidden`:''}</span>`;
+ odOthersBody.innerHTML=oShown.length?`<table class="odt tw"><thead><tr><th>ID</th><th>Row</th><th>Due</th><th>Task</th><th>Assigned</th><th>${odM.slice(0,3)}</th><th>${pm?pm.slice(0,3):'Prev'}</th></tr></thead><tbody>`+oShown.map(t=>`<tr><td>${meIdButton(t.me_id)}</td><td class=rowno>Row ${t.row}</td><td>${esc(t.due)}</td><td>${esc(t.task)}</td><td>${esc(t.assigned)}</td><td>${st(t.months[odM])}</td><td>${pm?st(t.months[pm]):'–'}</td></tr>`).join('')+'</tbody></table>':`<p class=muted2 style="padding:8px 12px">${oHidden.length?oHidden.length+' done hidden':'No other lines.'}</p>`;
  odRemovedSum.innerHTML=`Removed from sheet (${OD.removed.length})`;
  odRemovedBody.innerHTML=OD.removed.length?`<table class="odt tw"><thead><tr><th>ID</th><th>Last row</th><th>Due</th><th>Task</th><th>Assigned</th><th>Removed</th><th>History</th></tr></thead><tbody>`+OD.removed.map(t=>`<tr><td>${meIdButton(t.me_id)}</td><td class=rowno>Row ${t.last_row}</td><td>${esc(t.due)}</td><td>${esc(t.task)}</td><td>${esc(t.assigned)}</td><td>${fmtTs(t.removed_at)}</td><td>${histHtml(t)}</td></tr>`).join('')+'</tbody></table>':'<p class=muted2 style="padding:8px 12px">Nothing has been removed from the sheet since tracking started.</p>';
  odLog.innerHTML=OD.log&&OD.log.length?OD.log.map(l=>`<tr><td>${esc(l.at)}</td><td>${esc(l.name)}</td><td>${esc(l.step)}</td><td>${esc(l.detail)}</td></tr>`).join(''):'<tr><td colspan=4>No Run Now clicks yet</td></tr>'}
