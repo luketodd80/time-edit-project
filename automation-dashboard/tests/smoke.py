@@ -76,7 +76,9 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(self.client.get("/api/settings").status_code, 401)
         self.assertEqual(self.client.post("/api/monthend/sync").status_code, 401)
         self.assertEqual(self.client.post("/api/monthend/completion", json={}).status_code, 401)
+        self.assertEqual(self.client.post("/api/monthend/automation", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/month-end/status", json={}).status_code, 401)
+        self.assertEqual(self.client.post("/api/ingest/month-end/automation", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/runs", json={}).status_code, 401)
         bad = self.login(password="nope")
         self.assertEqual(bad.status_code, 401)
@@ -433,6 +435,8 @@ class DashboardSmoke(unittest.TestCase):
         self.assertIn("Skipped / N/A", page)
         self.assertIn("Mark done", page)
         self.assertIn("Run Now- Ready", page)
+        self.assertIn("saveAuto", page)
+        self.assertIn("stays through a sheet sync", page)
         self.assertNotIn("Candidate", page)
         self.assertNotIn("Being built", page)
         month = self.client.get("/api/monthend").get_json()
@@ -526,6 +530,98 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(kept["completion"]["October"]["note"], "did it in the office")
         self.assertEqual(kept["completion"]["November"]["source"], "bot")
         self.assertEqual(kept["months"]["October"]["kind"], "open")
+
+    def test_automation_badge_can_be_set_and_survives_sync(self):
+        self.authed()
+        month = self.client.get("/api/monthend").get_json()
+        commissions = next(t for t in month["tasks"] if t["task"] == "Run SalesPeople Commissions")
+        payroll = next(t for t in month["tasks"] if t["key"] == K13)
+        self.assertEqual(commissions["automation"], "Manual")
+        self.assertEqual(payroll["automation"], "Run Now- Ready")
+
+        switched = self.client.post("/api/monthend/automation", json={
+            "key": commissions["key"], "automation": "run now ready",
+        })
+        self.assertEqual(switched.status_code, 200, switched.get_data(as_text=True))
+        task = next(t for t in switched.get_json()["monthend"]["tasks"] if t["key"] == commissions["key"])
+        self.assertEqual(task["automation"], "Run Now- Ready")
+        self.assertEqual(task["ladder"], "ready")
+        self.assertIsNone(task["bot"])
+        self.assertFalse(task["qbo_write"])
+        queued = self.client.post("/api/monthend/run", json={"key": commissions["key"], "month": "October"})
+        self.assertEqual(queued.status_code, 200, queued.get_data(as_text=True))
+
+        manual = self.client.post("/api/monthend/automation", json={"key": payroll["key"], "badge": "Manual"})
+        self.assertEqual(manual.status_code, 200, manual.get_data(as_text=True))
+        task = next(t for t in manual.get_json()["monthend"]["tasks"] if t["key"] == payroll["key"])
+        self.assertEqual(task["automation"], "Manual")
+        self.assertEqual(task["ladder"], "manual")
+        self.assertIsNone(task["bot"])
+        self.assertFalse(task["qbo_write"])
+        blocked = self.client.post("/api/monthend/run", json={"key": payroll["key"], "month": "October"})
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn("not on Run Now", blocked.get_json()["error"])
+
+        denied = self.client.post("/api/ingest/month-end/automation", json={
+            "task": commissions["task"], "due": "1st Week", "automation": "New",
+        })
+        self.assertEqual(denied.status_code, 401)
+        bot = self.client.post(
+            "/api/ingest/month-end/automation",
+            json={"task": commissions["task"], "due": "1st Week", "automation": "New"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(bot.status_code, 200, bot.get_data(as_text=True))
+        self.assertEqual(bot.get_json()["automation"], "New")
+        self.assertEqual(bot.get_json()["ladder"], "manual")
+        missing = self.client.post(
+            "/api/ingest/month-end/automation",
+            json={"task": "Not a real line", "due": "1st week", "automation": "Manual"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(missing.status_code, 404)
+        bad = self.client.post("/api/monthend/automation", json={"key": commissions["key"], "automation": "Candidate"})
+        self.assertEqual(bad.status_code, 400)
+
+        seed = (ROOT / "seed" / "month_end_2026.csv").read_text(encoding="utf-8")
+        rows = list(csv.reader(io.StringIO(seed)))
+        rows[1][4] = (rows[1][4] or "") + " badge-keep"
+        rows.append(["1st week", "", "Test", "Brand New Checklist Line", "from the bot", "Luke", *([""] * 12)])
+        buf = io.StringIO()
+        csv.writer(buf).writerows(rows)
+        synced = self.client.post(
+            "/api/ingest/month-end",
+            data=buf.getvalue(),
+            headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "text/csv"},
+        )
+        self.assertEqual(synced.status_code, 200, synced.get_data(as_text=True))
+        after = self.client.get("/api/monthend").get_json()
+        kept_c = next(t for t in after["tasks"] if t["key"] == commissions["key"])
+        kept_p = next(t for t in after["tasks"] if t["key"] == payroll["key"])
+        fresh = next(t for t in after["tasks"] if t["task"] == "Brand New Checklist Line")
+        self.assertEqual(kept_c["automation"], "New")
+        self.assertEqual(kept_p["automation"], "Manual")
+        self.assertEqual(fresh["automation"], "New")
+        self.assertIsNone(fresh["candidate"])
+
+        back = self.client.post(
+            "/api/ingest/month-end/automation",
+            json={"task": payroll["task"], "due": "2nd Week", "automation": "ready"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(back.status_code, 200, back.get_data(as_text=True))
+        self.assertEqual(back.get_json()["automation"], "Run Now- Ready")
+        self.assertEqual(back.get_json()["ladder"], "ready")
+
+        app2 = create_app(config(self.tmp.name))
+        client2 = app2.test_client()
+        client2.post("/login", data={"password": PASSWORD})
+        again = client2.get("/api/monthend").get_json()
+        self.assertEqual(next(t for t in again["tasks"] if t["key"] == commissions["key"])["automation"], "New")
+        restored = next(t for t in again["tasks"] if t["key"] == payroll["key"])
+        self.assertEqual(restored["automation"], "Run Now- Ready")
+        self.assertEqual(restored["bot"], "Grok Bot / Month-End")
+        self.assertEqual(next(t for t in again["tasks"] if t["task"] == "Brand New Checklist Line")["automation"], "New")
 
     def test_demo_seed_is_opt_in(self):
         app = create_app(config(self.tmp.name + "-demo", demo=True))

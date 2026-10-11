@@ -6,7 +6,7 @@ Three tabs, same ones Luke approved:
 
 1. **Today / Daily runs.** Every scheduled bot run for the day. A 7-day strip, Today / Yesterday, and previous / next arrows move through history. Group by Time or by Bot. A row stays **no report yet** until its scheduled time passes, then **missed**, unless a bot has posted a result.
 2. **All automations.** The 30 automations across 13 bots. Pause, resume, and retire are saved here. They are not sent to the bots.
-3. **On demand / Month-end.** Every line assigned to Luke on Shared Accounting → Month End- 2026. Tasks are keyed by task name + due, not by row number. A line that shows up on a new snapshot gets the automation badge New. The other badges are Manual and Run Now- Ready. A former candidate bot is not labeled; that line stays Manual unless Run Now is actually ready. A line that disappears goes to Removed from sheet. Run Now queues a request. It does not write the Google Sheet or QuickBooks.
+3. **On demand / Month-end.** Every line assigned to Luke on Shared Accounting → Month End- 2026. Tasks are keyed by task name + due, not by row number. A line that shows up on a new snapshot gets the automation badge New until you change it. The badges are Manual, Run Now- Ready, and New. Luke can switch any line among those three on the row, and a bot can set the same badge with the machine API. That choice is stored under `DATA_DIR` and kept when a new sheet snapshot arrives. A former candidate bot is not labeled. A line that disappears goes to Removed from sheet. Run Now queues a request while the badge is Run Now- Ready. It does not write the Google Sheet or QuickBooks.
 
 The time-edit app can become another tab later. See [Adding a tab](#adding-a-tab).
 
@@ -62,7 +62,7 @@ Everything that has to survive a restart lives under `DATA_DIR`:
 
 - `dashboard.sqlite` — recorded runs, Run Now requests, pause/resume/retire, command log
 - `month_end_2026.csv` — latest sheet snapshot
-- `month_end_registry.json` — task identity, standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), and which week groups are collapsed
+- `month_end_registry.json` — task identity, standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), and which week groups are collapsed
 - `uploads/` — files attached to Run Now
 - `sheet_snapshots/` — each snapshot a bot posts
 - `settings.json` — Sync webhook URL and key (mode `0600`). The API returns the URL and a masked key, never the full key
@@ -133,7 +133,7 @@ or
 {"rows": [{"Due": "1st week", "Order": "", "Category": "Test", "Task": "New line", "Notes/ Questions": "", "Assigned To": "Luke", "January": "", "February": "", "March": "", "April": "", "May": "", "June": "", "July": "", "August": "", "September": "", "October": "", "November": "", "December": ""}]}
 ```
 
-New task-name + due keys are Manual and tagged New. Missing keys move to Removed from sheet. Notes already stored on a key are kept. Response: `{"ok": true, "changes": {"added": [], "removed": [], "restored": []}, "tasks": 0, "removed": 0}`.
+A new task-name + due key starts as New. A badge already stored on a key is kept. Missing keys move to Removed from sheet. Notes already stored on a key are kept. Response: `{"ok": true, "changes": {"added": [], "removed": [], "restored": []}, "tasks": 0, "removed": 0}`.
 
 This dashboard does not read Google Sheets. **Sync now** (Settings, behind login) asks an outside automation to read the sheet and call this endpoint.
 
@@ -165,6 +165,23 @@ curl -s -X POST "$BASE/api/ingest/month-end/status" \
 `status` is `done`, `in_progress`, `skipped` (`n/a` is the same), `not_started`, or `auto`. `auto` clears a status set through this API or the dashboard and lets the sheet decide again. A date in that month's sheet column (January is column G, October is column P) already shows Done, with that date, without this call. A successful Run Now completion also shows Done for the month it was logged under.
 
 The signed-in dashboard has the same action at `POST /api/monthend/completion` (`key`, `month`, `status`, `date`, `note`). Week groups on the Month-End tab remember collapsed or expanded with `POST /api/monthend/weeks` (`due`, `collapsed`). A week with no saved choice starts collapsed when every task in it is Done for the month on screen.
+
+### Set a month-end automation badge
+
+`POST /api/ingest/month-end/automation`
+
+This does not write the Google Sheet. It stores `Manual`, `Run Now- Ready`, or `New` on the task under `DATA_DIR`. Match the task by name and due, the same way as status. A later sheet snapshot does not clear it. Run Now is available while the badge is Run Now- Ready.
+
+```bash
+curl -s -X POST "$BASE/api/ingest/month-end/automation" \
+  -H "Authorization: Bearer $INGEST_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"Run SalesPeople Commissions","due":"1st week","automation":"Run Now- Ready"}'
+```
+
+`automation` (or `badge`) is one of those three strings. `ready` and `run now ready` mean Run Now- Ready. An unknown task is `404`. A value outside those three is `400`.
+
+The signed-in dashboard uses `POST /api/monthend/automation` with `key` (or `task` and `due`) and `automation`. Each row on the Month-End tab has the same control.
 
 ## Adding a tab
 

@@ -16,7 +16,7 @@ from app import clock
 from app.auth import clear_session, logged_in, password_ok, safe_next, set_session
 from app.catalog import annotated, apply_override, public_view
 from app.modules import MODULES
-from app.month_end import MONTHS, decorate, parse_completion_request
+from app.month_end import MONTHS, decorate, parse_automation_badge, parse_completion_request, task_key_from
 from app.schedule import build_day, fmt_last_run
 from app.settings_store import public_settings, save_settings
 from app.sync_hook import request_month_end_sync
@@ -237,6 +237,19 @@ def register(app):
                 body, MONTHS[moment.month - 1], moment.date().isoformat(),
             )
             _me().set_completion(task_key, month, status, date=date, note=note, source="manual")
+        except KeyError:
+            return jsonify(error="unknown task"), 400
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, monthend=_month_payload())
+
+    @app.post("/api/monthend/automation")
+    def monthend_automation():
+        body = _body()
+        try:
+            task_key = task_key_from(body)
+            badge = parse_automation_badge(body.get("automation") or body.get("badge"))
+            _me().set_automation(task_key, badge)
         except KeyError:
             return jsonify(error="unknown task"), 400
         except ValueError as exc:

@@ -89,6 +89,9 @@ tr.gw td{color:#99a}
 .pbar{height:14px;background:#eceef2;border-radius:7px;overflow:hidden;display:flex}.pready{background:#2e9e57;height:100%}.pbuild{background:#e0a100;height:100%}
 .plegend{font-size:12px;color:#667;margin-top:8px}
 .ld{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}.ld-manual{background:#eceef2;color:#5b6474}.ld-ready{background:#2e9e57;color:#fff}.ld-new{background:#5b9cff;color:#fff}
+.abadge{font:inherit;font-size:11px;font-weight:700;border-radius:10px;padding:3px 4px;border:1px solid #ccd;cursor:pointer;max-width:100%}
+.abadge.ld-manual{background:#eceef2;color:#5b6474}.abadge.ld-ready{background:#2e9e57;color:#fff;border-color:#2e9e57}.abadge.ld-new{background:#5b9cff;color:#fff;border-color:#5b9cff}
+.abadge option{color:#1d2433;background:#fff;font-weight:600}
 .weekhead{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#fff;border:0;border-radius:10px;box-shadow:0 1px 3px #0001;padding:10px 14px;margin:14px 0 6px;cursor:pointer;font:inherit;color:#1f2a44}
 .weekhead b{font-size:15px}.weekcount{margin-left:auto;font-weight:750;font-size:13px;color:#1f2a44}.weekcount.all{color:#137333}
 .odt tr.isdone td{background:#eef6f0;color:#5c6b63}.odt tr.isdone .taskname{text-decoration:line-through;text-decoration-color:#7d9a88}
@@ -149,10 +152,10 @@ details.sect table{border-radius:0}
 <header><h1>Grok Bot Automations</h1><span>The Service Company · <a href="#" onclick="showTab('settings');return false">Settings</a> · <a href="#" onclick="logout();return false">Log out</a></span></header>
 <nav class="tabs"><button id="tabDaily" onclick="showTab('daily')">Today / Daily runs</button><button id="tabAll" onclick="showTab('all')">All automations</button><button id="tabOd" onclick="showTab('od')">On demand<span class=lg> / Month-end</span></button></nav>
 <div class="wrap hidden" id="odView">
-<div class="note">Run Now queues a request the bot can pick up, with the files and notes for that run. Mark done records the month here. This dashboard does not write to the Google Sheet or to QuickBooks. A new sheet line shows the automation badge New. A line that leaves the sheet goes to Removed from sheet.</div>
+<div class="note">Run Now queues a request the bot can pick up, with the files and notes for that run. Mark done records the month here. This dashboard does not write to the Google Sheet or to QuickBooks. A new sheet line shows the automation badge New until you change it. The badge you pick is stored here and kept when the sheet syncs. A line that leaves the sheet goes to Removed from sheet.</div>
 <div class="syncbar"><span>Source: Shared Accounting › <b>Month End- 2026</b> (read-only snapshot)</span><span>Last synced from sheet: <b id="odSynced"></b></span><button onclick="syncOd()" title="Asks the sync webhook to push a fresh sheet snapshot">Sync now</button></div>
 <div id="odSyncMsg" class="smsg syncmsg"></div>
-<div class="prog"><div class="ptext" id="odProgText"></div><div class="pbar"><div class="pready" id="odProg"></div><div class="pbuild" id="odProgB"></div></div><div class="plegend"><b>Automation</b> <span class="ld ld-manual" title="Automation badge. Not whether this month is done.">Manual</span> <span class="ld ld-ready" title="Automation badge. Run Now can queue this. Not whether this month is done.">Run Now- Ready</span> <span class="ld ld-new" title="Automation badge. This line was not on the sheet when tracking started. Not whether this month is done.">New</span>
+<div class="prog"><div class="ptext" id="odProgText"></div><div class="pbar"><div class="pready" id="odProg"></div><div class="pbuild" id="odProgB"></div></div><div class="plegend"><b>Automation</b> <span class="ld ld-manual" title="Automation badge. Separate from whether this month is done.">Manual</span> <span class="ld ld-ready" title="Automation badge. Run Now can queue this. Separate from whether this month is done.">Run Now- Ready</span> <span class="ld ld-new" title="Automation badge. A new sheet line starts here. Separate from whether this month is done.">New</span> Change the badge on a row. That choice is stored on this server and stays through a sheet sync. It is not written to the sheet.
 <div class="cmpkey"><b>This month</b> is separate: <span class="cmp cmp-not_started">Not started</span> · <span class="cmp cmp-in_progress">In progress</span> · <span class="cmp cmp-done">&#10003; Done</span> with a date · <span class="cmp cmp-skipped">Skipped / N/A</span>. A date in that month's sheet column (October is column P) shows Done on its own. Mark done is stored here and is not written to the sheet.</div></div></div>
 <div class="chips" id="odChips"></div>
 <div class="odbar"><label>Month <select id="odMonth" onchange="odM=this.value;renderOd()"></select></label><span class=lbl>Show</span><span id="odLadders"></span></div>
@@ -348,7 +351,11 @@ async function approve(rid,ok){const r=await (await fetch('/api/monthend/request
  if(r.monthend)OD=r.monthend;delete cache[DASH.today];renderOd()}
 function autoOf(t){return t.automation||(t.ladder==='ready'?'Run Now- Ready':t.new?'New':'Manual')}
 function ldBadge(t){const label=autoOf(t);const cls=label==='Run Now- Ready'?'ld-ready':label==='New'?'ld-new':'ld-manual';
- return `<span class="ld ${cls}" title="Automation badge: Manual, Run Now- Ready, or New. Not whether this month is done.">${esc(label)}</span>`}
+ const opts=['Manual','Run Now- Ready','New'].map(v=>`<option ${v===label?'selected':''}>${esc(v)}</option>`).join('');
+ return `<select class="abadge ${cls}" title="Saved on this dashboard. A sheet sync keeps it. It is not written to the sheet." aria-label="Automation badge for ${esc(t.task)}" onchange="saveAuto('${t.id}',this.value)">${opts}</select>`}
+async function saveAuto(id,value){const t=OD.tasks.find(x=>x.id===id);if(!t)return;
+ const r=await (await fetch('/api/monthend/automation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:t.key,automation:value})})).json();
+ if(r.error){alert(r.error);renderOd();return}if(r.monthend)OD=r.monthend;renderOd()}
 function compOf(t,m){return (t.completion&&t.completion[m])||{status:'not_started',text:'Not started',note:'',source:null}}
 function compTip(c){const src={sheet:'From the sheet snapshot. The sheet was not changed from here.',run:'A Run Now for this month finished.',manual:'Marked on this dashboard. The sheet was not changed.',bot:'A bot marked this through the machine API. The sheet was not changed.'}[c.source]||'';
  return [c.text||c.status,src,c.note||'','Separate from the automation badge (Manual, Run Now- Ready, or New).'].filter(Boolean).join(' · ')}
@@ -396,7 +403,7 @@ function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='L
   const shut=weekIsCollapsed(norm);
   const head=`<button type=button class=weekhead onclick="toggleWeek('${norm.replace(/'/g,"\\'")}')"><span class=caret>${shut?'&#9656;':'&#9662;'}</span><b>${esc(label)}</b><span class="weekcount ${done===all.length&&all.length?'all':''}">${done} of ${all.length} done</span></button>`;
   if(shut)return head;
-  return head+`<table class="odt tw"><thead><tr><th style="width:62px">Row</th><th>Task</th><th>Notes</th><th style="width:168px">This month</th><th style="width:66px">${odM.slice(0,3)}</th><th style="width:60px">${pm?pm.slice(0,3):'Prev'}</th><th style="width:170px">Automation</th><th style="width:200px">Run Now</th></tr></thead><tbody>`+
+  return head+`<table class="odt tw"><thead><tr><th style="width:62px">Row</th><th>Task</th><th>Notes</th><th style="width:168px">This month</th><th style="width:66px">${odM.slice(0,3)}</th><th style="width:60px">${pm?pm.slice(0,3):'Prev'}</th><th style="width:210px">Automation</th><th style="width:200px">Run Now</th></tr></thead><tbody>`+
   G.map(t=>{const n=t.notes.length>60?t.notes.slice(0,57)+'…':t.notes,op=odOpen.has(t.id),isDone=compOf(t,odM).status==='done';
    return `<tr class="${t.ladder==='ready'?'rdy':''} ${isDone?'isdone':''}"><td class=rowno>Row ${t.row}</td><td class=tk onclick="tog2('${t.id}')" style="cursor:pointer"><span class=caret>${op?'&#9662;':'&#9656;'}</span>${t.order!=null?`<span class=ord>#${t.order}</span>`:''}<span class=taskname>${esc(t.task)}</span>${fileTags(t)}${t.note&&t.note.text?` <span class=noteic title="Your notes: ${esc(t.note.text)}">${NOTEICON}</span>`:''}<span class=cat>${esc(t.category)}</span></td>
    <td class=nt title="${esc(t.notes)}">${esc(n)||'<span style="color:#bbc">–</span>'}</td><td>${compCell(t)}</td><td title="Sheet column, read only">${st(monthVal(t,odM))}</td><td>${pm?st(monthVal(t,pm)):'–'}</td>

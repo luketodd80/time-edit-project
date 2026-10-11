@@ -274,13 +274,44 @@ def parse_completion_request(body, default_month, default_date):
     elif status == "done":
         date = default_date
     note = str(body.get("note") if body.get("note") is not None else "").strip()[:1000]
+    return task_key_from(body), month, status, date, note
+
+
+AUTOMATION_BADGES = ("Manual", "Run Now- Ready", "New")
+_AUTOMATION_ALIASES = {
+    "manual": "Manual",
+    "run now- ready": "Run Now- Ready",
+    "run now ready": "Run Now- Ready",
+    "run now-ready": "Run Now- Ready",
+    "ready": "Run Now- Ready",
+    "new": "New",
+}
+
+
+def task_key_from(body):
     if body.get("key"):
-        task_key = str(body["key"])
-    elif str(body.get("task") or "").strip() and body.get("due") is not None:
-        task_key = key(str(body["task"]), str(body["due"]))
-    else:
-        raise ValueError("send task and due, or key")
-    return task_key, month, status, date, note
+        return str(body["key"])
+    if str(body.get("task") or "").strip() and body.get("due") is not None:
+        return key(str(body["task"]), str(body["due"]))
+    raise ValueError("send task and due, or key")
+
+
+def parse_automation_badge(value):
+    raw = " ".join(str(value or "").split())
+    if raw in AUTOMATION_BADGES:
+        return raw
+    mapped = _AUTOMATION_ALIASES.get(raw.lower())
+    if not mapped:
+        raise ValueError("automation must be Manual, Run Now- Ready, or New")
+    return mapped
+
+
+def default_automation(is_ready, is_new):
+    if is_ready:
+        return "Run Now- Ready"
+    if is_new:
+        return "New"
+    return "Manual"
 
 
 def month_name(iso_date):
@@ -412,21 +443,23 @@ class MonthEnd:
             cand = cands.get(t["key"])
             ladder = LADDER.get(t["key"], {})
             is_new = entry["first_seen"] != reg["seeded_at"]
-            is_ready = ladder.get("ladder") == "ready"
+            stored = (reg.get("automation") or {}).get(t["key"])
+            automation = stored if stored in AUTOMATION_BADGES else default_automation(ladder.get("ladder") == "ready", is_new)
+            is_ready = automation == "Run Now- Ready"
             tasks.append({
                 **t,
                 "due_norm": due_norm(t["due"]),
                 "due_label": due_label(t["due"]),
                 "id": "me-" + hashlib.md5(t["key"].encode()).hexdigest()[:10],
                 "ladder": "ready" if is_ready else "manual",
-                "automation": "Run Now- Ready" if is_ready else "New" if is_new else "Manual",
+                "automation": automation,
                 "new": is_new,
                 "first_seen": entry["first_seen"],
                 "candidate": None,
                 "bot": ladder.get("bot") if is_ready else None,
                 "qbo_write": bool(ladder.get("qbo_write")) if is_ready else False,
                 "why": cand["why"] if cand else "New task: not classified yet",
-                "detail": ladder.get("detail"),
+                "detail": ladder.get("detail") if is_ready else None,
                 "history": [],
                 "cols": COLS,
                 "files": self.files_for(t["key"], reg),
@@ -570,6 +603,19 @@ class MonthEnd:
                 }
             self._write_reg(reg)
             return bucket.get(month)
+
+        return self._locked(run)
+
+    def set_automation(self, task_key, automation):
+        badge = parse_automation_badge(automation)
+
+        def run():
+            reg = self._read_reg()
+            if task_key not in reg["tasks"]:
+                raise KeyError(task_key)
+            reg.setdefault("automation", {})[task_key] = badge
+            self._write_reg(reg)
+            return badge
 
         return self._locked(run)
 

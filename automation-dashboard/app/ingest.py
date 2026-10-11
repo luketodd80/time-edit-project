@@ -5,7 +5,7 @@ from flask import current_app, jsonify, request, send_file
 
 from app import clock
 from app.catalog import by_id
-from app.month_end import MONTHS, decorate, done_text, parse_completion_request
+from app.month_end import MONTHS, decorate, done_text, parse_automation_badge, parse_completion_request, task_key_from
 from app.schedule import assign_slot, fmt_actual
 
 RUN_STATUS = {
@@ -277,4 +277,27 @@ def register(app):
             due=task["due"] if task else body.get("due"),
             month=month,
             completion=completion,
+        )
+
+    @app.post("/api/ingest/month-end/automation")
+    def ingest_month_end_automation():
+        """Set a task's automation badge by task name and due. Does not write the sheet."""
+        body = _json()
+        me = _me()
+        try:
+            task_key = task_key_from(body)
+            badge = parse_automation_badge(body.get("automation") or body.get("badge"))
+            me.set_automation(task_key, badge)
+        except KeyError:
+            return jsonify(error="unknown task"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        payload = decorate(me.load_and_sync(), _db().all_requests())
+        task = next((t for t in payload["tasks"] if t["key"] == task_key), None)
+        return jsonify(
+            ok=True,
+            task=task["task"] if task else body.get("task"),
+            due=task["due"] if task else body.get("due"),
+            automation=task["automation"] if task else badge,
+            ladder=task["ladder"] if task else None,
         )
