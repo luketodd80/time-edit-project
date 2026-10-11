@@ -4,7 +4,7 @@ Source: Google Sheet 'Shared Accounting' > 'Month End- 2026'.
 This app never writes to the sheet or to QuickBooks. A bot may POST a fresh
 snapshot; sync() diffs it by Task name + Due (not row number).
 
-New sheet tasks arrive as Manual with a New tag. Tasks that disappear go to
+New sheet tasks arrive with the automation badge New. Tasks that disappear go to
 the Removed-from-sheet list. Notes, file requirements, and run history stay
 on the task key.
 """
@@ -25,11 +25,6 @@ MONTHS = [
 ]
 COLS = "GHIJKLMNOPQR"  # G = January ... R = December
 DUE_ORDER = ["1st week", "2nd Week", "3rd Week", "4th Week", "End of Month", "Weekly", "Monthly", "Yearly"]
-CAND_LABEL = {
-    "run": "Grok can run",
-    "prep": "Grok can prep, you approve",
-    "claude": "Claude today, candidate to move",
-}
 HEADERS = [
     "Due", "Order", "Category", "Task", "Notes/ Questions", "Assigned To", *MONTHS,
 ]
@@ -416,18 +411,20 @@ class MonthEnd:
             entry = reg["tasks"][t["key"]]
             cand = cands.get(t["key"])
             ladder = LADDER.get(t["key"], {})
-            cand_use = cand if cand and cand.get("badge") != "manual" else None
+            is_new = entry["first_seen"] != reg["seeded_at"]
+            is_ready = ladder.get("ladder") == "ready"
             tasks.append({
                 **t,
                 "due_norm": due_norm(t["due"]),
                 "due_label": due_label(t["due"]),
                 "id": "me-" + hashlib.md5(t["key"].encode()).hexdigest()[:10],
-                "ladder": ladder.get("ladder", "manual"),
-                "new": entry["first_seen"] != reg["seeded_at"],
+                "ladder": "ready" if is_ready else "manual",
+                "automation": "Run Now- Ready" if is_ready else "New" if is_new else "Manual",
+                "new": is_new,
                 "first_seen": entry["first_seen"],
-                "candidate": CAND_LABEL[cand_use["badge"]] if cand_use else None,
-                "bot": ladder.get("bot") or (cand_use["bot"] if cand_use else None),
-                "qbo_write": ladder.get("qbo_write", bool(cand and cand.get("qbo_write"))),
+                "candidate": None,
+                "bot": ladder.get("bot") if is_ready else None,
+                "qbo_write": bool(ladder.get("qbo_write")) if is_ready else False,
                 "why": cand["why"] if cand else "New task: not classified yet",
                 "detail": ladder.get("detail"),
                 "history": [],

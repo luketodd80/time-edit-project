@@ -6,7 +6,7 @@ Three tabs, same ones Luke approved:
 
 1. **Today / Daily runs.** Every scheduled bot run for the day. A 7-day strip, Today / Yesterday, and previous / next arrows move through history. Group by Time or by Bot. A row stays **no report yet** until its scheduled time passes, then **missed**, unless a bot has posted a result.
 2. **All automations.** The 30 automations across 13 bots. Pause, resume, and retire are saved here. They are not sent to the bots.
-3. **On demand / Month-end.** Every line assigned to Luke on Shared Accounting → Month End- 2026. Tasks are keyed by task name + due, not by row number. A line that shows up on a new snapshot arrives as Manual with a New tag. A line that disappears goes to Removed from sheet. Run Now queues a request. It does not write the Google Sheet or QuickBooks.
+3. **On demand / Month-end.** Every line assigned to Luke on Shared Accounting → Month End- 2026. Tasks are keyed by task name + due, not by row number. A line that shows up on a new snapshot gets the automation badge New. The other badges are Manual and Run Now- Ready. A former candidate bot is not labeled; that line stays Manual unless Run Now is actually ready. A line that disappears goes to Removed from sheet. Run Now queues a request. It does not write the Google Sheet or QuickBooks.
 
 The time-edit app can become another tab later. See [Adding a tab](#adding-a-tab).
 
