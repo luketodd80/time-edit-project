@@ -89,6 +89,15 @@ tr.gw td{color:#99a}
 .pbar{height:14px;background:#eceef2;border-radius:7px;overflow:hidden;display:flex}.pready{background:#2e9e57;height:100%}.pbuild{background:#e0a100;height:100%}
 .plegend{font-size:12px;color:#667;margin-top:8px}
 .ld{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}.ld-manual{background:#eceef2;color:#5b6474}.ld-building{background:#fff3d6;color:#8a5a00}.ld-ready{background:#2e9e57;color:#fff}
+.weekhead{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#fff;border:0;border-radius:10px;box-shadow:0 1px 3px #0001;padding:10px 14px;margin:14px 0 6px;cursor:pointer;font:inherit;color:#1f2a44}
+.weekhead b{font-size:15px}.weekcount{margin-left:auto;font-weight:750;font-size:13px;color:#1f2a44}.weekcount.all{color:#137333}
+.odt tr.isdone td{background:#eef6f0;color:#5c6b63}.odt tr.isdone .taskname{text-decoration:line-through;text-decoration-color:#7d9a88}
+.cmp{font-size:12.5px;font-weight:700;line-height:1.35}.cmp-done{color:#137333}.cmp-not_started{color:#8a93a3;font-weight:650}.cmp-in_progress{color:#8a5a00}.cmp-skipped{color:#667;font-weight:650}
+.chk{font-weight:800}.cmpnote{font-weight:500;color:#667;font-size:11px;margin-top:2px}
+.cmpbtn,.cmpform button{margin-top:4px;border:1px solid #c5d0c8;background:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;color:#1f2a44}
+.cmpform{margin-top:6px;display:flex;flex-direction:column;gap:4px;min-width:150px}.cmpform input{font:12px/1.3 inherit;padding:3px 6px;border:1px solid #ccd;border-radius:6px}
+.cmpform .row{display:flex;flex-wrap:wrap;gap:4px}.cmpform button.ok{background:#137333;color:#fff;border-color:#137333}
+.cmpkey{margin-top:6px}
 .rowno{white-space:nowrap;color:#556;font-size:12px;font-weight:600}.hsub{font-weight:400;color:#889;text-transform:none;letter-spacing:0}
 .odt tr.rdy td{background:#f3fbf5}.cand{display:block;font-size:12px;color:#2456a6;font-weight:600}.candk{display:block;font-size:11px;color:#778}
 .muted2{color:#99a;font-size:12px}.newtag{background:#5b9cff;color:#fff;border-radius:6px;font-size:10px;padding:1px 6px;font-weight:700;vertical-align:middle}
@@ -140,10 +149,11 @@ details.sect table{border-radius:0}
 <header><h1>Grok Bot Automations</h1><span>The Service Company · <a href="#" onclick="showTab('settings');return false">Settings</a> · <a href="#" onclick="logout();return false">Log out</a></span></header>
 <nav class="tabs"><button id="tabDaily" onclick="showTab('daily')">Today / Daily runs</button><button id="tabAll" onclick="showTab('all')">All automations</button><button id="tabOd" onclick="showTab('od')">On demand<span class=lg> / Month-end</span></button></nav>
 <div class="wrap hidden" id="odView">
-<div class="note">Run Now queues a request the bot can pick up, with the files and notes for that run. This dashboard does not write to the Google Sheet or to QuickBooks. A new sheet line shows up as Manual with a New tag. A line that leaves the sheet goes to Removed from sheet.</div>
+<div class="note">Run Now queues a request the bot can pick up, with the files and notes for that run. Mark done records the month here. This dashboard does not write to the Google Sheet or to QuickBooks. A new sheet line shows up as Manual with a New tag. A line that leaves the sheet goes to Removed from sheet.</div>
 <div class="syncbar"><span>Source: Shared Accounting › <b>Month End- 2026</b> (read-only snapshot)</span><span>Last synced from sheet: <b id="odSynced"></b></span><button onclick="syncOd()" title="Asks the sync webhook to push a fresh sheet snapshot">Sync now</button></div>
 <div id="odSyncMsg" class="smsg syncmsg"></div>
-<div class="prog"><div class="ptext" id="odProgText"></div><div class="pbar"><div class="pready" id="odProg"></div><div class="pbuild" id="odProgB"></div></div><div class="plegend"><span class="ld ld-manual">Manual: no automation yet</span> → <span class="ld ld-building">Being built</span> → <span class="ld ld-ready">Run Now ready</span></div></div>
+<div class="prog"><div class="ptext" id="odProgText"></div><div class="pbar"><div class="pready" id="odProg"></div><div class="pbuild" id="odProgB"></div></div><div class="plegend"><span class="ld ld-manual" title="Automation badge: no bot runs this yet. This is not whether the month is finished.">Manual: no automation yet</span> → <span class="ld ld-building" title="Automation badge: a bot is being built. This is not whether the month is finished.">Being built</span> → <span class="ld ld-ready" title="Automation badge: Run Now can queue a bot. This is not whether the month is finished.">Run Now ready</span>
+<div class="cmpkey"><b>This month</b> is separate: <span class="cmp cmp-not_started">Not started</span> · <span class="cmp cmp-in_progress">In progress</span> · <span class="cmp cmp-done">&#10003; Done</span> with a date · <span class="cmp cmp-skipped">Skipped / N/A</span>. A date in that month's sheet column (October is column P) shows Done on its own. <span class=newtag>New</span> and Candidate are labels, not done. Mark done is stored here and is not written to the sheet.</div></div></div>
 <div class="chips" id="odChips"></div>
 <div class="odbar"><label>Month <select id="odMonth" onchange="odM=this.value;renderOd()"></select></label><span class=lbl>Show</span><span id="odLadders"></span></div>
 <div id="odGroups"></div>
@@ -219,7 +229,7 @@ function showTab(t){[['daily',dailyView,tabDaily],['all',allView,tabAll],['od',o
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DUE=['1st week','2nd Week','3rd Week','4th Week','End of Month','Weekly','Monthly','Yearly'];
 const LADDER={manual:['ld-manual','Manual: no automation yet'],building:['ld-building','Being built'],ready:['ld-ready','Run Now ready']};
-let OD=null,odM=DASH.month,odL='all';const odOpen=new Set();
+let OD=null,odM=DASH.month,odL='all',cmpEdit=null;const odOpen=new Set();
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
 function hm(d){let h=d.getHours(),m=String(d.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';return `${h%12||12}:${m} ${ap}`}
 function fmtTs(iso){const d=new Date(iso);if(isNaN(d))return String(iso||'');
@@ -336,7 +346,23 @@ async function saveReq(id){const t=OD.tasks.find(x=>x.id===id),g=k=>document.get
  if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;renderOd()}
 async function approve(rid,ok){const r=await (await fetch('/api/monthend/requests/'+rid+'/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approve:!!ok})})).json();
  if(r.monthend)OD=r.monthend;delete cache[DASH.today];renderOd()}
-function ldBadge(l){const [c,t]=LADDER[l]||LADDER.manual;return `<span class="ld ${c}">${t}</span>`}
+function ldBadge(l){const [c,t]=LADDER[l]||LADDER.manual;return `<span class="ld ${c}" title="Automation badge: whether a bot can run this. Not whether this month is done.">${t}</span>`}
+function compOf(t,m){return (t.completion&&t.completion[m])||{status:'not_started',text:'Not started',note:'',source:null}}
+function compTip(c){const src={sheet:'From the sheet snapshot. The sheet was not changed from here.',run:'A Run Now for this month finished.',manual:'Marked on this dashboard. The sheet was not changed.',bot:'A bot marked this through the machine API. The sheet was not changed.'}[c.source]||'';
+ return [c.text||c.status,src,c.note||'','Separate from the automation badge (Manual, Run Now ready, Candidate, New).'].filter(Boolean).join(' · ')}
+function compCell(t){const c=compOf(t,odM);const label=c.status==='done'?`<span class=chk>&#10003;</span> Done${c.text&&c.text!=='Done'?' · '+esc(c.text):''}`:esc(c.text||'Not started');
+ const note=c.note?`<div class=cmpnote>${esc(c.note)}</div>`:'';
+ const form=cmpEdit===t.id?`<div class=cmpform><input type=date id="cmpd-${t.id}" value="${esc(c.date||DASH.today)}"><input id="cmpn-${t.id}" placeholder="Optional note" value="${esc(c.note||'')}"><div class=row><button type=button class=ok onclick="saveCmp('${t.id}','done')">Done</button><button type=button onclick="saveCmp('${t.id}','in_progress')">In progress</button><button type=button onclick="saveCmp('${t.id}','skipped')">Skipped / N/A</button><button type=button onclick="saveCmp('${t.id}','not_started')">Not started</button>${c.source==='manual'||c.source==='bot'?'<button type=button onclick="saveCmp(\''+t.id+'\',\'auto\')">Use the sheet</button>':''}<button type=button onclick="cmpEdit=null;renderOd()">Cancel</button></div></div>`:'';
+ const btn=cmpEdit===t.id?'':`<button type=button class=cmpbtn onclick="cmpEdit='${t.id}';renderOd()">${c.status==='done'?'Change':'Mark done'}</button>`;
+ return `<div class="cmp cmp-${c.status}" title="${esc(compTip(c))}">${label}</div>${note}${btn}${form}`}
+async function saveCmp(id,status){const t=OD.tasks.find(x=>x.id===id);if(!t)return;const dateEl=document.getElementById('cmpd-'+id),noteEl=document.getElementById('cmpn-'+id);
+ const body={key:t.key,month:odM,status};if(dateEl&&dateEl.value)body.date=dateEl.value;if(noteEl)body.note=noteEl.value;
+ const r=await (await fetch('/api/monthend/completion',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+ if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;cmpEdit=null;renderOd()}
+function weekIsCollapsed(norm){const saved=OD.week_collapsed||{};if(Object.prototype.hasOwnProperty.call(saved,norm))return !!saved[norm];
+ const rows=(OD.tasks||[]).filter(t=>t.assigned==='Luke'&&t.due_norm===norm);return rows.length>0&&rows.every(t=>compOf(t,odM).status==='done')}
+function toggleWeek(norm){const next=!weekIsCollapsed(norm);OD.week_collapsed=Object.assign({},OD.week_collapsed||{},{[norm]:next});renderOd();
+ fetch('/api/monthend/weeks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({due:norm,collapsed:next})})}
 function runCell(t){if(t.ladder!=='ready')return `<span class=muted2>${t.ladder==='building'?'Being built':'Not on Run Now yet'}</span>`;
  const open=t.open_request,last=(t.requests||[])[t.requests.length-1];
  if(open&&open.state==='queued')return `<span class="rs rs-run">&#9203; Queued — waiting on ${esc(t.bot)}</span>`;
@@ -353,19 +379,25 @@ function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='L
  odSynced.textContent=OD.last_synced?fmtTs(OD.last_synced):'not yet';
  odProgText.innerHTML=`<b>${c('ready')} of ${L.length}</b> of your tasks are Run Now ready${c('building')?` · ${c('building')} being built`:''} · ${c('manual')} manual`;
  odProg.style.width=(100*c('ready')/N)+'%';odProgB.style.width=(100*c('building')/N)+'%';
- const mv=t=>monthVal(t,odM).kind;
- odChips.innerHTML=[['c-sched','Your lines (Assigned To = Luke)',L.length],['c-ok','Run Now ready',c('ready')],['c-pend','Being built',c('building')],['c-unk','Manual',c('manual')],['c-miss',`Open in ${odM}`,L.filter(t=>mv(t)==='open').length],['c-ok',`Done in ${odM}`,L.filter(t=>mv(t)==='done').length]].map(([cl,k,v])=>`<div class="chip ${cl}"><b>${v}</b><small>${k}</small></div>`).join('');
+ const cs=t=>compOf(t,odM).status;
+ odChips.innerHTML=[['c-sched','Your lines (Assigned To = Luke)',L.length],['c-ok',`Done in ${odM}`,L.filter(t=>cs(t)==='done').length],['c-pend',`In progress in ${odM}`,L.filter(t=>cs(t)==='in_progress').length],['c-miss',`Not started in ${odM}`,L.filter(t=>cs(t)==='not_started').length],['c-unk','Manual (no bot yet)',c('manual')],['c-ok','Run Now ready',c('ready')]].map(([cl,k,v])=>`<div class="chip ${cl}"><b>${v}</b><small>${k}</small></div>`).join('');
  odMonth.innerHTML=MONTHS.map(m=>`<option ${m===odM?'selected':''}>${m}</option>`).join('');
  const F=[['all','All',L.length],['ready','Run Now ready',c('ready')],['building','Being built',c('building')],['manual','Manual',c('manual')],['cand','Has a candidate bot',L.filter(t=>t.candidate).length],['new','New',L.filter(t=>t.new).length]];
  odLadders.innerHTML=F.map(([k,l,n])=>`<button class="${k===odL?'on':''}" onclick="odL='${k}';renderOd()">${l} (${n})</button>`).join('');
  const S=L.filter(t=>odL==='all'||(odL==='cand'?t.candidate:odL==='new'?t.new:t.ladder===odL));
  const st=s=>`<span class="st st-${s.kind}">${esc(s.text)}</span>`;
- odGroups.innerHTML=DUE.filter(d=>S.some(t=>t.due===d)).map(d=>{const G=S.filter(t=>t.due===d);
-  return `<h2>${esc(d)} <span class=hsub>· ${G.length} line${G.length>1?'s':''} · ${G.filter(t=>t.ladder==='ready').length} Run Now</span></h2><table class="odt tw"><thead><tr><th style="width:62px">Row</th><th>Task</th><th>Notes</th><th style="width:118px">Status</th><th style="width:66px">${odM.slice(0,3)}</th><th style="width:60px">${pm?pm.slice(0,3):'Prev'}</th><th style="width:170px">Automation</th><th style="width:200px">Run Now</th></tr></thead><tbody>`+
-  G.map(t=>{const n=t.notes.length>60?t.notes.slice(0,57)+'…':t.notes,op=odOpen.has(t.id);
-   return `<tr class="${t.ladder==='ready'?'rdy':''}"><td class=rowno>Row ${t.row}</td><td class=tk onclick="tog2('${t.id}')" style="cursor:pointer"><span class=caret>${op?'&#9662;':'&#9656;'}</span>${t.order!=null?`<span class=ord>#${t.order}</span>`:''}${esc(t.task)}${t.new?' <span class=newtag>New</span>':''}${fileTags(t)}${t.note&&t.note.text?` <span class=noteic title="Your notes: ${esc(t.note.text)}">${NOTEICON}</span>`:''}<span class=cat>${esc(t.category)}</span></td>
-   <td class=nt title="${esc(t.notes)}">${esc(n)||'<span style="color:#bbc">–</span>'}</td><td>${ldBadge(t.ladder)}</td><td>${st(monthVal(t,odM))}</td><td>${pm?st(monthVal(t,pm)):'–'}</td>
-   <td>${t.ladder==='ready'?`<span class=bot>&#8594; ${esc(t.bot)}</span>`:t.candidate?`<span class=cand title="${esc(t.why)}">Candidate &#8594; ${esc(t.bot)}</span><span class=candk>${esc(t.candidate)}</span>`:'<span class=muted2>No candidate yet</span>'}${t.qbo_write?'<span class=qa>QBO write: needs your approval</span>':''}</td>
+ const order=DUE.map(d=>d.toLowerCase());
+ const norms=[];S.forEach(t=>{const n=t.due_norm||'';if(!norms.includes(n))norms.push(n)});
+ norms.sort((a,b)=>(order.indexOf(a)<0?99:order.indexOf(a))-(order.indexOf(b)<0?99:order.indexOf(b))||a.localeCompare(b));
+ odGroups.innerHTML=norms.map(norm=>{const G=S.filter(t=>t.due_norm===norm),all=L.filter(t=>t.due_norm===norm),done=all.filter(t=>compOf(t,odM).status==='done').length,label=(G[0]&&G[0].due_label)||norm;
+  const shut=weekIsCollapsed(norm);
+  const head=`<button type=button class=weekhead onclick="toggleWeek('${norm.replace(/'/g,"\\'")}')"><span class=caret>${shut?'&#9656;':'&#9662;'}</span><b>${esc(label)}</b><span class="weekcount ${done===all.length&&all.length?'all':''}">${done} of ${all.length} done</span></button>`;
+  if(shut)return head;
+  return head+`<table class="odt tw"><thead><tr><th style="width:62px">Row</th><th>Task</th><th>Notes</th><th style="width:168px">This month</th><th style="width:66px">${odM.slice(0,3)}</th><th style="width:60px">${pm?pm.slice(0,3):'Prev'}</th><th style="width:170px">Automation</th><th style="width:200px">Run Now</th></tr></thead><tbody>`+
+  G.map(t=>{const n=t.notes.length>60?t.notes.slice(0,57)+'…':t.notes,op=odOpen.has(t.id),isDone=compOf(t,odM).status==='done';
+   return `<tr class="${t.ladder==='ready'?'rdy':''} ${isDone?'isdone':''}"><td class=rowno>Row ${t.row}</td><td class=tk onclick="tog2('${t.id}')" style="cursor:pointer"><span class=caret>${op?'&#9662;':'&#9656;'}</span>${t.order!=null?`<span class=ord>#${t.order}</span>`:''}<span class=taskname>${esc(t.task)}</span>${t.new?' <span class=newtag title="New sheet line. Not a completion status.">New</span>':''}${fileTags(t)}${t.note&&t.note.text?` <span class=noteic title="Your notes: ${esc(t.note.text)}">${NOTEICON}</span>`:''}<span class=cat>${esc(t.category)}</span></td>
+   <td class=nt title="${esc(t.notes)}">${esc(n)||'<span style="color:#bbc">–</span>'}</td><td>${compCell(t)}</td><td title="Sheet column, read only">${st(monthVal(t,odM))}</td><td>${pm?st(monthVal(t,pm)):'–'}</td>
+   <td>${ldBadge(t.ladder)} ${t.ladder==='ready'?`<span class=bot>&#8594; ${esc(t.bot)}</span>`:t.candidate?`<span class=cand title="${esc(t.why)}">Candidate &#8594; ${esc(t.bot)}</span><span class=candk>${esc(t.candidate)}</span>`:'<span class=muted2>No candidate yet</span>'}${t.qbo_write?'<span class=qa>QBO write: needs your approval</span>':''}</td>
    <td>${runCell(t)}</td></tr>`+(op?`<tr class=det2><td></td><td colspan=7><div class=notes2><div class=yn><b>Your notes</b> <span class=muted2>(instructions for the bot every time this task runs)</span><textarea id="note-${t.id}" class=notebox rows=3 placeholder="e.g. Use the Month-to-Date report; post under the prior month" onblur="saveStanding('${t.id}')">${esc(t.note&&t.note.text||'')}</textarea><div class=nrow><button class=ok onclick="saveStanding('${t.id}')">Save</button><span class=nstamp>${stamp2(t.note)}</span></div></div><div class=sn><b>Sheet notes</b> <span class=muted2>(read-only, from the Notes column)</span><div class=noteview>${esc(t.notes)||'<span class=muted2>–</span>'}</div></div></div>${t.detail?`<div><b>How it runs:</b> ${esc(t.detail)}</div>`:''}<div><b>Why this guess:</b> ${esc(t.why)}</div>${filesSection(t)}<div><b>Run history:</b> ${histHtml(t)}</div><div class=muted2>Key: ${esc(t.key)} · first seen ${fmtTs(t.first_seen)}</div></td></tr>`:'')}).join('')+`</tbody></table>`}).join('')||'<p>No lines match.</p>';
  odOthersSum.innerHTML=`Other people's lines (${O.length}) <span class=hsub>· read-only, no Run Now</span>`;
  odOthersBody.innerHTML=`<table class="odt tw"><thead><tr><th>Row</th><th>Due</th><th>Task</th><th>Assigned</th><th>${odM.slice(0,3)}</th><th>${pm?pm.slice(0,3):'Prev'}</th></tr></thead><tbody>`+O.map(t=>`<tr><td class=rowno>Row ${t.row}</td><td>${esc(t.due)}</td><td>${esc(t.task)}${t.new?' <span class=newtag>New</span>':''}</td><td>${esc(t.assigned)}</td><td>${st(t.months[odM])}</td><td>${pm?st(t.months[pm]):'–'}</td></tr>`).join('')+'</tbody></table>';

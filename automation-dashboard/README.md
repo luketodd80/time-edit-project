@@ -62,7 +62,7 @@ Everything that has to survive a restart lives under `DATA_DIR`:
 
 - `dashboard.sqlite` — recorded runs, Run Now requests, pause/resume/retire, command log
 - `month_end_2026.csv` — latest sheet snapshot
-- `month_end_registry.json` — task identity, standing notes, per-file notes, added file requirements
+- `month_end_registry.json` — task identity, standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), and which week groups are collapsed
 - `uploads/` — files attached to Run Now
 - `sheet_snapshots/` — each snapshot a bot posts
 - `settings.json` — Sync webhook URL and key (mode `0600`). The API returns the URL and a masked key, never the full key
@@ -148,6 +148,23 @@ This dashboard does not read Google Sheets. **Sync now** (Settings, behind login
 When a key is set, the same value is sent as `Authorization: Bearer <key>`, `X-Webhook-Key: <key>`, and `X-Api-Key: <key>`. The Month-End tab then says the sync was requested and checks `last_synced` about every 10 seconds for up to 3 minutes. When a new snapshot lands, the list refreshes and the added and removed task names are shown. If no webhook is configured, the response is `400` with `"error": "no_webhook"`. If the receiver returns an error, the status code is shown.
 
 `GET /api/settings` and `POST /api/settings` read and save `sync_webhook_url` and `sync_webhook_key`. A blank key on save keeps the key already stored. The key is not returned in full.
+
+### Mark a month-end task done
+
+`POST /api/ingest/month-end/status`
+
+This does not write the Google Sheet. It stores the checklist status under `DATA_DIR`. Match the task by name and due (case and extra spaces do not matter). `month` defaults to the current month in Eastern Time. `date` defaults to today in Eastern Time when status is `done`.
+
+```bash
+curl -s -X POST "$BASE/api/ingest/month-end/status" \
+  -H "Authorization: Bearer $INGEST_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"Payroll Report","due":"2nd Week","month":"October","status":"done","date":"2026-10-11","note":"Ran it outside the bot"}'
+```
+
+`status` is `done`, `in_progress`, `skipped` (`n/a` is the same), `not_started`, or `auto`. `auto` clears a status set through this API or the dashboard and lets the sheet decide again. A date in that month's sheet column (January is column G, October is column P) already shows Done, with that date, without this call. A successful Run Now completion also shows Done for the month it was logged under.
+
+The signed-in dashboard has the same action at `POST /api/monthend/completion` (`key`, `month`, `status`, `date`, `note`). Week groups on the Month-End tab remember collapsed or expanded with `POST /api/monthend/weeks` (`due`, `collapsed`). A week with no saved choice starts collapsed when every task in it is Done for the month on screen.
 
 ## Adding a tab
 

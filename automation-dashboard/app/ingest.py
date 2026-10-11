@@ -5,7 +5,7 @@ from flask import current_app, jsonify, request, send_file
 
 from app import clock
 from app.catalog import by_id
-from app.month_end import done_text
+from app.month_end import MONTHS, decorate, done_text, parse_completion_request
 from app.schedule import assign_slot, fmt_actual
 
 RUN_STATUS = {
@@ -251,4 +251,30 @@ def register(app):
             tasks=len(payload["tasks"]),
             removed=len(payload["removed"]),
             last_synced=payload["last_synced"],
+        )
+
+    @app.post("/api/ingest/month-end/status")
+    def ingest_month_end_status():
+        """Mark a checklist task done (or another status) by task name and due. Does not write the sheet."""
+        body = _json()
+        moment = clock.now()
+        me = _me()
+        try:
+            task_key, month, status, date, note = parse_completion_request(
+                body, MONTHS[moment.month - 1], moment.date().isoformat(),
+            )
+            me.set_completion(task_key, month, status, date=date, note=note, source="bot")
+        except KeyError:
+            return jsonify(error="unknown task"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        payload = decorate(me.load_and_sync(), _db().all_requests())
+        task = next((t for t in payload["tasks"] if t["key"] == task_key), None)
+        completion = (task or {}).get("completion", {}).get(month)
+        return jsonify(
+            ok=True,
+            task=task["task"] if task else body.get("task"),
+            due=task["due"] if task else body.get("due"),
+            month=month,
+            completion=completion,
         )

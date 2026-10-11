@@ -75,6 +75,8 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(self.client.get("/api/monthend").status_code, 401)
         self.assertEqual(self.client.get("/api/settings").status_code, 401)
         self.assertEqual(self.client.post("/api/monthend/sync").status_code, 401)
+        self.assertEqual(self.client.post("/api/monthend/completion", json={}).status_code, 401)
+        self.assertEqual(self.client.post("/api/ingest/month-end/status", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/runs", json={}).status_code, 401)
         bad = self.login(password="nope")
         self.assertEqual(bad.status_code, 401)
@@ -216,6 +218,9 @@ class DashboardSmoke(unittest.TestCase):
         task = next(t for t in month["tasks"] if t["key"] == K13)
         self.assertIsNone(task["open_request"])
         self.assertEqual(task["months"]["November"], {"kind": "done", "text": "10/10"})
+        self.assertEqual(task["completion"]["November"]["status"], "done")
+        self.assertEqual(task["completion"]["November"]["source"], "run")
+        self.assertEqual(task["completion"]["November"]["date"], "2026-10-10")
         board = self.client.get("/api/runs?date=2026-10-10").get_json()
         self.assertTrue(any(r["key"] == rid and r["ran"] == "yes" for r in board["rows"]))
         self.assertEqual(self.client.get("/api/ingest/run-requests", headers={"Authorization": f"Bearer {TOKEN}"}).get_json()["requests"], [])
@@ -236,6 +241,8 @@ class DashboardSmoke(unittest.TestCase):
         je_task = next(t for t in month["tasks"] if t["key"] == K14)
         self.assertEqual(je_task["open_request"]["state"], "awaiting")
         self.assertEqual(je_task["months"]["November"]["kind"], "open")
+        self.assertEqual(je_task["completion"]["November"]["status"], "in_progress")
+        self.assertEqual(je_task["completion"]["November"]["source"], "run")
         approved = self.client.post(f"/api/monthend/requests/{qid}/decision", json={"approve": True})
         self.assertEqual(approved.status_code, 200)
         still = self.client.get("/api/ingest/run-requests", headers={"Authorization": f"Bearer {TOKEN}"}).get_json()
@@ -251,6 +258,8 @@ class DashboardSmoke(unittest.TestCase):
         month = self.client.get("/api/monthend").get_json()
         je_task = next(t for t in month["tasks"] if t["key"] == K14)
         self.assertEqual(je_task["months"]["November"], {"kind": "done", "text": "10/10"})
+        self.assertEqual(je_task["completion"]["November"]["status"], "done")
+        self.assertEqual(je_task["completion"]["November"]["source"], "run")
 
     def test_notes_and_status_survive_a_new_process_store(self):
         self.authed()
@@ -413,6 +422,98 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(payload["url_source"], "env")
         self.assertEqual(payload["key_source"], "env")
         self.assertEqual(payload["sync_webhook_key_mask"], "••••zz99")
+
+    def test_month_status_sheet_manual_bot_and_week_collapse(self):
+        self.authed()
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertIn("This month", page)
+        self.assertIn("Skipped / N/A", page)
+        self.assertIn("Mark done", page)
+        month = self.client.get("/api/monthend").get_json()
+        cot = next(t for t in month["tasks"] if t["task"] == "Prep COT & Send to Sheldon")
+        self.assertEqual(cot["due_norm"], "1st week")
+        self.assertEqual(cot["due_label"], "1st week")
+        self.assertEqual(cot["completion"]["October"]["status"], "done")
+        self.assertEqual(cot["completion"]["October"]["source"], "sheet")
+        self.assertEqual(cot["completion"]["October"]["text"], "10/6")
+        self.assertEqual(cot["completion"]["October"]["date"], "2026-10-06")
+        bonuses = next(t for t in month["tasks"] if t["task"].startswith("Review Tech Bonuses"))
+        self.assertEqual(bonuses["completion"]["October"]["status"], "not_started")
+        self.assertEqual(bonuses["months"]["October"]["kind"], "open")
+        ar = next(t for t in month["tasks"] if t["task"] == "Check Service Leasing AR")
+        self.assertEqual(ar["completion"]["January"]["status"], "skipped")
+        self.assertEqual(ar["completion"]["January"]["source"], "sheet")
+        vendor = next(t for t in month["tasks"] if t["task"].startswith("Create JE for Negotiated"))
+        self.assertEqual(vendor["months"]["May"]["text"], "530")
+        self.assertEqual(vendor["completion"]["May"]["status"], "not_started")
+        self.assertEqual(vendor["completion"]["October"]["status"], "done")
+
+        marked = self.client.post("/api/monthend/completion", json={
+            "key": bonuses["key"],
+            "month": "October",
+            "status": "done",
+            "date": "2026-10-11",
+            "note": "did it in the office",
+        })
+        self.assertEqual(marked.status_code, 200, marked.get_data(as_text=True))
+        saved = next(t for t in marked.get_json()["monthend"]["tasks"] if t["key"] == bonuses["key"])
+        self.assertEqual(saved["completion"]["October"]["status"], "done")
+        self.assertEqual(saved["completion"]["October"]["source"], "manual")
+        self.assertEqual(saved["completion"]["October"]["text"], "10/11")
+        self.assertEqual(saved["completion"]["October"]["note"], "did it in the office")
+        self.assertEqual(saved["months"]["October"]["kind"], "open")
+        forced = self.client.post("/api/monthend/completion", json={
+            "key": cot["key"], "month": "October", "status": "not_started",
+        })
+        self.assertEqual(
+            next(t for t in forced.get_json()["monthend"]["tasks"] if t["key"] == cot["key"])["completion"]["October"]["status"],
+            "not_started",
+        )
+        cleared = self.client.post("/api/monthend/completion", json={
+            "key": cot["key"], "month": "October", "status": "auto",
+        })
+        self.assertEqual(
+            next(t for t in cleared.get_json()["monthend"]["tasks"] if t["key"] == cot["key"])["completion"]["October"]["source"],
+            "sheet",
+        )
+
+        denied = self.client.post("/api/ingest/month-end/status", json={
+            "task": bonuses["task"], "due": "1st Week", "status": "skipped",
+        })
+        self.assertEqual(denied.status_code, 401)
+        bot = self.client.post(
+            "/api/ingest/month-end/status",
+            json={"task": bonuses["task"], "due": "1st Week", "month": "November", "status": "in_progress", "note": "bot started it"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(bot.status_code, 200, bot.get_data(as_text=True))
+        self.assertEqual(bot.get_json()["completion"]["status"], "in_progress")
+        self.assertEqual(bot.get_json()["completion"]["source"], "bot")
+        missing = self.client.post(
+            "/api/ingest/month-end/status",
+            json={"task": "Not a real line", "due": "1st week", "status": "done"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(missing.status_code, 404)
+        bad = self.client.post("/api/monthend/completion", json={"key": bonuses["key"], "month": "Oct", "status": "done"})
+        self.assertEqual(bad.status_code, 400)
+
+        folded = self.client.post("/api/monthend/weeks", json={"due": "1st Week", "collapsed": True})
+        self.assertEqual(folded.status_code, 200)
+        self.assertTrue(folded.get_json()["week_collapsed"]["1st week"])
+        opened = self.client.post("/api/monthend/weeks", json={"due": "2nd week", "collapsed": False})
+        self.assertFalse(opened.get_json()["week_collapsed"]["2nd week"])
+
+        app2 = create_app(config(self.tmp.name))
+        client2 = app2.test_client()
+        client2.post("/login", data={"password": PASSWORD})
+        again = client2.get("/api/monthend").get_json()
+        self.assertTrue(again["week_collapsed"]["1st week"])
+        self.assertFalse(again["week_collapsed"]["2nd week"])
+        kept = next(t for t in again["tasks"] if t["key"] == bonuses["key"])
+        self.assertEqual(kept["completion"]["October"]["note"], "did it in the office")
+        self.assertEqual(kept["completion"]["November"]["source"], "bot")
+        self.assertEqual(kept["months"]["October"]["kind"], "open")
 
     def test_demo_seed_is_opt_in(self):
         app = create_app(config(self.tmp.name + "-demo", demo=True))

@@ -14,6 +14,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 from app.clock import now
@@ -40,6 +41,37 @@ SEED_FILES = ("month_end_2026.csv", "month_end_registry.json", "month_end_candid
 
 def key(task, due):
     return " ".join(task.split()).lower() + "|" + " ".join(due.split()).lower()
+
+
+def due_norm(due):
+    return " ".join(str(due or "").split()).lower()
+
+
+_DUE_CANON = {due_norm(d): d for d in DUE_ORDER}
+
+
+def due_label(due):
+    text = " ".join(str(due or "").split())
+    return _DUE_CANON.get(due_norm(text), text or "No due")
+
+
+_SHEET_DATE = re.compile(r"^(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?$")
+COMPLETION_STATUSES = ("done", "in_progress", "skipped", "not_started")
+STATUS_ALIASES = {
+    "done": "done",
+    "in_progress": "in_progress",
+    "in progress": "in_progress",
+    "progress": "in_progress",
+    "skipped": "skipped",
+    "skip": "skipped",
+    "na": "skipped",
+    "n/a": "skipped",
+    "not_started": "not_started",
+    "not started": "not_started",
+    "open": "not_started",
+    "auto": "auto",
+    "clear": "auto",
+}
 
 
 K13 = key("Update Perform Shared Resources Spreadsheet", "2nd Week")
@@ -136,6 +168,124 @@ def rows_to_csv(rows):
 def done_text(iso_date):
     d = datetime.date.fromisoformat(iso_date)
     return f"{d.month}/{d.day}"
+
+
+def parse_sheet_date(text, year=2026):
+    """A month-cell date such as 10/6 or 10/6/2026. Bare numbers and notes are not dates."""
+    match = _SHEET_DATE.fullmatch(" ".join(str(text or "").split()))
+    if not match:
+        return None
+    month, day, raw_year = match.groups()
+    if raw_year:
+        y = int(raw_year)
+        if y < 100:
+            y += 2000
+    else:
+        y = year
+    try:
+        return datetime.date(y, int(month), int(day)).isoformat()
+    except ValueError:
+        return None
+
+
+def sheet_auto_status(cell, year=2026):
+    """Done when the sheet cell is a date or the word Done. N/A is Skipped. Nothing is written back."""
+    text = " ".join(str((cell or {}).get("text") or "").split())
+    kind = (cell or {}).get("kind")
+    if kind == "na" or text.lower() in {"na", "n/a", "no longer used"}:
+        label = "No longer used" if text.lower() == "no longer used" else "Skipped / N/A"
+        return {"status": "skipped", "date": None, "text": label, "note": "", "source": "sheet"}
+    iso = parse_sheet_date(text, year)
+    if iso:
+        return {"status": "done", "date": iso, "text": text, "note": "", "source": "sheet"}
+    if text.lower() == "done":
+        return {"status": "done", "date": None, "text": "Done", "note": "", "source": "sheet"}
+    return None
+
+
+def _blank_status():
+    return {"status": "not_started", "date": None, "text": "Not started", "note": "", "source": None}
+
+
+def _public_override(stored):
+    status = stored.get("status")
+    date = stored.get("date") or None
+    if status == "done":
+        text = done_text(date) if date else "Done"
+    elif status == "in_progress":
+        text = "In progress"
+    elif status == "skipped":
+        text = "Skipped / N/A"
+    else:
+        text = "Not started"
+    source = stored.get("source") if stored.get("source") in ("manual", "bot") else "manual"
+    return {
+        "status": status,
+        "date": date,
+        "text": text,
+        "note": stored.get("note") or "",
+        "source": source,
+    }
+
+
+def _run_month(rec):
+    month = rec.get("log_month")
+    if month in MONTHS:
+        return month
+    if rec.get("done_date"):
+        try:
+            return month_name(rec["done_date"])
+        except ValueError:
+            return None
+    return None
+
+
+def resolve_completion(cell, month, override, recs, year=2026):
+    if override and override.get("status") in COMPLETION_STATUSES:
+        return _public_override(override)
+    auto = sheet_auto_status(cell, year)
+    if auto:
+        return auto
+    succeeded = [r for r in recs if r.get("status") == "succeeded" and _run_month(r) == month]
+    if succeeded:
+        rec = succeeded[-1]
+        date = rec.get("done_date") or None
+        return {
+            "status": "done",
+            "date": date,
+            "text": rec.get("done_text") or (done_text(date) if date else "Done"),
+            "note": rec.get("completion_notes") or "",
+            "source": "run",
+        }
+    if any(r.get("status") in ("queued", "awaiting_approval", "approved") and _run_month(r) == month for r in recs):
+        return {"status": "in_progress", "date": None, "text": "In progress", "note": "", "source": "run"}
+    return _blank_status()
+
+
+def parse_completion_request(body, default_month, default_date):
+    raw_status = " ".join(str(body.get("status") or "").split()).lower()
+    status = STATUS_ALIASES.get(raw_status)
+    if not status:
+        raise ValueError("status must be done, in_progress, skipped, not_started, or auto")
+    month = body.get("month") or default_month
+    if month not in MONTHS:
+        raise ValueError("month must be a full name, like October")
+    date = str(body.get("date") or body.get("done_date") or "").strip()
+    if date:
+        try:
+            datetime.date.fromisoformat(date)
+        except ValueError:
+            raise ValueError("date must be YYYY-MM-DD")
+    elif status == "done":
+        date = default_date
+    note = str(body.get("note") if body.get("note") is not None else "").strip()[:1000]
+    if body.get("key"):
+        task_key = str(body["key"])
+    elif str(body.get("task") or "").strip() and body.get("due") is not None:
+        task_key = key(str(body["task"]), str(body["due"]))
+    else:
+        raise ValueError("send task and due, or key")
+    return task_key, month, status, date, note
 
 
 def month_name(iso_date):
@@ -269,6 +419,8 @@ class MonthEnd:
             cand_use = cand if cand and cand.get("badge") != "manual" else None
             tasks.append({
                 **t,
+                "due_norm": due_norm(t["due"]),
+                "due_label": due_label(t["due"]),
                 "id": "me-" + hashlib.md5(t["key"].encode()).hexdigest()[:10],
                 "ladder": ladder.get("ladder", "manual"),
                 "new": entry["first_seen"] != reg["seeded_at"],
@@ -283,8 +435,9 @@ class MonthEnd:
                 "files": self.files_for(t["key"], reg),
                 "note": reg.get("notes", {}).get(t["key"]),
             })
+        due_rank = {due_norm(d): i for i, d in enumerate(DUE_ORDER)}
         tasks.sort(key=lambda t: (
-            DUE_ORDER.index(t["due"]) if t["due"] in DUE_ORDER else 99,
+            due_rank.get(t["due_norm"], 99),
             0 if t["order"] is not None else 1,
             t["order"] or 0,
             t["row"],
@@ -309,6 +462,8 @@ class MonthEnd:
             "luke_count": len(luke),
             "ready_count": sum(t["ladder"] == "ready" for t in luke),
             "source": "Shared Accounting > Month End- 2026 (read-only snapshot)",
+            "week_collapsed": {str(k): bool(v) for k, v in (reg.get("week_collapsed") or {}).items()},
+            "manual_completion": reg.get("completion") or {},
         }
 
     def load_and_sync(self):
@@ -378,6 +533,49 @@ class MonthEnd:
 
         return self._locked(run)
 
+    def set_week_collapsed(self, due, collapsed):
+        norm = due_norm(due)
+        if not norm:
+            raise ValueError("due required")
+
+        def run():
+            reg = self._read_reg()
+            reg.setdefault("week_collapsed", {})[norm] = bool(collapsed)
+            self._write_reg(reg)
+            return reg["week_collapsed"]
+
+        return self._locked(run)
+
+    def set_completion(self, task_key, month, status, date=None, note="", source="manual"):
+        if month not in MONTHS:
+            raise ValueError("unknown month")
+        if status not in COMPLETION_STATUSES and status != "auto":
+            raise ValueError("unknown status")
+        if source not in ("manual", "bot"):
+            source = "manual"
+
+        def run():
+            reg = self._read_reg()
+            if task_key not in reg["tasks"]:
+                raise KeyError(task_key)
+            bucket = reg.setdefault("completion", {}).setdefault(task_key, {})
+            if status == "auto":
+                bucket.pop(month, None)
+                if not bucket:
+                    reg["completion"].pop(task_key, None)
+            else:
+                bucket[month] = {
+                    "status": status,
+                    "date": date or "",
+                    "note": note or "",
+                    "source": source,
+                    "set_at": now().isoformat(timespec="seconds"),
+                }
+            self._write_reg(reg)
+            return bucket.get(month)
+
+        return self._locked(run)
+
     def task_by_key(self, k, payload=None):
         data = payload or self.load_and_sync()
         return next((t for t in data["tasks"] if t["key"] == k), None)
@@ -428,7 +626,8 @@ def public_request(rec):
 
 
 def decorate(payload, requests):
-    """Fold persisted Run Now requests into the checklist the page renders."""
+    """Fold persisted Run Now requests and checklist status into the page payload."""
+    manual = payload.pop("manual_completion", None) or {}
     by_key = {}
     for rec in requests:
         by_key.setdefault(rec["task_key"], []).append(rec)
@@ -440,6 +639,11 @@ def decorate(payload, requests):
             (p for p in reversed(task["requests"]) if p["state"] in ("queued", "awaiting", "approved")),
             None,
         )
+        overrides = manual.get(task["key"]) or {}
+        task["completion"] = {
+            month: resolve_completion(task["months"].get(month), month, overrides.get(month), recs)
+            for month in MONTHS
+        }
         for rec in recs:
             if rec["status"] != "succeeded":
                 continue

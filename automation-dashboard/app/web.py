@@ -16,7 +16,7 @@ from app import clock
 from app.auth import clear_session, logged_in, password_ok, safe_next, set_session
 from app.catalog import annotated, apply_override, public_view
 from app.modules import MODULES
-from app.month_end import MONTHS, decorate
+from app.month_end import MONTHS, decorate, parse_completion_request
 from app.schedule import build_day, fmt_last_run
 from app.settings_store import public_settings, save_settings
 from app.sync_hook import request_month_end_sync
@@ -227,6 +227,32 @@ def register(app):
         except KeyError:
             return jsonify(error="unknown task"), 400
         return jsonify(ok=True, monthend=_month_payload())
+
+    @app.post("/api/monthend/completion")
+    def monthend_completion():
+        body = _body()
+        moment = clock.now()
+        try:
+            task_key, month, status, date, note = parse_completion_request(
+                body, MONTHS[moment.month - 1], moment.date().isoformat(),
+            )
+            _me().set_completion(task_key, month, status, date=date, note=note, source="manual")
+        except KeyError:
+            return jsonify(error="unknown task"), 400
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, monthend=_month_payload())
+
+    @app.post("/api/monthend/weeks")
+    def monthend_weeks():
+        body = _body()
+        if "collapsed" not in body:
+            return jsonify(error="collapsed true or false required"), 400
+        try:
+            saved = _me().set_week_collapsed(body.get("due", ""), bool(body.get("collapsed")))
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, week_collapsed=saved)
 
     @app.post("/api/monthend/filereq")
     def monthend_filereq():
