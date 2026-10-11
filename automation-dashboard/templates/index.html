@@ -92,6 +92,11 @@ tr.gw td{color:#99a}
 .abadge{font:inherit;font-size:11px;font-weight:700;border-radius:10px;padding:3px 4px;border:1px solid #ccd;cursor:pointer;max-width:100%}
 .abadge.ld-manual{background:#eceef2;color:#5b6474}.abadge.ld-ready{background:#2e9e57;color:#fff;border-color:#2e9e57}.abadge.ld-new{background:#5b9cff;color:#fff;border-color:#5b9cff}
 .abadge option{color:#1d2433;background:#fff;font-weight:600}
+.teachlink{display:inline-block;margin-top:4px;background:none;border:0;padding:0;color:#2456a6;font-size:11px;font-weight:700;cursor:pointer;text-decoration:underline}
+.teachbox{background:#f4f8ff;border:1px solid #b7c9e8;border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.45;color:#243a5e;max-width:680px}
+.teachbox .phrase{font-weight:750;color:#1f2a44}
+.teachacts{display:flex;gap:10px;align-items:center;margin-top:6px}
+.teachacts a{color:#2456a6;font-weight:700;font-size:12px}
 .weekhead{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:#fff;border:0;border-radius:10px;box-shadow:0 1px 3px #0001;padding:10px 14px;margin:14px 0 6px;cursor:pointer;font:inherit;color:#1f2a44}
 .weekhead b{font-size:15px}.weekcount{margin-left:auto;font-weight:750;font-size:13px;color:#1f2a44}.weekcount.all{color:#137333}
 .odt tr.isdone td{background:#eef6f0;color:#5c6b63}.odt tr.isdone .taskname{text-decoration:line-through;text-decoration-color:#7d9a88}
@@ -232,7 +237,8 @@ function showTab(t){[['daily',dailyView,tabDaily],['all',allView,tabAll],['od',o
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DUE=['1st week','2nd Week','3rd Week','4th Week','End of Month','Weekly','Monthly','Yearly'];
 const LADDER={manual:['ld-manual','Manual'],ready:['ld-ready','Run Now- Ready'],'new':['ld-new','New']};
-let OD=null,odM=DASH.month,odL='all',cmpEdit=null;const odOpen=new Set();
+let OD=null,odM=DASH.month,odL='all',cmpEdit=null,teachOpen=null;const odOpen=new Set();
+const MONTH_END_BOT='grokbot://app/v1/agent?id=5061c392-f770-44b7-835a-85eba2d15217';
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
 function hm(d){let h=d.getHours(),m=String(d.getMinutes()).padStart(2,'0'),ap=h>=12?'PM':'AM';return `${h%12||12}:${m} ${ap}`}
 function fmtTs(iso){const d=new Date(iso);if(isNaN(d))return String(iso||'');
@@ -355,7 +361,16 @@ function ldBadge(t){const label=autoOf(t);const cls=label==='Run Now- Ready'?'ld
  return `<select class="abadge ${cls}" title="Saved on this dashboard. A sheet sync keeps it. It is not written to the sheet." aria-label="Automation badge for ${esc(t.task)}" onchange="saveAuto('${t.id}',this.value)">${opts}</select>`}
 async function saveAuto(id,value){const t=OD.tasks.find(x=>x.id===id);if(!t)return;
  const r=await (await fetch('/api/monthend/automation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:t.key,automation:value})})).json();
- if(r.error){alert(r.error);renderOd();return}if(r.monthend)OD=r.monthend;renderOd()}
+ if(r.error){alert(r.error);renderOd();return}if(r.monthend)OD=r.monthend;if(value==='Run Now- Ready')teachOpen=null;renderOd()}
+function teachPhrase(t){return 'Teach you '+t.task}
+function toggleTeach(id){teachOpen=teachOpen===id?null:id;renderOd()}
+function teachBox(t){const phrase=teachPhrase(t);
+ return `<div class=teachbox>Open the Month-End bot in Grok Bot and say: "<span class=phrase>${esc(phrase)}</span>" — then walk it through the task once. It saves the how-to on the sheet (comment on the Notes cell) and flips this task to Run Now- Ready.<div class=teachacts><button type=button class=cmpbtn id="teachcopy-${t.id}" onclick="copyTeach('${t.id}')">Copy</button><a href="${MONTH_END_BOT}">Open Month-End bot</a></div></div>`}
+async function copyTeach(id){const t=(OD.tasks||[]).find(x=>x.id===id);if(!t)return;const phrase=teachPhrase(t);let ok=false;
+ try{await navigator.clipboard.writeText(phrase);ok=true}catch(e){const ta=document.createElement('textarea');ta.value=phrase;document.body.appendChild(ta);ta.select();try{ok=document.execCommand('copy')}catch(err){ok=false}ta.remove()}
+ const btn=document.getElementById('teachcopy-'+id);if(btn)btn.textContent=ok?'Copied':'Copy failed'}
+function autoHint(t){const label=autoOf(t);if(label!=='Manual'&&label!=='New')return '';
+ return `<button type=button class=teachlink onclick="toggleTeach('${t.id}')">How to automate this</button>`}
 function compOf(t,m){return (t.completion&&t.completion[m])||{status:'not_started',text:'Not started',note:'',source:null}}
 function compTip(c){const src={sheet:'From the sheet snapshot. The sheet was not changed from here.',run:'A Run Now for this month finished.',manual:'Marked on this dashboard. The sheet was not changed.',bot:'A bot marked this through the machine API. The sheet was not changed.'}[c.source]||'';
  return [c.text||c.status,src,c.note||'','Separate from the automation badge (Manual, Run Now- Ready, or New).'].filter(Boolean).join(' · ')}
@@ -407,8 +422,8 @@ function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='L
   G.map(t=>{const n=t.notes.length>60?t.notes.slice(0,57)+'…':t.notes,op=odOpen.has(t.id),isDone=compOf(t,odM).status==='done';
    return `<tr class="${t.ladder==='ready'?'rdy':''} ${isDone?'isdone':''}"><td class=rowno>Row ${t.row}</td><td class=tk onclick="tog2('${t.id}')" style="cursor:pointer"><span class=caret>${op?'&#9662;':'&#9656;'}</span>${t.order!=null?`<span class=ord>#${t.order}</span>`:''}<span class=taskname>${esc(t.task)}</span>${fileTags(t)}${t.note&&t.note.text?` <span class=noteic title="Your notes: ${esc(t.note.text)}">${NOTEICON}</span>`:''}<span class=cat>${esc(t.category)}</span></td>
    <td class=nt title="${esc(t.notes)}">${esc(n)||'<span style="color:#bbc">–</span>'}</td><td>${compCell(t)}</td><td title="Sheet column, read only">${st(monthVal(t,odM))}</td><td>${pm?st(monthVal(t,pm)):'–'}</td>
-   <td>${ldBadge(t)}${t.ladder==='ready'&&t.bot?`<span class=bot>&#8594; ${esc(t.bot)}</span>`:''}${t.qbo_write?'<span class=qa>QBO write: needs your approval</span>':''}</td>
-   <td>${runCell(t)}</td></tr>`+(op?`<tr class=det2><td></td><td colspan=7><div class=notes2><div class=yn><b>Your notes</b> <span class=muted2>(instructions for the bot every time this task runs)</span><textarea id="note-${t.id}" class=notebox rows=3 placeholder="e.g. Use the Month-to-Date report; post under the prior month" onblur="saveStanding('${t.id}')">${esc(t.note&&t.note.text||'')}</textarea><div class=nrow><button class=ok onclick="saveStanding('${t.id}')">Save</button><span class=nstamp>${stamp2(t.note)}</span></div></div><div class=sn><b>Sheet notes</b> <span class=muted2>(read-only, from the Notes column)</span><div class=noteview>${esc(t.notes)||'<span class=muted2>–</span>'}</div></div></div>${t.detail?`<div><b>How it runs:</b> ${esc(t.detail)}</div>`:''}${filesSection(t)}<div><b>Run history:</b> ${histHtml(t)}</div><div class=muted2>Key: ${esc(t.key)} · first seen ${fmtTs(t.first_seen)}</div></td></tr>`:'')}).join('')+`</tbody></table>`}).join('')||'<p>No lines match.</p>';
+   <td>${ldBadge(t)}${autoHint(t)}${t.ladder==='ready'&&t.bot?`<span class=bot>&#8594; ${esc(t.bot)}</span>`:''}${t.qbo_write?'<span class=qa>QBO write: needs your approval</span>':''}</td>
+   <td>${runCell(t)}</td></tr>`+(teachOpen===t.id&&(autoOf(t)==='Manual'||autoOf(t)==='New')?`<tr class=det2><td></td><td colspan=7>${teachBox(t)}</td></tr>`:'')+(op?`<tr class=det2><td></td><td colspan=7><div class=notes2><div class=yn><b>Your notes</b> <span class=muted2>(instructions for the bot every time this task runs)</span><textarea id="note-${t.id}" class=notebox rows=3 placeholder="e.g. Use the Month-to-Date report; post under the prior month" onblur="saveStanding('${t.id}')">${esc(t.note&&t.note.text||'')}</textarea><div class=nrow><button class=ok onclick="saveStanding('${t.id}')">Save</button><span class=nstamp>${stamp2(t.note)}</span></div></div><div class=sn><b>Sheet notes</b> <span class=muted2>(read-only, from the Notes column)</span><div class=noteview>${esc(t.notes)||'<span class=muted2>–</span>'}</div></div></div>${t.detail?`<div><b>How it runs:</b> ${esc(t.detail)}</div>`:''}${filesSection(t)}<div><b>Run history:</b> ${histHtml(t)}</div><div class=muted2>Key: ${esc(t.key)} · first seen ${fmtTs(t.first_seen)}</div></td></tr>`:'')}).join('')+`</tbody></table>`}).join('')||'<p>No lines match.</p>';
  odOthersSum.innerHTML=`Other people's lines (${O.length}) <span class=hsub>· read-only, no Run Now</span>`;
  odOthersBody.innerHTML=`<table class="odt tw"><thead><tr><th>Row</th><th>Due</th><th>Task</th><th>Assigned</th><th>${odM.slice(0,3)}</th><th>${pm?pm.slice(0,3):'Prev'}</th></tr></thead><tbody>`+O.map(t=>`<tr><td class=rowno>Row ${t.row}</td><td>${esc(t.due)}</td><td>${esc(t.task)}</td><td>${esc(t.assigned)}</td><td>${st(t.months[odM])}</td><td>${pm?st(t.months[pm]):'–'}</td></tr>`).join('')+'</tbody></table>';
  odRemovedSum.innerHTML=`Removed from sheet (${OD.removed.length})`;
