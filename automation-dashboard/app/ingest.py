@@ -4,6 +4,7 @@ import datetime
 from flask import current_app, jsonify, request, send_file
 
 from app import clock
+from app.attachments import add_attachment, list_attachments, parse_month, read_image
 from app.catalog import by_id
 from app.month_end import MONTHS, decorate, done_text, parse_automation_badge, parse_completion_request, task_key_from
 from app.schedule import assign_slot, fmt_actual
@@ -365,3 +366,66 @@ def register(app):
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
         return jsonify(ok=True, id=saved["id"], task=saved["task"], due=saved["due"], dismissed=True)
+
+    def _attachment_target():
+        """Resolve id (or task + due) and YYYY-MM from a multipart form or query string."""
+        body = {
+            "id": request.form.get("id") or request.args.get("id"),
+            "me_id": request.form.get("me_id") or request.args.get("me_id"),
+            "task": request.form.get("task") or request.args.get("task"),
+            "due": request.form.get("due") if "due" in request.form else request.args.get("due"),
+            "key": request.form.get("key") or request.args.get("key"),
+        }
+        me = _me()
+        task_key = task_key_from(body, me.registry())
+        month = parse_month(request.form.get("month") or request.args.get("month"))
+        return me, task_key, month
+
+    @app.post("/api/ingest/month-end/attachment")
+    def ingest_month_end_attachment():
+        """Store a PNG or JPEG on a task's history for one month. Several are allowed."""
+        me = _me()
+        if request.content_length and request.content_length > 10 * 1024 * 1024 + 256 * 1024:
+            return jsonify(error="file is over 10 MB"), 400
+        try:
+            me, task_key, month = _attachment_target()
+            raw, content_type, ext, name = read_image(request.files.get("file"))
+            saved = add_attachment(
+                me, task_key, month, raw, content_type, ext, name, request.form.get("caption"),
+            )
+        except KeyError:
+            return jsonify(error="unknown task"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        payload = decorate(me.load_and_sync(), _db().all_requests())
+        task = next((t for t in payload["tasks"] + payload["removed"] if t["key"] == task_key), None)
+        return jsonify(
+            ok=True,
+            id=task.get("me_id") if task else None,
+            task=task.get("task") if task else None,
+            due=task.get("due") if task else None,
+            month=month,
+            attachment=saved,
+        )
+
+    @app.get("/api/ingest/month-end/attachments")
+    def ingest_month_end_attachments():
+        """List images stored for one task and month. The files themselves need a logged-in session."""
+        try:
+            me, task_key, month = _attachment_target()
+            items = list_attachments(me, task_key, month)
+        except KeyError:
+            return jsonify(error="unknown task"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        payload = decorate(me.load_and_sync(), _db().all_requests())
+        task = next((t for t in payload["tasks"] + payload["removed"] if t["key"] == task_key), None)
+        listed = [{k: v for k, v in item.items() if k != "url"} for item in items]
+        return jsonify(
+            ok=True,
+            id=task.get("me_id") if task else None,
+            task=task.get("task") if task else None,
+            due=task.get("due") if task else None,
+            month=month,
+            attachments=listed,
+        )

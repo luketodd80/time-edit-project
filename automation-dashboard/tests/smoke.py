@@ -85,6 +85,10 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(self.client.post("/api/monthend/link", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/monthend/link/dismiss", json={}).status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/month-end/link/dismiss", json={}).status_code, 401)
+        self.assertEqual(self.client.post("/api/ingest/month-end/attachment").status_code, 401)
+        self.assertEqual(self.client.get("/api/ingest/month-end/attachments").status_code, 401)
+        self.assertEqual(self.client.get("/api/monthend/attachments/abc").status_code, 401)
+        self.assertEqual(self.client.delete("/api/monthend/attachments/abc").status_code, 401)
         self.assertEqual(self.client.post("/api/ingest/runs", json={}).status_code, 401)
         bad = self.login(password="nope")
         self.assertEqual(bad.status_code, 401)
@@ -456,6 +460,9 @@ class DashboardSmoke(unittest.TestCase):
         self.assertIn("setHideFinished", page)
         self.assertIn("monthend.hideFinished", page)
         self.assertIn("done hidden", page)
+        self.assertIn("openAtt", page)
+        self.assertIn("deleteAttachment", page)
+        self.assertIn("thumbbtn", page)
         self.assertNotIn("Candidate", page)
         self.assertNotIn("Being built", page)
         month = self.client.get("/api/monthend").get_json()
@@ -855,6 +862,124 @@ class DashboardSmoke(unittest.TestCase):
         moved = next(t for t in linked.get_json()["monthend"]["tasks"] if t["task"] == "Sales Commissions Renamed")
         self.assertEqual(moved["me_id"], kept_id)
         self.assertFalse(moved["new"])
+
+    def test_month_end_history_images(self):
+        self.authed()
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        )
+        jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 32
+        month = self.client.get("/api/monthend").get_json()
+        commissions = next(t for t in month["tasks"] if t["task"] == "Run SalesPeople Commissions")
+        kept_id = commissions["me_id"]
+
+        def upload(client, token, image, filename, ctype, caption=None, me_id=kept_id, month_s="2026-10"):
+            data = {"id": me_id, "month": month_s, "file": (io.BytesIO(image), filename, ctype)}
+            if caption is not None:
+                data["caption"] = caption
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            return client.post("/api/ingest/month-end/attachment", data=data, headers=headers)
+
+        first = upload(self.client, TOKEN, png, "close.png", "image/png", "October close")
+        self.assertEqual(first.status_code, 200, first.get_data(as_text=True))
+        saved = first.get_json()["attachment"]
+        self.assertEqual(first.get_json()["id"], kept_id)
+        self.assertEqual(first.get_json()["month"], "2026-10")
+        self.assertEqual(saved["caption"], "October close")
+        self.assertEqual(saved["content_type"], "image/png")
+        self.assertTrue(saved["url"].startswith("/api/monthend/attachments/"))
+
+        second = upload(self.client, TOKEN, jpeg, "note.jpg", "image/jpeg")
+        self.assertEqual(second.status_code, 200, second.get_data(as_text=True))
+        self.assertEqual(second.get_json()["attachment"]["caption"], "")
+
+        listed = self.client.get(
+            f"/api/ingest/month-end/attachments?id={kept_id}&month=2026-10",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(listed.status_code, 200, listed.get_data(as_text=True))
+        body = listed.get_json()
+        self.assertEqual([item["id"] for item in body["attachments"]], [saved["id"], second.get_json()["attachment"]["id"]])
+        self.assertNotIn("url", body["attachments"][0])
+        self.assertNotIn("file", body["attachments"][0])
+
+        guest = create_app(config(self.tmp.name)).test_client()
+        self.assertEqual(guest.get(saved["url"]).status_code, 401)
+        self.assertEqual(
+            guest.get(saved["url"], headers={"Authorization": f"Bearer {TOKEN}"}).status_code, 401
+        )
+        image = self.client.get(saved["url"])
+        self.assertEqual(image.status_code, 200)
+        self.assertEqual(image.mimetype, "image/png")
+        self.assertTrue(image.data.startswith(b"\x89PNG"))
+        self.assertEqual(image.headers["X-Content-Type-Options"], "nosniff")
+
+        fresh = self.client.get("/api/monthend").get_json()
+        row = next(t for t in fresh["tasks"] if t["me_id"] == kept_id)
+        self.assertEqual(len(row["attachments"]["2026-10"]), 2)
+        shared = next(t for t in fresh["tasks"] if t["task"] == "Update Perform Shared Resources Spreadsheet")
+        october = next(h for h in shared["history"] if h.get("month") == "October")
+        self.assertEqual(october["month_iso"], "2026-10")
+
+        seed = (ROOT / "seed" / "month_end_2026.csv").read_text(encoding="utf-8")
+        rows = list(csv.reader(io.StringIO(seed)))
+        for row in rows[1:]:
+            if row[3].strip() == "Run SalesPeople Commissions":
+                row[0] = "2nd Week"
+                row[3] = "Sales Commissions Renamed"
+        buf = io.StringIO()
+        csv.writer(buf).writerows(rows)
+        synced = self.client.post(
+            "/api/ingest/month-end",
+            data=buf.getvalue(),
+            headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "text/csv"},
+        )
+        self.assertEqual(synced.status_code, 200, synced.get_data(as_text=True))
+        renamed = next(t for t in self.client.get("/api/monthend").get_json()["tasks"] if t["task"] == "Sales Commissions Renamed")
+        linked = self.client.post("/api/monthend/link", json={"id": renamed["me_id"], "link_to": kept_id})
+        self.assertEqual(linked.status_code, 200, linked.get_data(as_text=True))
+        moved = next(t for t in linked.get_json()["monthend"]["tasks"] if t["me_id"] == kept_id)
+        self.assertEqual(len(moved["attachments"]["2026-10"]), 2)
+        still = self.client.get(
+            f"/api/ingest/month-end/attachments?id={kept_id}&month=2026-10",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(len(still.get_json()["attachments"]), 2)
+
+        removed = self.client.delete("/api/monthend/attachments/" + saved["id"])
+        self.assertEqual(removed.status_code, 200, removed.get_data(as_text=True))
+        self.assertEqual(self.client.get(saved["url"]).status_code, 404)
+        left = self.client.get(
+            f"/api/ingest/month-end/attachments?id={kept_id}&month=2026-10",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual([item["id"] for item in left.get_json()["attachments"]], [second.get_json()["attachment"]["id"]])
+
+        app2 = create_app(config(self.tmp.name))
+        client2 = app2.test_client()
+        client2.post("/login", data={"password": PASSWORD})
+        again = client2.get(
+            f"/api/ingest/month-end/attachments?id={kept_id}&month=2026-10",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(len(again.get_json()["attachments"]), 1)
+        kept_image = "/api/monthend/attachments/" + left.get_json()["attachments"][0]["id"]
+        self.assertEqual(client2.get(kept_image).status_code, 200)
+
+        bad_type = upload(self.client, TOKEN, b"GIF89a", "anim.gif", "image/gif")
+        self.assertEqual(bad_type.status_code, 400)
+        mismatch = upload(self.client, TOKEN, jpeg, "close.png", "image/png")
+        self.assertEqual(mismatch.status_code, 400)
+        empty = upload(self.client, TOKEN, b"", "close.png", "image/png")
+        self.assertEqual(empty.status_code, 400)
+        huge = upload(self.client, TOKEN, b"\x89PNG\r\n\x1a\n" + b"\x00" * (10 * 1024 * 1024), "big.png", "image/png")
+        self.assertEqual(huge.status_code, 400)
+        self.assertIn("10 MB", huge.get_json()["error"])
+        unknown = upload(self.client, TOKEN, png, "close.png", "image/png", me_id="ME-999")
+        self.assertEqual(unknown.status_code, 404)
+        bad_month = upload(self.client, TOKEN, png, "close.png", "image/png", month_s="October")
+        self.assertEqual(bad_month.status_code, 400)
 
     def test_demo_seed_is_opt_in(self):
         app = create_app(config(self.tmp.name + "-demo", demo=True))

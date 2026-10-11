@@ -22,6 +22,7 @@ import os
 import re
 from pathlib import Path
 
+from app.attachments import public_attachments
 from app.clock import now
 
 MONTHS = [
@@ -447,6 +448,7 @@ class MonthEnd:
     def ensure_seeded(self):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         (self.data_dir / "uploads").mkdir(exist_ok=True)
+        (self.data_dir / "attachments").mkdir(exist_ok=True)
         (self.data_dir / "sheet_snapshots").mkdir(exist_ok=True)
         for name in SEED_FILES:
             dest = self.data_dir / name
@@ -573,6 +575,7 @@ class MonthEnd:
                 "why": cand["why"] if cand else "New task: not classified yet",
                 "detail": ladder.get("detail") if is_ready else None,
                 "history": [],
+                "attachments": public_attachments(reg, t["key"]),
                 "cols": COLS,
                 "files": self.files_for(t["key"], reg),
                 "note": reg.get("notes", {}).get(t["key"]),
@@ -605,6 +608,7 @@ class MonthEnd:
                     for month in MONTHS
                 },
                 "history": [],
+                "attachments": public_attachments(reg, k),
             })
         luke = [t for t in tasks if t["assigned"] == "Luke"]
         return {
@@ -780,6 +784,11 @@ class MonthEnd:
                 bucket = reg.get(name)
                 if isinstance(bucket, dict) and old_key in bucket:
                     bucket[new_key] = bucket.pop(old_key)
+            atts = reg.get("attachments")
+            if isinstance(atts, dict) and old_key in atts:
+                dest = atts.setdefault(new_key, {})
+                for month, items in atts.pop(old_key).items():
+                    dest.setdefault(month, []).extend(items or [])
             reg.setdefault("automation", {})[new_key] = badge
             new_entry["first_seen"] = old_entry.get("first_seen") or new_entry.get("first_seen")
             new_entry["files_key"] = old_entry.get("files_key") or old_key
@@ -818,9 +827,16 @@ class MonthEnd:
         return next((t for t in data["tasks"] if t["key"] == k), None)
 
 
+def history_month_iso(name, year):
+    if name not in MONTHS or not year:
+        return ""
+    return f"{int(year):04d}-{MONTHS.index(name) + 1:02d}"
+
+
 def history_items(task_key, requests):
     items = []
     for h in HISTORY.get(task_key, []):
+        date = h.get("date") or ""
         items.append({
             "when": f"Oct 10 {h['time']}",
             "state": h["state"],
@@ -828,6 +844,8 @@ def history_items(task_key, requests):
             "files": ", ".join(h.get("files") or []),
             "run_note": "",
             "standing": "",
+            "month": h.get("month") or "",
+            "month_iso": date[:7] if len(date) >= 7 else history_month_iso(h.get("month"), 2026),
         })
     for rec in requests:
         files = rec.get("files") or []
@@ -837,6 +855,11 @@ def history_items(task_key, requests):
             if f.get("file_note"):
                 bit += f" (file note: {f['file_note']})"
             bits.append(bit)
+        created = rec.get("created_at") or ""
+        year = int(created[:4]) if len(created) >= 4 and created[:4].isdigit() else None
+        done = rec.get("done_date") or ""
+        if len(done) >= 4 and done[:4].isdigit():
+            year = int(done[:4])
         items.append({
             "when": fmt_ts(rec["created_at"]),
             "state": rec["status"],
@@ -844,6 +867,8 @@ def history_items(task_key, requests):
             "files": ", ".join(bits),
             "run_note": rec.get("run_note") or "",
             "standing": rec.get("standing_note") or "",
+            "month": rec.get("log_month") or "",
+            "month_iso": history_month_iso(rec.get("log_month"), year),
         })
     return items
 

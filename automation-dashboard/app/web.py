@@ -10,9 +10,10 @@ from pathlib import Path
 
 import html
 
-from flask import current_app, jsonify, redirect, request
+from flask import Response, current_app, jsonify, redirect, request
 
 from app import clock
+from app.attachments import delete_attachment, open_attachment
 from app.auth import clear_session, logged_in, password_ok, safe_next, set_session
 from app.catalog import annotated, apply_override, public_view
 from app.modules import MODULES
@@ -269,6 +270,26 @@ def register(app):
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
         return jsonify(ok=True, id=linked["id"], monthend=_month_payload())
+
+    @app.get("/api/monthend/attachments/<att_id>")
+    def monthend_attachment(att_id):
+        try:
+            path, content_type, _name = open_attachment(_me(), att_id)
+            payload = path.read_bytes()
+        except KeyError:
+            return jsonify(error="unknown attachment"), 404
+        resp = Response(payload, mimetype=content_type)
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Content-Disposition"] = "inline"
+        return resp
+
+    @app.delete("/api/monthend/attachments/<att_id>")
+    def monthend_attachment_delete(att_id):
+        try:
+            delete_attachment(_me(), att_id)
+        except KeyError:
+            return jsonify(error="unknown attachment"), 404
+        return jsonify(ok=True, monthend=_month_payload())
 
     @app.post("/api/monthend/link/dismiss")
     def monthend_link_dismiss():

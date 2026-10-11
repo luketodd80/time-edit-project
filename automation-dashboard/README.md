@@ -62,8 +62,9 @@ Everything that has to survive a restart lives under `DATA_DIR`:
 
 - `dashboard.sqlite` — recorded runs, Run Now requests, pause/resume/retire, command log
 - `month_end_2026.csv` — latest sheet snapshot
-- `month_end_registry.json` — task identity, the permanent id (`ME-001`, …), standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), which week groups are collapsed, and which new lines have had the link suggestion dismissed
+- `month_end_registry.json` — task identity, the permanent id (`ME-001`, …), standing notes, per-file notes, added file requirements, manual month status (Done / In progress / Skipped / Not started), the automation badge on each task (Manual / Run Now- Ready / New), which week groups are collapsed, which new lines have had the link suggestion dismissed, and the captions for history images
 - `uploads/` — files attached to Run Now
+- `attachments/` — PNG and JPEG images on a task's month history (10 MB each)
 - `sheet_snapshots/` — each snapshot a bot posts
 - `settings.json` — Sync webhook URL and key (mode `0600`). The API returns the URL and a masked key, never the full key
 
@@ -227,6 +228,25 @@ curl -s -X POST "$BASE/api/ingest/month-end/link/dismiss" \
 ```
 
 `id` is the new line. `task` and `due` work the same way as the other month-end calls. An unknown id is `404`. The dismissal is cleared on the next snapshot whose task name or due for that line is different.
+
+### Attach an image to a month's history
+
+`POST /api/ingest/month-end/attachment`
+
+Sends one PNG or JPEG for a task and a month (`2026-10`). A task-month can hold several images. Each file is at most 10 MB. The bytes have to be a PNG or JPEG. The image is stored under `DATA_DIR` and shows as a thumbnail in that month's history entry on the Month-End tab. Click the thumbnail to open it full size. **Delete** on the thumbnail removes that image. The image URL works for a logged-in session only.
+
+```bash
+curl -s -X POST "$BASE/api/ingest/month-end/attachment" \
+  -H "Authorization: Bearer $INGEST_TOKEN" \
+  -F "id=ME-029" \
+  -F "month=2026-10" \
+  -F "caption=October close" \
+  -F "file=@close.png;type=image/png"
+```
+
+`caption` is optional. An unknown id is `404`. A bad month, an empty file, a file over 10 MB, or a file that is not a PNG or JPEG is `400`.
+
+`GET /api/ingest/month-end/attachments?id=ME-029&month=2026-10` lists the images for that task and month (`id`, `caption`, `content_type`, `size`, `name`, `created_at`). It does not return the file bytes.
 
 ## Adding a tab
 
