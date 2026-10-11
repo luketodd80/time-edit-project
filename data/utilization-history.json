@@ -1462,6 +1462,41 @@
           "addedMinutes": 0
         }
       ]
+    },
+    {
+      "day": "2026-10-10",
+      "shopId": "covington",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "kody-peters",
+          "name": "Kody Peters",
+          "clockedHours": 3.94,
+          "soHours": 3.84,
+          "addedMinutes": 0
+        },
+        {
+          "id": "oliver-todd",
+          "name": "Oliver Todd",
+          "clockedHours": 2.83,
+          "soHours": 2.83,
+          "addedMinutes": 0
+        }
+      ]
+    },
+    {
+      "day": "2026-10-10",
+      "shopId": "greenville",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "gage-wills",
+          "name": "Gage Wills",
+          "clockedHours": 3.21,
+          "soHours": 3.17,
+          "addedMinutes": 0
+        }
+      ]
     }
   ]
 }

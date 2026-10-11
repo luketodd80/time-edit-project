@@ -8,6 +8,7 @@ import { TUESDAY_DETAILS_CSV } from "@/lib/tuesday-details-csv";
 import { WEDNESDAY_DETAILS_CSV } from "@/lib/wednesday-details-csv";
 import { THURSDAY_DETAILS_CSV } from "@/lib/thursday-details-csv";
 import { FRIDAY_OCTOBER_9_DETAILS_CSV } from "@/lib/friday-october-9-details-csv";
+import { SATURDAY_OCTOBER_10_DETAILS_CSV } from "@/lib/saturday-october-10-details-csv";
 
 /**
  * Shop foremen. They are left out of time-gap review and utilization entirely.
@@ -605,7 +606,11 @@ function isAttendanceActivity(activity: string): boolean {
   return ATTENDANCE_ACTIVITY.test(activity.trim());
 }
 
-/** Midnight-to-midnight Inactive row with no service order, such as a 24-hour placeholder. */
+/**
+ * Midnight-to-midnight Inactive row with no service order, such as a 24-hour placeholder.
+ * It is not a clock punch. It does not create gap findings and it does not count toward clocked hours.
+ * Service-order rows for the same person still count on their own.
+ */
 function isInactiveDayPlaceholder(row: FullbayTimesheetRow): boolean {
   if (row.so_complaint.trim()) return false;
   if (row.clock_in_activity.trim().toLowerCase() !== "inactive") return false;
@@ -1082,7 +1087,7 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
   return reports;
 }
 
-/** October 2 through October 9 use the Details List download (Clock In Comment). */
+/** October 2 through October 10 use the Details List download (Clock In Comment). */
 export const OCTOBER_2_REPORTS = timesheetToDayReports(parseDetailsListCsv(FRIDAY_DETAILS_CSV, "2026-10-02"));
 export const OCTOBER_3_REPORTS = timesheetToDayReports(parseDetailsListCsv(SATURDAY_DETAILS_CSV, "2026-10-03"));
 export const OCTOBER_5_REPORTS = timesheetToDayReports(parseDetailsListCsv(MONDAY_DETAILS_CSV, "2026-10-05"));
@@ -1090,3 +1095,4 @@ export const OCTOBER_6_REPORTS = timesheetToDayReports(parseDetailsListCsv(TUESD
 export const OCTOBER_7_REPORTS = timesheetToDayReports(parseDetailsListCsv(WEDNESDAY_DETAILS_CSV, "2026-10-07"));
 export const OCTOBER_8_REPORTS = timesheetToDayReports(parseDetailsListCsv(THURSDAY_DETAILS_CSV, "2026-10-08"));
 export const OCTOBER_9_REPORTS = timesheetToDayReports(parseDetailsListCsv(FRIDAY_OCTOBER_9_DETAILS_CSV, "2026-10-09"));
+export const OCTOBER_10_REPORTS = timesheetToDayReports(parseDetailsListCsv(SATURDAY_OCTOBER_10_DETAILS_CSV, "2026-10-10"));
