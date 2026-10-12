@@ -137,6 +137,8 @@ or
 
 A new task-name + due key starts as New. A badge already stored on a key is kept. Missing keys move to Removed from sheet. Notes already stored on a key are kept. Response: `{"ok": true, "changes": {"added": [], "removed": [], "restored": []}, "tasks": 0, "removed": 0}`.
 
+A snapshot with no task rows (a header, or a header plus blank Task cells), or one that would remove more than half of the tasks that are active right now, is rejected with `400` and nothing is saved. Exactly half is allowed. Add `?force=1` when a large removal is intentional (`force=true` and `force=yes` work the same way).
+
 This dashboard does not read Google Sheets. **Sync now** (Settings, behind login) asks an outside automation to read the sheet and call this endpoint.
 
 ### Sync now

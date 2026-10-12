@@ -244,7 +244,8 @@ def register(app):
                     return jsonify(error="send text/csv, {csv}, or {rows}"), 400
             if not csv_text.strip():
                 return jsonify(error="empty snapshot"), 400
-            payload = me.save_snapshot(csv_text)
+            force = (request.args.get("force") or "").strip().lower() in {"1", "true", "yes"}
+            payload = me.save_snapshot(csv_text, force=force)
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
         changes = payload["changes"]

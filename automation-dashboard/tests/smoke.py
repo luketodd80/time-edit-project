@@ -385,6 +385,52 @@ class DashboardSmoke(unittest.TestCase):
         self.assertEqual(again["last_synced"], month["last_synced"])
         self.assertEqual(again["snapshot_id"], month["snapshot_id"])
 
+    def test_snapshot_refuses_empty_sheet_and_majority_removal(self):
+        self.authed()
+        before = self.client.get("/api/monthend").get_json()
+        self.assertGreater(len(before["tasks"]), 2)
+        data_dir = Path(self.tmp.name)
+        sheet_path = data_dir / "month_end_2026.csv"
+        registry_path = data_dir / "month_end_registry.json"
+        sheet_bytes = sheet_path.read_bytes()
+        registry_bytes = registry_path.read_bytes()
+        snaps = data_dir / "sheet_snapshots"
+        seed = (ROOT / "seed" / "month_end_2026.csv").read_text(encoding="utf-8")
+        header = seed.splitlines()[0]
+        headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "text/csv"}
+
+        empty = header + "\n,,,,,\n"
+        refused = self.client.post("/api/ingest/month-end", data=empty, headers=headers)
+        self.assertEqual(refused.status_code, 400, refused.get_data(as_text=True))
+        self.assertIn("no task rows", refused.get_json()["error"])
+        self.assertIn("force=1", refused.get_json()["error"])
+
+        rows = list(csv.reader(io.StringIO(seed)))
+        buf = io.StringIO()
+        csv.writer(buf).writerows([rows[0], rows[1]])
+        majority = self.client.post("/api/ingest/month-end", data=buf.getvalue(), headers=headers)
+        self.assertEqual(majority.status_code, 400, majority.get_data(as_text=True))
+        self.assertIn("would remove", majority.get_json()["error"])
+        self.assertIn(str(len(before["tasks"]) - 1), majority.get_json()["error"])
+
+        still = self.client.post("/api/ingest/month-end?force=0", data=empty, headers=headers)
+        self.assertEqual(still.status_code, 400, still.get_data(as_text=True))
+        self.assertEqual(sheet_path.read_bytes(), sheet_bytes)
+        self.assertEqual(registry_path.read_bytes(), registry_bytes)
+        self.assertEqual(list(snaps.glob("*.csv")), [])
+        after = self.client.get("/api/monthend").get_json()
+        self.assertEqual(after["snapshot_id"], before["snapshot_id"])
+        self.assertEqual(len(after["tasks"]), len(before["tasks"]))
+        self.assertEqual(len(after["removed"]), len(before["removed"]))
+        self.assertEqual([t["task"] for t in after["tasks"]], [t["task"] for t in before["tasks"]])
+
+        forced = self.client.post("/api/ingest/month-end?force=1", data=empty, headers=headers)
+        self.assertEqual(forced.status_code, 200, forced.get_data(as_text=True))
+        wiped = self.client.get("/api/monthend").get_json()
+        self.assertEqual(wiped["tasks"], [])
+        self.assertGreaterEqual(len(wiped["removed"]), len(before["tasks"]))
+        self.assertNotEqual(wiped["snapshot_id"], before["snapshot_id"])
+
     def _webhook_server(self, status=204):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 

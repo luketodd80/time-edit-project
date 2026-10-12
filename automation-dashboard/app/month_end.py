@@ -132,9 +132,8 @@ def _status(v):
     return {"kind": "done", "text": v}
 
 
-def read_sheet(path):
-    with open(path, newline="", encoding="utf-8-sig") as fh:
-        rows = list(csv.reader(fh))
+def tasks_from_rows(rows):
+    """Task rows only. A blank Task cell is not a task, so a header-only sheet is empty."""
     out = []
     for i, r in enumerate(rows[1:], 2):
         r = r + [""] * (18 - len(r))
@@ -152,6 +151,38 @@ def read_sheet(path):
             "months": {m: _status(r[6 + k]) for k, m in enumerate(MONTHS)},
         })
     return out
+
+
+def read_sheet(path):
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        return tasks_from_rows(list(csv.reader(fh)))
+
+
+def tasks_from_csv(text):
+    import io
+    return tasks_from_rows(list(csv.reader(io.StringIO(text))))
+
+
+def snapshot_refusal(reg, sheet):
+    """Why this snapshot must not be applied, or None when it is safe.
+
+    A sheet with zero task rows is always refused. A sheet that would drop
+    more than half of the tasks that are active right now is refused too.
+    Exactly half is allowed. force=1 skips this check.
+    """
+    if not sheet:
+        return "snapshot has no task rows; pass force=1 to apply it"
+    active = [k for k, entry in (reg.get("tasks") or {}).items() if not entry.get("removed_at")]
+    if not active:
+        return None
+    seen = {t["key"] for t in sheet}
+    would_remove = [k for k in active if k not in seen]
+    if len(would_remove) * 2 > len(active):
+        return (
+            f"snapshot would remove {len(would_remove)} of {len(active)} active tasks; "
+            "pass force=1 to apply it"
+        )
+    return None
 
 
 def rows_to_csv(rows):
@@ -684,7 +715,7 @@ class MonthEnd:
     def candidates(self):
         return json.loads(self.candidates_path.read_text(encoding="utf-8"))
 
-    def sync(self, path=None, now_dt=None):
+    def sync(self, path=None, now_dt=None, force=False):
         path = Path(path or self.sheet)
 
         def run():
@@ -698,6 +729,10 @@ class MonthEnd:
                     self._write_reg(reg)
                 stored = reg.get("last_changes") or {"added": [], "removed": [], "restored": []}
                 return reg, sheet, stored
+            if not force:
+                reason = snapshot_refusal(reg, sheet)
+                if reason:
+                    raise ValueError(reason)
             seen = set()
             added, removed, back = [], [], []
             for t in sheet:
@@ -830,15 +865,24 @@ class MonthEnd:
             "manual_completion": reg.get("completion") or {},
         }
 
-    def load_and_sync(self):
-        reg, sheet, changes = self.sync()
+    def load_and_sync(self, force=False):
+        reg, sheet, changes = self.sync(force=force)
         return self.build(reg, sheet, changes)
 
-    def save_snapshot(self, csv_text, stamp=None):
+    def save_snapshot(self, csv_text, stamp=None, force=False):
         stamp = stamp or now().strftime("%Y-%m-%d_%H%M%S")
         text = csv_text if csv_text.endswith("\n") else csv_text + "\n"
-        if "Task" not in text.splitlines()[0]:
+        lines = text.splitlines()
+        if not lines or "Task" not in lines[0]:
             raise ValueError("snapshot needs a header row with a Task column")
+        sheet = tasks_from_csv(text)
+        if not force:
+            def refuse():
+                reason = snapshot_refusal(self._read_reg(), sheet)
+                if reason:
+                    raise ValueError(reason)
+
+            self._locked(refuse)
         snap = self.data_dir / "sheet_snapshots" / f"month_end_2026_{stamp}.csv"
         snap.write_text(text, encoding="utf-8")
         self.sheet.write_text(text, encoding="utf-8")
@@ -849,7 +893,7 @@ class MonthEnd:
             self._write_reg(reg)
 
         self._locked(mark)
-        return self.load_and_sync()
+        return self.load_and_sync(force=force)
 
     def add_file_req(self, k, item):
         def run():
