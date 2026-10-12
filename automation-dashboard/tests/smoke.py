@@ -84,6 +84,21 @@ class DashboardSmoke(unittest.TestCase):
         r = self.client.delete("/api/ingest/month-end/run-detail?id=ME-029&run_id=ME-029-2026-10", headers=h)
         self.assertEqual(r.status_code, 200)
 
+    def test_sheet_date_beats_later_run_completion(self):
+        from app.month_end import decorate
+        payload = {"tasks": [{"key": "k", "months": {"October": {"kind": "done", "text": "10/6"}, "November": {"kind": "open", "text": "Open"}}}], "removed": []}
+        recs = [{"task_key": "k", "status": "succeeded", "id": "r1", "log_month": "October", "done_date": "2026-10-11", "created_at": "2026-10-11T09:00:00-04:00"},
+                {"task_key": "k", "status": "succeeded", "id": "r2", "log_month": "November", "done_date": "2026-11-03", "created_at": "2026-11-03T09:00:00-04:00"}]
+        out = decorate(payload, recs)["tasks"][0]
+        self.assertEqual(out["months"]["October"]["text"], "10/6")
+        self.assertEqual(out["completion"]["October"]["date"], "2026-10-06")
+        self.assertEqual(out["months"]["November"]["text"], "11/3")
+
+    def test_panel_month_table_has_no_duplicate_sheet_label(self):
+        page = self.authed().get("/").get_data(as_text=True)
+        self.assertIn("c.source!=='sheet'", page)
+        self.assertNotIn("${c.source?esc(c.source):''}${cell?' · sheet '", page)
+
     def test_healthz_is_public(self):
         res = self.client.get("/healthz")
         self.assertEqual(res.status_code, 200)

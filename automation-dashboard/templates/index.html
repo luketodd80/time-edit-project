@@ -507,7 +507,7 @@ function runList(t){const R=t.run_details||[];const H=t.history||[];let out='';
  H.forEach((h,i)=>{if(R.some(r=>r.month===h.month_iso))return;out+=`<button type=button class=prun onclick="openRun(null,'${t.id}',${i})"><b>${esc(h.when)}</b> · ${esc(h.state)}<br><span class=muted2>${esc(h.result)}</span></button>`});
  return out||'<span class=muted2>No runs recorded yet.</span>'}
 function monthTable(t){return '<table>'+MONTHS.map((m,i)=>{const c=compOf(t,m);const mv=(t.months||{})[m];const cell=mv&&mv.text?mv.text:'';
- if(c.status==='not_started'&&!cell)return '';return `<tr><td>${m.slice(0,3)}</td><td>${c.status==='done'?'&#10003; ':''}${esc(c.text)}${c.note?'<br><span class=muted2>'+esc(c.note)+'</span>':''}</td><td class=muted2>${c.source?esc(c.source):''}${cell?' · sheet '+esc(t.cols[i]+t.row)+'='+esc(cell):''}</td></tr>`}).join('')+'</table>'}
+ if(c.status==='not_started'&&!cell)return '';return `<tr><td>${m.slice(0,3)}</td><td>${c.status==='done'?'&#10003; ':''}${esc(c.text)}${c.note?'<br><span class=muted2>'+esc(c.note)+'</span>':''}</td><td class=muted2>${[c.source&&c.source!=='sheet'?esc(c.source):'',cell?'sheet '+esc(t.cols[i]+t.row)+'='+esc(cell):''].filter(Boolean).join(' · ')}</td></tr>`}).join('')+'</table>'}
 function reqList(t){const Q=t.requests||[];if(!Q.length)return '<span class=muted2>No Run Now requests.</span>';
  return '<table>'+Q.slice().reverse().map(q=>`<tr><td>${esc(q.month||'')}</td><td>${esc(q.state)}</td><td>${esc(q.result)}${q.qbo?' · QBO '+esc(q.qbo):''}${q.run_note?'<br><span class=rnote>'+esc(q.run_note)+'</span>':''}</td></tr>`).join('')+'</table>'}
 function vlRuns(){if(VL===null){VL=false;fetch('/api/vehicle-lease').then(r=>r.json()).then(d=>{VL=d;renderPanel()}).catch(()=>{VL={runs:[]}})}

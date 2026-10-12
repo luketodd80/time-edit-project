@@ -1167,7 +1167,8 @@ def decorate(payload, requests):
                 continue
             month = rec.get("log_month") or (month_name(rec["done_date"]) if rec.get("done_date") else None)
             text = rec.get("done_text") or (done_text(rec["done_date"]) if rec.get("done_date") else "Done")
-            if month in task["months"]:
+            cell = task["months"].get(month)
+            if month in task["months"] and not (isinstance(cell, dict) and cell.get("kind") == "done"):
                 task["months"][month] = {"kind": "done", "text": text}
     for task in payload["removed"]:
         task["history"] = history_items(task.get("files_key") or task["key"], by_key.get(task["key"], []))
