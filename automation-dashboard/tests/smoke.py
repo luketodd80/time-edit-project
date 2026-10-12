@@ -63,6 +63,27 @@ class DashboardSmoke(unittest.TestCase):
         self.login()
         return self.client
 
+    def test_descriptions_and_run_details(self):
+        h = {"Authorization": "Bearer " + TOKEN}
+        r = self.client.get("/api/ingest/month-end/description?id=ME-029", headers=h)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        self.assertEqual(r.get_json()["description"]["source"], "seed")
+        r = self.client.post("/api/ingest/month-end/description", json={"id": "ME-029", "description": "New text"}, headers=h)
+        self.assertEqual(r.get_json()["description"]["text"], "New text")
+        r = self.client.post("/api/ingest/month-end/description", json={"id": "ME-029", "description": ""}, headers=h)
+        self.assertEqual(r.get_json()["description"]["source"], "seed")
+        r = self.client.post("/api/ingest/month-end/run-detail", json={"id": "ME-029", "month": "2026-10", "summary": "S", "details": "D", "facts": [{"label": "BP", "value": "6120"}]}, headers=h)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        self.assertEqual(r.get_json()["run"]["run_id"], "ME-029-2026-10")
+        self.assertEqual(self.client.post("/api/ingest/month-end/run-detail", json={"id": "ME-029", "month": "bad"}, headers=h).status_code, 400)
+        self.assertEqual(self.client.post("/api/ingest/month-end/run-detail", json={"id": "ME-029"}).status_code, 401)
+        page = self.authed().get("/api/monthend").get_json()
+        task = next(t for t in page["tasks"] if t["me_id"] == "ME-029")
+        self.assertEqual(task["run_details"][0]["summary"], "S")
+        self.assertIn("text", task["description"])
+        r = self.client.delete("/api/ingest/month-end/run-detail?id=ME-029&run_id=ME-029-2026-10", headers=h)
+        self.assertEqual(r.status_code, 200)
+
     def test_healthz_is_public(self):
         res = self.client.get("/healthz")
         self.assertEqual(res.status_code, 200)
@@ -460,7 +481,8 @@ class DashboardSmoke(unittest.TestCase):
         self.assertIn("Mark done", page)
         self.assertIn("Run Now- Ready", page)
         self.assertIn("saveAuto", page)
-        self.assertIn("stays through a sheet sync", page)
+        self.assertIn("kept when the sheet syncs", page)
+        self.assertNotIn("odProgText", page)
         self.assertIn("How to automate this", page)
         self.assertIn("grokbot://app/v1/agent?id=5061c392-f770-44b7-835a-85eba2d15217", page)
         self.assertIn("Teach you ", page)

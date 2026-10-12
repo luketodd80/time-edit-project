@@ -238,6 +238,19 @@ def register(app):
             return jsonify(error="unknown task"), 400
         return jsonify(ok=True, monthend=_month_payload())
 
+    @app.post("/api/monthend/description")
+    def monthend_description():
+        from app.month_end import canonical_me_id
+        body = _body()
+        me_id = canonical_me_id(body.get("id"))
+        if not me_id or not isinstance(body.get("description"), str):
+            return jsonify(error="id and description are required"), 400
+        try:
+            _me().set_description(me_id, body["description"])
+        except KeyError:
+            return jsonify(error="unknown task"), 400
+        return jsonify(ok=True, monthend=_month_payload())
+
     @app.post("/api/monthend/completion")
     def monthend_completion():
         body = _body()

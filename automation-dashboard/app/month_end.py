@@ -594,6 +594,93 @@ class MonthEnd:
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
+    def seed_descriptions(self):
+        path = self.seed_dir / "month_end_descriptions.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def description_for(self, reg, me_id):
+        if not me_id:
+            return None
+        saved = (reg.get("descriptions") or {}).get(me_id)
+        if isinstance(saved, dict) and saved.get("text"):
+            return {"text": saved["text"], "edited_at": saved.get("edited_at"), "source": "edited"}
+        text = self._seed_desc.get(me_id) if hasattr(self, "_seed_desc") else None
+        if text is None:
+            self._seed_desc = self.seed_descriptions()
+            text = self._seed_desc.get(me_id)
+        return {"text": text, "edited_at": None, "source": "seed"} if text else None
+
+    def set_description(self, me_id, text):
+        """Save (or clear, with empty text) the plain-language description for an ME id."""
+        def run():
+            reg = self._read_reg()
+            if not any(e.get("me_id") == me_id for e in reg["tasks"].values()):
+                raise KeyError(me_id)
+            bucket = reg.setdefault("descriptions", {})
+            clean = str(text or "").strip()[:8000]
+            if clean:
+                bucket[me_id] = {"text": clean, "edited_at": now().isoformat(timespec="seconds")}
+            else:
+                bucket.pop(me_id, None)
+            self._write_reg(reg)
+            return self.description_for(reg, me_id)
+
+        return self._locked(run)
+
+    def run_details_for(self, reg, me_id):
+        items = ((reg.get("run_details") or {}).get(me_id) or []) if me_id else []
+        out = [dict(it) for it in items if isinstance(it, dict)]
+        out.sort(key=lambda it: (it.get("month") or "", it.get("when") or ""), reverse=True)
+        return out
+
+    def save_run_detail(self, me_id, body):
+        """Add or update one run detail record (summary, details, status, files, attachments) for an ME id."""
+        def run():
+            reg = self._read_reg()
+            if not any(e.get("me_id") == me_id for e in reg["tasks"].values()):
+                raise KeyError(me_id)
+            month = str(body.get("month") or "").strip()
+            if not re.fullmatch(r"\d{4}-\d{2}", month):
+                raise ValueError("month must be YYYY-MM")
+            bucket = reg.setdefault("run_details", {}).setdefault(me_id, [])
+            run_id = str(body.get("run_id") or "").strip()[:64]
+            if not run_id:
+                run_id = f"{me_id}-{month}"
+            if not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
+                raise ValueError("run_id may use letters, digits, dot, dash, underscore")
+            rec = next((it for it in bucket if it.get("run_id") == run_id), None)
+            if rec is None:
+                rec = {"run_id": run_id, "created_at": now().isoformat(timespec="seconds")}
+                bucket.append(rec)
+            rec["month"] = month
+            for field, limit in (("when", 80), ("status", 40), ("summary", 4000), ("details", 20000)):
+                if field in body and body[field] is not None:
+                    rec[field] = str(body[field]).strip()[:limit]
+            for field in ("facts", "links", "files", "attachment_ids"):
+                if field in body and isinstance(body[field], list):
+                    rec[field] = body[field][:50]
+            rec["updated_at"] = now().isoformat(timespec="seconds")
+            self._write_reg(reg)
+            return dict(rec)
+
+        return self._locked(run)
+
+    def delete_run_detail(self, me_id, run_id):
+        def run():
+            reg = self._read_reg()
+            bucket = (reg.get("run_details") or {}).get(me_id) or []
+            keep = [it for it in bucket if it.get("run_id") != run_id]
+            if len(keep) == len(bucket):
+                raise KeyError(run_id)
+            reg["run_details"][me_id] = keep
+            self._write_reg(reg)
+
+        return self._locked(run)
+
     def candidates(self):
         return json.loads(self.candidates_path.read_text(encoding="utf-8"))
 
@@ -695,6 +782,8 @@ class MonthEnd:
                 "cols": COLS,
                 "files": self.files_for(t["key"], reg),
                 "note": reg.get("notes", {}).get(t["key"]),
+                "description": self.description_for(reg, entry.get("me_id")),
+                "run_details": self.run_details_for(reg, entry.get("me_id")),
             })
         due_rank = {due_norm(d): i for i, d in enumerate(DUE_ORDER)}
         tasks.sort(key=lambda t: (

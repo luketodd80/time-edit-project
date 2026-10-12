@@ -176,20 +176,36 @@ details.sect table{border-radius:0}
  #runs tr.det td{padding-left:16px}
  .dbar .dl{font-size:15px;margin-left:0;width:100%}
 }
+
+#odView.wrap{max-width:1800px}
+.odmain{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:16px;align-items:start}
+.odleft{min-width:0}
+.odpanel{position:sticky;top:10px;max-height:calc(100vh - 20px);overflow:auto;background:#fff;border:1px solid #e4e7ec;border-radius:12px;box-shadow:0 1px 3px #0001;padding:14px 16px;font-size:13px;line-height:1.45}
+.odpanel h3{margin:2px 0 6px;font-size:16px}.odpanel h4{margin:14px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#667}
+.odpanel .phint{color:#778;padding:20px 4px;text-align:center}
+.odpanel .psum{background:#f4f8ff;border:1px solid #d4e1f5;border-radius:8px;padding:9px 11px;white-space:pre-wrap}
+.odpanel .ptop{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.odpanel .pclose{border:none;background:#eef1f6;border-radius:6px;cursor:pointer;font-size:14px;padding:2px 8px}
+.odpanel dl{display:grid;grid-template-columns:100px 1fr;gap:3px 8px;margin:0}.odpanel dt{color:#778}.odpanel dd{margin:0}
+.odpanel table{width:100%;border-collapse:collapse;font-size:12px}.odpanel td{border-top:1px solid #eef0f4;padding:3px 4px;vertical-align:top}
+.odpanel .prun{display:block;width:100%;text-align:left;border:1px solid #e4e7ec;background:#fafbfd;border-radius:8px;padding:6px 8px;margin:4px 0;cursor:pointer;font:inherit}
+.odpanel .prun:hover{background:#eef4ff}.odpanel .pback{border:none;background:none;color:#2456a6;cursor:pointer;padding:0;font:inherit;margin-bottom:6px}
+.odpanel textarea{width:100%;box-sizing:border-box;font:inherit;min-height:160px}.odpanel .pdet{white-space:pre-wrap}
+tr.odsel>td{background:#fff8d9 !important}
+ul.hist li.hclick{cursor:pointer}ul.hist li.hclick:hover{background:#eef4ff}
+@media (max-width:1100px){.odmain{grid-template-columns:1fr}.odpanel{position:fixed;top:auto;bottom:0;left:0;right:0;max-height:70vh;border-radius:14px 14px 0 0;z-index:40;box-shadow:0 -6px 30px #0003}.odpanel.empty{display:none}}
 </style></head><body>
 <header><h1>Grok Bot Automations</h1><span>The Service Company · <a href="#" onclick="showTab('settings');return false">Settings</a> · <a href="#" onclick="logout();return false">Log out</a></span></header>
 <nav class="tabs"><button id="tabDaily" onclick="showTab('daily')">Today / Daily runs</button><button id="tabAll" onclick="showTab('all')">All automations</button><button id="tabOd" onclick="showTab('od')">On demand<span class=lg> / Month-end</span></button></nav>
 <div class="wrap hidden" id="odView">
-<div class="note">Run Now queues a request the bot can pick up, with the files and notes for that run. Mark done records the month here. This dashboard does not write to the Google Sheet or to QuickBooks. A new sheet line shows the automation badge New until you change it. The badge you pick is stored here and kept when the sheet syncs. A line that leaves the sheet goes to Removed from sheet.</div>
+<div class="note">Run Now queues a request the bot can pick up, with the files and notes for that run. Marking a task Done writes the M/D date to that month's column in the Google Sheet and never overwrites a date already there. Nothing here writes to QuickBooks. The automation badge you pick is stored here and kept when the sheet syncs.</div>
 <div class="syncbar"><span>Source: Shared Accounting › <b>Month End- 2026</b> (read-only snapshot)</span><span>Last synced from sheet: <b id="odSynced"></b></span><button onclick="syncOd()" title="Asks the sync webhook to push a fresh sheet snapshot">Sync now</button></div>
 <div id="odSyncMsg" class="smsg syncmsg"></div>
-<div class="prog"><div class="ptext" id="odProgText"></div><div class="pbar"><div class="pready" id="odProg"></div><div class="pbuild" id="odProgB"></div></div><div class="plegend"><b>Automation</b> <span class="ld ld-manual" title="Automation badge. Separate from whether this month is done.">Manual</span> <span class="ld ld-ready" title="Automation badge. Run Now can queue this. Separate from whether this month is done.">Run Now- Ready</span> <span class="ld ld-new" title="Automation badge. A new sheet line starts here. Separate from whether this month is done.">New</span> Change the badge on a row. That choice is stored on this server and stays through a sheet sync. It is not written to the sheet.
-<div class="cmpkey"><b>This month</b> is separate: <span class="cmp cmp-not_started">Not started</span> · <span class="cmp cmp-in_progress">In progress</span> · <span class="cmp cmp-done">&#10003; Done</span> with a date · <span class="cmp cmp-skipped">Skipped / N/A</span>. A date in that month's sheet column (October is column P) shows Done on its own. Mark done is stored here and is not written to the sheet.</div></div></div>
 <div class="chips" id="odChips"></div>
 <div class="odbar"><label class=hidefin for="odHideFinished"><input type="checkbox" id="odHideFinished" onchange="setHideFinished(this.checked)"> Hide Finished Tasks</label><label>Month <select id="odMonth" onchange="odM=this.value;renderOd()"></select></label><span class=lbl>Show</span><span id="odLadders"></span><a class=vlink href="/vehicle-lease">Vehicle Lease</a></div>
-<div id="odGroups"></div>
+<div class="odmain"><div class="odleft"><div id="odGroups"></div>
 <details class="sect" id="odOthers"><summary id="odOthersSum"></summary><div id="odOthersBody"></div></details>
-<details class="sect" id="odRemoved"><summary id="odRemovedSum"></summary><div id="odRemovedBody"></div></details>
+<details class="sect" id="odRemoved"><summary id="odRemovedSum"></summary><div id="odRemovedBody"></div></details></div><aside class="odpanel empty" id="odPanel"></aside></div>
 <h2>Run log</h2><table class="tw"><thead><tr><th>When</th><th>Task</th><th>Step</th><th>Detail</th></tr></thead><tbody id="odLog"></tbody></table>
 </div>
 <div class="wrap hidden" id="setView">
@@ -466,19 +482,80 @@ async function deleteAttachment(id){if(!confirm('Delete this file?'))return;
  const r=await (await fetch('/api/monthend/attachments/'+id,{method:'DELETE'})).json();
  if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;renderOd()}
 function histHtml(t){const H=t.history||[];const groups=t.attachments||{};const used={};
- const li=h=>{const extra=h.month_iso&&groups[h.month_iso]&&!used[h.month_iso]?(used[h.month_iso]=1,attStrip(groups[h.month_iso])):'';
-  return `<li><b>${esc(h.when)}</b> · ${esc(h.state)} · ${esc(h.result)}${h.files?`<br><span class=muted2>Files: ${esc(h.files)}</span>`:''}${h.run_note?`<br><span class=rnote>Run note: ${esc(h.run_note)}</span>`:''}${h.standing?`<br><span class=muted2>Standing notes used: ${esc(h.standing)}</span>`:''}${extra}</li>`};
+ const li=(h,i)=>{const extra=h.month_iso&&groups[h.month_iso]&&!used[h.month_iso]?(used[h.month_iso]=1,attStrip(groups[h.month_iso])):'';
+  return `<li class=hclick title="Open this run in the side panel" onclick="openRun(event,'${t.id}',${i})"><b>${esc(h.when)}</b> · ${esc(h.state)} · ${esc(h.result)}${h.files?`<br><span class=muted2>Files: ${esc(h.files)}</span>`:''}${h.run_note?`<br><span class=rnote>Run note: ${esc(h.run_note)}</span>`:''}${h.standing?`<br><span class=muted2>Standing notes used: ${esc(h.standing)}</span>`:''}${extra}</li>`};
  const rows=H.map(li);
  Object.keys(groups).sort().forEach(iso=>{if(used[iso]||!(groups[iso]||[]).length)return;
-  rows.push(`<li><b>${esc(monthLabel(iso))}</b> · files${attStrip(groups[iso])}</li>`)});
+  rows.push(`<li class=hclick onclick="openRun(event,'${t.id}','m:${iso}')"><b>${esc(monthLabel(iso))}</b> · files${attStrip(groups[iso])}</li>`)});
  return rows.length?'<ul class=hist>'+rows.join('')+'</ul>':'<span class=muted2>No runs yet.</span>'}
+
+let odSel=null,odRun=null,descEdit=false,VL=null;
+function selTask(ev,id){if(ev&&ev.target.closest('button,select,input,textarea,a,label,.linkbox,.cmpform,.thumbs'))return;
+ if(odSel!==id){odRun=null;descEdit=false}odSel=id;renderOd()}
+function openRun(ev,id,ref){if(ev){ev.stopPropagation();if(ev.target.closest('button,a,img'))return}odSel=id;odRun=ref;descEdit=false;renderOd()}
+function closePanel(){odSel=null;odRun=null;renderOd()}
+function selTaskObj(){return OD&&(OD.tasks||[]).find(t=>t.id===odSel)}
+function buildSummary(t){const a=autoOf(t);const bits=[`${t.task}.`];
+ if(t.notes)bits.push(`Sheet note: ${t.notes}.`);
+ bits.push(`Assigned to ${t.assigned||'nobody'}, due ${t.due_label||t.due||'—'}.`);
+ bits.push(a==='Run Now- Ready'?`Run Now can queue it${t.bot?' for '+t.bot:''}.`:'Done by hand for now; not taught to a bot yet.');
+ if(t.detail)bits.push(t.detail);return bits.join(' ')}
+function pRow(k,v){return v?`<dt>${esc(k)}</dt><dd>${v}</dd>`:''}
+function pdText(v){return esc(v).replace(/\n/g,'<br>')}
+function runList(t){const R=t.run_details||[];const H=t.history||[];let out='';
+ R.forEach(r=>{out+=`<button type=button class=prun onclick="openRun(null,'${t.id}','r:${esc(r.run_id)}')"><b>${esc(monthLabel(r.month))}</b>${r.when?' · '+esc(r.when):''}${r.status?' · '+esc(r.status):''}<br><span class=muted2>${esc((r.summary||'').slice(0,140))}${(r.summary||'').length>140?'…':''}</span></button>`});
+ H.forEach((h,i)=>{if(R.some(r=>r.month===h.month_iso))return;out+=`<button type=button class=prun onclick="openRun(null,'${t.id}',${i})"><b>${esc(h.when)}</b> · ${esc(h.state)}<br><span class=muted2>${esc(h.result)}</span></button>`});
+ return out||'<span class=muted2>No runs recorded yet.</span>'}
+function monthTable(t){return '<table>'+MONTHS.map((m,i)=>{const c=compOf(t,m);const mv=(t.months||{})[m];const cell=mv&&mv.text?mv.text:'';
+ if(c.status==='not_started'&&!cell)return '';return `<tr><td>${m.slice(0,3)}</td><td>${c.status==='done'?'&#10003; ':''}${esc(c.text)}${c.note?'<br><span class=muted2>'+esc(c.note)+'</span>':''}</td><td class=muted2>${c.source?esc(c.source):''}${cell?' · sheet '+esc(t.cols[i]+t.row)+'='+esc(cell):''}</td></tr>`}).join('')+'</table>'}
+function reqList(t){const Q=t.requests||[];if(!Q.length)return '<span class=muted2>No Run Now requests.</span>';
+ return '<table>'+Q.slice().reverse().map(q=>`<tr><td>${esc(q.month||'')}</td><td>${esc(q.state)}</td><td>${esc(q.result)}${q.qbo?' · QBO '+esc(q.qbo):''}${q.run_note?'<br><span class=rnote>'+esc(q.run_note)+'</span>':''}</td></tr>`).join('')+'</table>'}
+function vlRuns(){if(VL===null){VL=false;fetch('/api/vehicle-lease').then(r=>r.json()).then(d=>{VL=d;renderPanel()}).catch(()=>{VL={runs:[]}})}
+ if(!VL)return '<span class=muted2>Loading…</span>';const R=VL.runs||[];if(!R.length)return '<span class=muted2>No vehicle-lease runs yet.</span>';
+ return '<table>'+R.map(r=>`<tr><td>${esc(r.label)}</td><td>$${Number(r.total||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}<br><span class=muted2>${esc(r.active_units)} units${r.qbo_je?' · JE '+esc(r.qbo_je):''}</span></td><td><a href="${esc(r.pdf_url)}" target=_blank rel=noopener>PDF</a> · <a href="${esc(r.je_url)}">JE</a> · <a href="${esc(r.detail_url)}">Detail</a></td></tr>`).join('')+'</table>'}
+function attsById(t,ids){const all=[].concat(...Object.values(t.attachments||{}));return all.filter(a=>ids.includes(a.id))}
+function runView(t){let r=null,h=null,iso=null;
+ if(typeof odRun==='string'&&odRun.startsWith('r:'))r=(t.run_details||[]).find(x=>x.run_id===odRun.slice(2));
+ else if(typeof odRun==='string'&&odRun.startsWith('m:'))iso=odRun.slice(2);
+ else {h=(t.history||[])[odRun];iso=h&&h.month_iso}
+ if(!r&&iso)r=(t.run_details||[]).find(x=>x.month===iso);
+ if(r)iso=r.month;
+ const atts=r&&r.attachment_ids&&r.attachment_ids.length?attsById(t,r.attachment_ids):((t.attachments||{})[iso]||[]);
+ const summary=r&&r.summary?r.summary:h?`${h.when} · ${h.state}. ${h.result}`:`${monthLabel(iso)} run.`;
+ let o=`<button class=pback onclick="odRun=null;renderPanel()">&#8592; ${esc(t.me_id||'')} task definition</button><h3>${esc(t.task)}</h3><div class=muted2>Run · ${esc(r&&r.when||h&&h.when||monthLabel(iso))}${r&&r.status?' · '+esc(r.status):h?' · '+esc(h.state):''}</div><h4>Summary</h4><div class=psum>${pdText(summary)}</div>`;
+ if(r&&r.facts&&r.facts.length)o+='<h4>Key facts</h4><dl>'+r.facts.map(f=>pRow(f.label,esc(f.value))).join('')+'</dl>';
+ if(r&&r.details)o+=`<h4>Details</h4><div class=pdet>${pdText(r.details)}</div>`;
+ if(h&&!r)o+=`<h4>Details</h4><dl>${pRow('Result',esc(h.result))}${pRow('Files',esc(h.files))}${pRow('Run note',esc(h.run_note))}${pRow('Standing notes',esc(h.standing))}</dl>`;
+ const files=(r&&r.files)||[];if(files.length)o+='<h4>Files used</h4><ul>'+files.map(f=>`<li>${esc(f)}</li>`).join('')+'</ul>';
+ const links=(r&&r.links)||[];if(links.length)o+='<h4>Links</h4><ul>'+links.map(l=>`<li><a href="${esc(l.url)}" target=_blank rel=noopener>${esc(l.label||l.url)}</a></li>`).join('')+'</ul>';
+ o+='<h4>Screenshots &amp; attachments</h4>'+(atts.length?attStrip(atts):'<span class=muted2>None attached.</span>');
+ if(t.me_id==='ME-030')o+='<h4>Vehicle-lease runs</h4>'+vlRuns();
+ return o}
+function taskView(t){const d=t.description&&t.description.text;const a=autoOf(t);
+ let o=`<div class=ptop><div><span class=muted2>${esc(t.me_id||'')} · Row ${t.row}</span><h3>${esc(t.task)}</h3></div><button class=pclose onclick="closePanel()" title="Close">&#10005;</button></div>`;
+ o+='<h4>What this task does</h4>';
+ if(descEdit)o+=`<textarea id=descBox>${esc(d||buildSummary(t))}</textarea><div class=row><button class=ok onclick="saveDesc('${esc(t.me_id)}')">Save</button><button onclick="descEdit=false;renderPanel()">Cancel</button>${t.description&&t.description.source==='edited'?`<button onclick="saveDesc('${esc(t.me_id)}',true)">Restore default</button>`:''}</div>`;
+ else o+=`<div class=psum>${pdText(d||buildSummary(t))}</div>${t.me_id?`<div class=muted2 style="margin-top:4px">${d?(t.description.source==='edited'?'Edited '+fmtTs(t.description.edited_at):'Saved description'):'Built from the sheet line (no saved description yet)'} · <a href="#" onclick="descEdit=true;renderPanel();return false">Edit</a></div>`:''}`;
+ o+='<h4>Details</h4><dl>'+pRow('Assigned to',esc(t.assigned))+pRow('Due',esc(t.due_label||t.due))+pRow('Category',esc(t.category))+pRow('Automation',esc(a)+(t.bot?' → '+esc(t.bot):''))+pRow('QBO write',t.qbo_write?'Yes, needs your approval':'')+pRow('How it runs',esc(t.detail))+pRow('Sheet notes',esc(t.notes))+pRow('Your notes',esc(t.note&&t.note.text))+'</dl>';
+ const f=t.files||{};const needs=(f.needs||[]).map(x=>esc(x.name||x.label||x)).join(', ');if(needs)o+='<h4>Files needed</h4><div>'+needs+'</div>';
+ o+='<h4>Run history <span class=muted2 style="text-transform:none">(click a run for full details)</span></h4>'+runList(t);
+ o+='<h4>Month by month</h4>'+monthTable(t);
+ o+='<h4>Run Now requests</h4>'+reqList(t);
+ const groups=t.attachments||{};const isos=Object.keys(groups).sort().reverse();
+ if(isos.length)o+='<h4>All attachments</h4>'+isos.map(iso=>`<div class=muted2>${esc(monthLabel(iso))}</div>${attStrip(groups[iso])}`).join('');
+ if(t.me_id==='ME-030')o+='<h4>Vehicle-lease runs</h4>'+vlRuns();
+ return o}
+function renderPanel(){const P=document.getElementById('odPanel');if(!P)return;const t=selTaskObj();
+ if(!t){P.classList.add('empty');P.innerHTML='<div class=phint>Click a task to see what it does, its run history and attachments.<br><br>Click a run in the history to see that run in full.</div>';return}
+ P.classList.remove('empty');P.innerHTML=odRun!=null?runView(t):taskView(t)}
+async function saveDesc(id,restore){const text=restore?'':(document.getElementById('descBox')||{}).value||'';
+ const r=await (await fetch('/api/monthend/description',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,description:text})})).json();
+ if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;descEdit=false;renderOd()}
 function tog2(id){odOpen.has(id)?odOpen.delete(id):odOpen.add(id);renderOd()}
 function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='Luke'),O=T.filter(t=>t.assigned!=='Luke');
  const mi=MONTHS.indexOf(odM),pm=mi>0?MONTHS[mi-1]:null,N=L.length||1;
  odSynced.textContent=OD.last_synced?fmtTs(OD.last_synced):'not yet';
  const nAuto=v=>L.filter(t=>autoOf(t)===v).length;
- odProgText.innerHTML=`<b>${nAuto('Run Now- Ready')} of ${L.length}</b> are Run Now- Ready · ${nAuto('New')} New · ${nAuto('Manual')} Manual`;
- odProg.style.width=(100*nAuto('Run Now- Ready')/N)+'%';odProgB.style.width='0';
  const cs=t=>compOf(t,odM).status;
  odChips.innerHTML=[['c-sched','Your lines (Assigned To = Luke)',L.length],['c-ok',`Done in ${odM}`,L.filter(t=>cs(t)==='done').length],['c-pend',`In progress in ${odM}`,L.filter(t=>cs(t)==='in_progress').length],['c-miss',`Not started in ${odM}`,L.filter(t=>cs(t)==='not_started').length],['c-unk','Manual',nAuto('Manual')],['c-ok','Run Now- Ready',nAuto('Run Now- Ready')]].map(([cl,k,v])=>`<div class="chip ${cl}"><b>${v}</b><small>${k}</small></div>`).join('');
  odMonth.innerHTML=MONTHS.map(m=>`<option ${m===odM?'selected':''}>${m}</option>`).join('');
@@ -501,7 +578,7 @@ function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='L
   if(shut)return head;
   return head+`<table class="odt tw"><thead><tr><th style="width:86px">ID</th><th style="width:62px">Row</th><th>Task</th><th>Notes</th><th style="width:168px">This month</th><th style="width:66px">${odM.slice(0,3)}</th><th style="width:60px">${pm?pm.slice(0,3):'Prev'}</th><th style="width:210px">Automation</th><th style="width:200px">Run Now</th></tr></thead><tbody>`+
   shown.map(t=>{const n=t.notes.length>60?t.notes.slice(0,57)+'…':t.notes,op=odOpen.has(t.id),isDone=compOf(t,odM).status==='done';
-   return `<tr class="${t.ladder==='ready'?'rdy':''} ${isDone?'isdone':''}"><td>${meIdButton(t.me_id)}</td><td class=rowno>Row ${t.row}</td><td class=tk onclick="tog2('${t.id}')" style="cursor:pointer"><span class=caret>${op?'&#9662;':'&#9656;'}</span>${t.order!=null?`<span class=ord>#${t.order}</span>`:''}<span class=taskname>${esc(t.task)}</span>${leaseLink(t)}${fileTags(t)}${t.note&&t.note.text?` <span class=noteic title="Your notes: ${esc(t.note.text)}">${NOTEICON}</span>`:''}${linkControl(t)}<span class=cat>${esc(t.category)}</span></td>
+   return `<tr class="${t.ladder==='ready'?'rdy':''} ${isDone?'isdone':''} ${odSel===t.id?'odsel':''}" onclick="selTask(event,'${t.id}')"><td>${meIdButton(t.me_id)}</td><td class=rowno>Row ${t.row}</td><td class=tk onclick="tog2('${t.id}')" style="cursor:pointer"><span class=caret>${op?'&#9662;':'&#9656;'}</span>${t.order!=null?`<span class=ord>#${t.order}</span>`:''}<span class=taskname>${esc(t.task)}</span>${leaseLink(t)}${fileTags(t)}${t.note&&t.note.text?` <span class=noteic title="Your notes: ${esc(t.note.text)}">${NOTEICON}</span>`:''}${linkControl(t)}<span class=cat>${esc(t.category)}</span></td>
    <td class=nt title="${esc(t.notes)}">${esc(n)||'<span style="color:#bbc">–</span>'}</td><td>${compCell(t)}</td><td title="Sheet column, read only">${st(monthVal(t,odM))}</td><td>${pm?st(monthVal(t,pm)):'–'}</td>
    <td>${ldBadge(t)}${autoHint(t)}${t.ladder==='ready'&&t.bot?`<span class=bot>&#8594; ${esc(t.bot)}</span>`:''}${t.qbo_write?'<span class=qa>QBO write: needs your approval</span>':''}</td>
    <td>${runCell(t)}</td></tr>`+(teachOpen===t.id&&(autoOf(t)==='Manual'||autoOf(t)==='New')?`<tr class=det2><td></td><td colspan=8>${teachBox(t)}</td></tr>`:'')+(op?`<tr class=det2><td></td><td colspan=8><div class=notes2><div class=yn><b>Your notes</b> <span class=muted2>(instructions for the bot every time this task runs)</span><textarea id="note-${t.id}" class=notebox rows=3 placeholder="e.g. Use the Month-to-Date report; post under the prior month" onblur="saveStanding('${t.id}')">${esc(t.note&&t.note.text||'')}</textarea><div class=nrow><button class=ok onclick="saveStanding('${t.id}')">Save</button><span class=nstamp>${stamp2(t.note)}</span></div></div><div class=sn><b>Sheet notes</b> <span class=muted2>(read-only, from the Notes column)</span><div class=noteview>${esc(t.notes)||'<span class=muted2>–</span>'}</div></div></div>${t.detail?`<div><b>How it runs:</b> ${esc(t.detail)}</div>`:''}${filesSection(t)}<div><b>Run history:</b> ${histHtml(t)}</div><div class=muted2>Key: ${esc(t.key)} · first seen ${fmtTs(t.first_seen)}</div></td></tr>`:'')}).join('')+`</tbody></table>`}).join('')||'<p>No lines match.</p>';
@@ -511,6 +588,7 @@ function renderOd(){if(!OD)return;const T=OD.tasks,L=T.filter(t=>t.assigned==='L
  odOthersBody.innerHTML=oShown.length?`<table class="odt tw"><thead><tr><th>ID</th><th>Row</th><th>Due</th><th>Task</th><th>Assigned</th><th>${odM.slice(0,3)}</th><th>${pm?pm.slice(0,3):'Prev'}</th></tr></thead><tbody>`+oShown.map(t=>`<tr><td>${meIdButton(t.me_id)}</td><td class=rowno>Row ${t.row}</td><td>${esc(t.due)}</td><td>${esc(t.task)}</td><td>${esc(t.assigned)}</td><td>${st(t.months[odM])}</td><td>${pm?st(t.months[pm]):'–'}</td></tr>`).join('')+'</tbody></table>':`<p class=muted2 style="padding:8px 12px">${oHidden.length?oHidden.length+' done hidden':'No other lines.'}</p>`;
  odRemovedSum.innerHTML=`Removed from sheet (${OD.removed.length})`;
  odRemovedBody.innerHTML=OD.removed.length?`<table class="odt tw"><thead><tr><th>ID</th><th>Last row</th><th>Due</th><th>Task</th><th>Assigned</th><th>Removed</th><th>History</th></tr></thead><tbody>`+OD.removed.map(t=>`<tr><td>${meIdButton(t.me_id)}</td><td class=rowno>Row ${t.last_row}</td><td>${esc(t.due)}</td><td>${esc(t.task)}</td><td>${esc(t.assigned)}</td><td>${fmtTs(t.removed_at)}</td><td>${histHtml(t)}</td></tr>`).join('')+'</tbody></table>':'<p class=muted2 style="padding:8px 12px">Nothing has been removed from the sheet since tracking started.</p>';
+ renderPanel();
  odLog.innerHTML=OD.log&&OD.log.length?OD.log.map(l=>`<tr><td>${esc(l.at)}</td><td>${esc(l.name)}</td><td>${esc(l.step)}</td><td>${esc(l.detail)}</td></tr>`).join(''):'<tr><td colspan=4>No Run Now clicks yet</td></tr>'}
 async function getDay(d){if(!cache[d])cache[d]=await (await fetch('/api/runs?date='+d)).json();return cache[d]}
 function step(n){go(addDays(cur,n))}

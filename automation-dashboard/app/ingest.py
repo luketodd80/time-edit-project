@@ -432,6 +432,57 @@ def register(app):
             attachments=listed,
         )
 
+    @app.route("/api/ingest/month-end/description", methods=["GET", "POST"])
+    def ingest_month_end_description():
+        """GET ?id=ME-030 reads a task's description. POST {id, description} replaces it; empty text restores the default."""
+        from app.month_end import canonical_me_id
+        body = _json() if request.method == "POST" else {}
+        raw = body.get("id") or body.get("me_id") or request.args.get("id") or request.args.get("me_id")
+        me_id = canonical_me_id(raw) if raw else None
+        if not me_id:
+            return jsonify(error="id is required (e.g. ME-030)"), 400
+        me = _me()
+        if request.method == "GET":
+            reg = me.registry()
+            if not any(e.get("me_id") == me_id for e in reg["tasks"].values()):
+                return jsonify(error="unknown task"), 404
+            return jsonify(ok=True, id=me_id, description=me.description_for(reg, me_id))
+        text = body.get("description", body.get("text"))
+        if not isinstance(text, str):
+            return jsonify(error="description (string) is required; send \"\" to restore the default"), 400
+        try:
+            saved = me.set_description(me_id, text)
+        except KeyError:
+            return jsonify(error="unknown task"), 404
+        return jsonify(ok=True, id=me_id, description=saved)
+
+    @app.route("/api/ingest/month-end/run-detail", methods=["GET", "POST", "DELETE"])
+    def ingest_month_end_run_detail():
+        """Run detail records shown when a run is clicked. POST {id, month YYYY-MM, run_id?, when, status,
+        summary, details, facts:[{label,value}], files:[str], links:[{label,url}], attachment_ids:[str]} upserts by run_id
+        (default <id>-<month>). GET ?id= lists. DELETE ?id=&run_id= removes one."""
+        from app.month_end import canonical_me_id
+        body = _json() if request.method == "POST" else {}
+        me_id = canonical_me_id(body.get("id") or request.args.get("id"))
+        if not me_id:
+            return jsonify(error="id is required (e.g. ME-030)"), 400
+        me = _me()
+        try:
+            if request.method == "GET":
+                reg = me.registry()
+                if not any(e.get("me_id") == me_id for e in reg["tasks"].values()):
+                    raise KeyError(me_id)
+                return jsonify(ok=True, id=me_id, runs=me.run_details_for(reg, me_id))
+            if request.method == "DELETE":
+                me.delete_run_detail(me_id, request.args.get("run_id") or "")
+                return jsonify(ok=True, id=me_id, deleted=True)
+            saved = me.save_run_detail(me_id, body)
+        except KeyError:
+            return jsonify(error="unknown task or run"), 404
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, id=me_id, run=saved)
+
     @app.get("/api/ingest/month-end/writebacks")
     def ingest_month_end_writebacks():
         """List sheet write-backs queued when someone marks Done on the dashboard."""
