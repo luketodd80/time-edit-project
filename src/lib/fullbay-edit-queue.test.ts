@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -27,13 +27,15 @@ import {
   signoffLineBlocks,
   submissionToQueueRequest,
   submitRefusal,
+  suggestionsNeedingDecision,
+  undecidedSubmitFindingIds,
   type FullbayEditBatch,
   type FullbayQueueEdit,
   type ShopDayRef,
 } from "@/lib/fullbay-edit-queue";
 import { confirmQueuedBatch, enqueueBatch, queueFilePath, readQueue } from "@/lib/fullbay-edit-queue-store";
 import { readSignoffs, recordAutoSignoffs, recordSignoff, signoffFilePath } from "@/lib/signoff-store";
-import { buildSubmission, requiredDecisionFindingIds } from "@/lib/review";
+import { buildSubmission, requiredDecisionFindingIds, suggestionsNeedDecisionLabel } from "@/lib/review";
 import { SEED } from "@/lib/seed";
 import type { Decision, ShopId } from "@/lib/types";
 
@@ -365,6 +367,37 @@ function batch(
     decided: decided.map((item) => ({ findingId: item.findingId, day: item.day, shopId: item.shopId })),
   };
 }
+
+describe("suggestions need a decision", () => {
+  it("blocks submit until every suggestion is accepted, rejected, or edited", () => {
+    const open = suggestionsNeedingDecision([CURATED_FRIDAY], {}, []);
+    assert.ok(open.length > 2);
+    assert.equal(suggestionsNeedDecisionLabel(open.length), `${open.length} suggestions need a decision`);
+    assert.equal(suggestionsNeedDecisionLabel(1), "1 suggestion needs a decision");
+    const first = open[0]!;
+    const second = open[1]!;
+    const decided = suggestionsNeedingDecision([CURATED_FRIDAY], { [first.findingId]: accept, [second.findingId]: { kind: "override", start: "14:21", end: "15:00" } }, []);
+    assert.equal(decided.some((edit) => edit.findingId === first.findingId || edit.findingId === second.findingId), false);
+    assert.equal(decided.length, open.length - 2);
+    assert.equal(decided[0]?.findingId, open[2]?.findingId);
+  });
+
+  it("treats applied, failed, and rejected lines from earlier submits as decided", () => {
+    const open = suggestionsNeedingDecision([CURATED_FRIDAY], {}, []);
+    const [appliedId, failedId, rejectedId] = [open[0]!, open[1]!, open[2]!];
+    const stored = batch("prior", [
+      sampleEdit(appliedId.findingId, appliedId.day, appliedId.shopId, "applied"),
+      sampleEdit(failedId.findingId, failedId.day, failedId.shopId, "failed"),
+      sampleEdit(rejectedId.findingId, rejectedId.day, rejectedId.shopId, "rejected"),
+    ]);
+    const left = suggestionsNeedingDecision([CURATED_FRIDAY], {}, [stored]);
+    assert.equal(left.some((edit) => [appliedId.findingId, failedId.findingId, rejectedId.findingId].includes(edit.findingId)), false);
+    assert.equal(left.length, open.length - 3);
+    const required = () => open.map((edit) => edit.findingId);
+    const missing = undecidedSubmitFindingIds([stored], { shopId: "dayton", days: [friday], decided: [], edits: [] }, required);
+    assert.deepEqual(missing, left.map((edit) => edit.findingId));
+  });
+});
 
 describe("auto sign-off", () => {
   const scope: ShopDayRef[] = [{ day: friday, shopId: "dayton" }];
@@ -816,6 +849,10 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
               shopId,
               days: [day],
               edits: [edit(findingId, day, shopId === "all" ? "dayton" : shopId)],
+              decided:
+                shopId === "all"
+                  ? []
+                  : requiredDecisionFindingIds(SEED, { day, shopId: shopId as ShopId }).map((id) => ({ findingId: id, day, shopId })),
             }),
           }),
         );
@@ -1016,6 +1053,57 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
       rmSync(directory, { recursive: true, force: true });
     }
   }
+
+  it("rejects a submit that still has an undecided suggestion", async () => {
+    await withStores(async () => {
+      const pair = seededPair(2);
+      const { POST } = await import("@/app/api/fullbay-edits/route");
+      const heldBack = pair.ids[pair.ids.length - 1]!;
+      const response = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            submittedAt: "2026-10-13T15:00:00.000Z",
+            shopId: pair.shopId,
+            days: [pair.day],
+            edits: [],
+            decided: decidedRows(pair.day, pair.shopId, pair.ids.filter((id) => id !== heldBack)),
+          }),
+        }),
+      );
+      assert.equal(response.status, 400);
+      const body = (await response.json()) as { findingIds?: string[]; error?: string };
+      assert.deepEqual(body.findingIds, [heldBack]);
+      assert.match(body.error ?? "", /needs a decision/);
+      assert.equal(existsSync(queueFilePath()), false);
+
+      await enqueueBatch({
+        submittedAt: "2026-10-13T15:05:00.000Z",
+        shopId: pair.shopId,
+        days: [pair.day],
+        edits: [sampleEdit(heldBack, pair.day, pair.shopId, "applied")],
+        decided: [],
+      });
+      const covered = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            submittedAt: "2026-10-13T15:10:00.000Z",
+            shopId: pair.shopId,
+            days: [pair.day],
+            edits: [],
+            decided: decidedRows(pair.day, pair.shopId, pair.ids.filter((id) => id !== heldBack)),
+          }),
+        }),
+      );
+      const coveredBody = (await covered.json()) as { error?: string; findingIds?: string[] };
+      assert.equal(covered.status, 409);
+      assert.match(coveredBody.error ?? "", /Already submitted/);
+      assert.equal(coveredBody.findingIds, undefined);
+    });
+  });
 
   it("marks a shop day done at submit when every finding was rejected", async () => {
     await withStores(async () => {

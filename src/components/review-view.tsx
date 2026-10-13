@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay } from "@/lib/dates";
-import { latestQueueEdit, reviewApplyText, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
+import { latestQueueEdit, reviewApplyText, suggestionsNeedingDecision, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
 import { buildNonProEdit, clampSplitTime, defaultKeptWindow, defaultPartialChoice, describeNonProEdit, splitMidpoint } from "@/lib/nonpro";
 import {
   buildPlan,
@@ -15,6 +15,7 @@ import {
   ordersWithoutEdit,
   shopName,
   statusLabel,
+  suggestionsNeedDecisionLabel,
   techOutlook,
   techsWithFindings,
   techsWithoutFindings,
@@ -58,7 +59,9 @@ export function ReviewView({
   onSubmit: () => void;
 }) {
   const plan = buildPlan(reports, decisions);
+  const needingDecision = suggestionsNeedingDecision(reports, decisions, batches);
   const nothingToDecide = plan.edits.length + plan.rejected.length + plan.undecided.length + plan.invalid.length === 0;
+  const waitingOnDecisions = needingDecision.length > 0 && submitLock == null && !nothingToDecide;
 
   useEffect(() => {
     if (!reveal) return;
@@ -108,8 +111,22 @@ export function ReviewView({
       })}
 
       <div className="flex flex-col items-start gap-3 border-t pt-6">
-        <Button type="button" size="lg" disabled={nothingToDecide || submitLock != null} onClick={onSubmit}>
-          Submit decisions
+        <Button
+          type="button"
+          size="lg"
+          disabled={nothingToDecide || submitLock != null}
+          aria-disabled={waitingOnDecisions || nothingToDecide || submitLock != null}
+          className={waitingOnDecisions ? "opacity-50" : undefined}
+          onClick={() => {
+            const first = needingDecision[0];
+            if (first) {
+              onRevealLine(first.findingId);
+              return;
+            }
+            onSubmit();
+          }}
+        >
+          {needingDecision.length > 0 ? suggestionsNeedDecisionLabel(needingDecision.length) : "Submit decisions"}
         </Button>
         {submitLock ? <p className="max-w-2xl text-sm text-destructive">{submitLock}</p> : null}
         <p className="max-w-2xl text-sm text-muted-foreground">

@@ -8,7 +8,7 @@ import { ReviewView } from "@/components/review-view";
 import { SubmitConfirmDialog } from "@/components/submit-confirm-dialog";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { editsForSubmit, findingCanBeDecided, latestQueueEdit, lineRevealFocusId, queueRequestForSubmit, shopDayLock, signoffApplyBlock, signoffLineBlocks, submitRefusal, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
+import { editsForSubmit, findingCanBeDecided, latestQueueEdit, lineRevealFocusId, queueRequestForSubmit, shopDayLock, signoffApplyBlock, signoffLineBlocks, submitRefusal, suggestionsNeedingDecision, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { attest, buildPlan, buildSubmission, filterReports, markDone, signoffKey, submissionFingerprint, submitBlockers } from "@/lib/review";
 import { updateReview, useReviewSnapshot } from "@/lib/review-store";
 import { SEED } from "@/lib/seed";
@@ -264,7 +264,7 @@ export function Dashboard() {
 
   function buildQueuedSubmit() {
     const plan = buildPlan(reports, state.decisions);
-    const blockers = submitBlockers(plan);
+    const blockers = submitBlockers(plan, suggestionsNeedingDecision(reports, state.decisions, queueBatches ?? []).length);
     if (blockers.length > 0) {
       setSubmitError(blockers.join(" "));
       return null;
@@ -307,7 +307,13 @@ export function Dashboard() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(queuedRequest),
       });
-      const body = (await response.json()) as { error?: string; autoSignedOff?: RecordedSignoff[] };
+      const body = (await response.json()) as { error?: string; autoSignedOff?: RecordedSignoff[]; findingIds?: string[] };
+      if (response.status === 400 && body.findingIds && body.findingIds.length > 0) {
+        setSubmitError(body.error ?? "Every suggestion needs a decision before submit.");
+        const first = body.findingIds[0];
+        if (first) revealLine(first);
+        return;
+      }
       if (response.status === 409) {
         setSubmitError(body.error ?? "Submit is closed for this shop and day.");
         return;
