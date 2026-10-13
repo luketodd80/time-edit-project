@@ -1,5 +1,5 @@
-import { shopName } from "@/lib/review";
-import { SHOPS, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
+import { buildPlan, shopName, techsWithFindings } from "@/lib/review";
+import { SHOPS, type DayReport, type Decision, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 
 export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done" | "not_a_gap" | "rejected";
@@ -593,6 +593,63 @@ export function editsForSubmit<T extends { findingId: string; day: string; shopI
     const latest = latestQueueEdit(batches, edit.findingId);
     return latest == null || latest.status === "failed";
   });
+}
+
+/** An earlier submit already recorded a decision, so this line does not block a later Submit. */
+export function earlierSubmitCountsAsDecided(status: FullbayApplyStatus): boolean {
+  return status === "applied" || status === "failed" || status === "rejected" || status === "pending" || status === "already_done" || status === "not_a_gap";
+}
+
+function findingAlreadyDecided(batches: FullbayEditBatch[], findingId: string): boolean {
+  const latest = latestQueueEdit(batches, findingId);
+  return latest != null && earlierSubmitCountsAsDecided(latest.status);
+}
+
+/**
+ * Suggestions on the current shop and day that still have no accept, reject, or edited choice,
+ * in the same order Review shows them. Applied, failed, and rejected lines from earlier submits are skipped.
+ */
+export function suggestionsNeedingDecision(reports: DayReport[], decisions: Record<string, Decision>, batches: FullbayEditBatch[]): PlannedEdit[] {
+  const open = new Map(
+    buildPlan(reports, decisions).undecided
+      .filter((edit) => !findingAlreadyDecided(batches, edit.findingId))
+      .map((edit) => [edit.findingId, edit]),
+  );
+  const ordered: PlannedEdit[] = [];
+  const days = [...new Set(reports.map((report) => report.day))].sort();
+  for (const day of days) {
+    for (const report of reports.filter((item) => item.day === day)) {
+      for (const tech of techsWithFindings(report)) {
+        const findings = report.findings.filter((finding) => finding.techId === tech.id).slice().sort((a, b) => a.start.localeCompare(b.start));
+        for (const finding of findings) {
+          const edit = open.get(finding.id);
+          if (edit) ordered.push(edit);
+        }
+      }
+    }
+  }
+  return ordered;
+}
+
+/** Required findings for this submit that are neither in the request nor already decided on an earlier submit. */
+export function undecidedSubmitFindingIds(
+  batches: FullbayEditBatch[],
+  request: { shopId: ShopFilter; days: string[]; decided?: DecidedFinding[]; edits?: Array<{ findingId: string }> },
+  requiredFindingIds: (pair: ShopDayRef) => string[],
+): string[] {
+  const covered = new Set<string>();
+  for (const item of request.decided ?? []) covered.add(item.findingId);
+  for (const edit of request.edits ?? []) covered.add(edit.findingId);
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const pair of shopDaysCovered(request.shopId, request.days)) {
+    for (const findingId of requiredFindingIds(pair)) {
+      if (seen.has(findingId) || covered.has(findingId) || findingAlreadyDecided(batches, findingId)) continue;
+      seen.add(findingId);
+      missing.push(findingId);
+    }
+  }
+  return missing;
 }
 
 export interface ShopDayRef {

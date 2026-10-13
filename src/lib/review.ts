@@ -391,14 +391,23 @@ export function buildPlan(reports: DayReport[], decisions: Record<string, Decisi
   return plan;
 }
 
-export function submitBlockers(plan: ReviewPlan): string[] {
+/** Button and error copy while suggestions on this shop and day still have no decision. */
+export function suggestionsNeedDecisionLabel(count: number): string {
+  return count === 1 ? "1 suggestion needs a decision" : `${count} suggestions need a decision`;
+}
+
+/**
+ * Submit stays closed until every suggestion has a decision.
+ * `stillOpen` is the count that still needs one after earlier applied, failed, and rejected lines are treated as decided.
+ */
+export function submitBlockers(plan: ReviewPlan, stillOpen = plan.undecided.length): string[] {
   if (plan.invalid.length > 0) {
     return plan.invalid.map((edit) => `${edit.techName} ${edit.orderId}: ${edit.error}`);
   }
-  const decided = plan.edits.length + plan.rejected.length;
-  const pending = plan.undecided.length;
-  if (decided === 0 && pending === 0) return ["No recommendations to decide for this selection."];
-  if (decided === 0) return ["Accept, reject, or override at least one recommendation."];
+  if (stillOpen > 0) return [`${suggestionsNeedDecisionLabel(stillOpen)}.`];
+  if (plan.edits.length + plan.rejected.length + plan.undecided.length === 0) {
+    return ["No recommendations to decide for this selection."];
+  }
   return [];
 }
 

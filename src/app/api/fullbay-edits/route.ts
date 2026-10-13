@@ -1,6 +1,6 @@
-import { AUTO_SIGNOFF_NOTE, parseQueueRequest, shopDaysCovered, shopDaysToAutoSignOff } from "@/lib/fullbay-edit-queue";
+import { AUTO_SIGNOFF_NOTE, parseQueueRequest, shopDaysCovered, shopDaysToAutoSignOff, undecidedSubmitFindingIds } from "@/lib/fullbay-edit-queue";
 import { enqueueIfAllowed, queueAuthorized, readQueue } from "@/lib/fullbay-edit-queue-store";
-import { requiredDecisionFindingIds } from "@/lib/review";
+import { requiredDecisionFindingIds, suggestionsNeedDecisionLabel } from "@/lib/review";
 import { SEED } from "@/lib/seed";
 import { recordAutoSignoffs } from "@/lib/signoff-store";
 import { notifySubmitWebhook } from "@/lib/submit-webhook";
@@ -22,6 +22,14 @@ export async function POST(request: Request) {
   }
   const parsed = parseQueueRequest(body);
   if (!parsed.ok) return NextResponse.json({ ok: false, error: parsed.error }, { status: 400 });
+  const queued = await readQueue();
+  const missing = undecidedSubmitFindingIds(queued, parsed.value, (pair) => requiredDecisionFindingIds(SEED, pair));
+  if (missing.length > 0) {
+    return NextResponse.json(
+      { ok: false, error: `${suggestionsNeedDecisionLabel(missing.length)}: ${missing.join(", ")}`, findingIds: missing },
+      { status: 400 },
+    );
+  }
   const stored = await enqueueIfAllowed(parsed.value);
   if (!stored.ok) return NextResponse.json({ ok: false, error: stored.error }, { status: 409 });
   const autoSignedOff = await signOffReadyShopDays(stored.batch.shopId, stored.batch.days);
