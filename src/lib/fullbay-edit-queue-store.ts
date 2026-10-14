@@ -1,7 +1,9 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { liveDataPath, readStoredJson, seedDataPath } from "@/lib/durable-file";
-import { applyConfirmations, rejectFailureInQueue, submitRefusal, type FullbayConfirmResult, type FullbayEditBatch, type FullbayQueueRequest } from "@/lib/fullbay-edit-queue";
+import { applyConfirmations, rejectFailureInQueue, submitRefusal, supersedeStaleCodyEdit, type FullbayConfirmResult, type FullbayEditBatch, type FullbayQueueRequest } from "@/lib/fullbay-edit-queue";
+import { withoutStaleMoveTimeEdits } from "@/lib/move-time";
+import { readMoveTimeLeftovers } from "@/lib/move-time-store";
 import { readSignoffs } from "@/lib/signoff-store";
 
 let writeChain: Promise<unknown> = Promise.resolve();
@@ -38,6 +40,21 @@ export async function enqueueBatch(request: FullbayQueueRequest, id = crypto.ran
   return batch;
 }
 
+/**
+ * When move-time leftovers are open, mark Cody's pending edit in batch 4d4ebbfa superseded
+ * and return the queue. A queue that is already marked is left in place.
+ */
+export async function supersedeMoveTimePending(): Promise<FullbayEditBatch[]> {
+  return withQueueLock(async () => {
+    const batches = await readQueue();
+    if ((await readMoveTimeLeftovers()).length === 0) return batches;
+    const superseded = supersedeStaleCodyEdit(batches);
+    if (!superseded.changed) return batches;
+    await writeQueue(superseded.batches);
+    return superseded.batches;
+  });
+}
+
 /** Writes a batch only when none of its shop days are signed off or already queued. */
 export async function enqueueIfAllowed(
   request: FullbayQueueRequest,
@@ -45,9 +62,17 @@ export async function enqueueIfAllowed(
 ): Promise<{ ok: true; batch: FullbayEditBatch } | { ok: false; error: string }> {
   const batch: FullbayEditBatch = { id, ...request, days: [...request.days].sort() };
   return withQueueLock(async () => {
-    const batches = await readQueue();
+    let batches = await readQueue();
+    const leftoversOpen = (await readMoveTimeLeftovers()).length > 0;
+    if (leftoversOpen) {
+      const superseded = supersedeStaleCodyEdit(batches);
+      if (superseded.changed) {
+        batches = superseded.batches;
+        await writeQueue(batches);
+      }
+    }
     const signoffs = await readSignoffs();
-    const refusal = submitRefusal(batches, signoffs, batch);
+    const refusal = submitRefusal(withoutStaleMoveTimeEdits(batches, leftoversOpen), signoffs, batch);
     if (refusal) return { ok: false, error: refusal };
     batches.push(batch);
     await writeQueue(batches);
@@ -79,7 +104,14 @@ export async function confirmQueuedBatch(
   now: string,
 ): Promise<{ ok: true; batch: FullbayEditBatch } | { ok: false; status: number; error: string }> {
   return withQueueLock(async () => {
-    const batches = await readQueue();
+    let batches = await readQueue();
+    if ((await readMoveTimeLeftovers()).length > 0) {
+      const superseded = supersedeStaleCodyEdit(batches);
+      if (superseded.changed) {
+        batches = superseded.batches;
+        await writeQueue(batches);
+      }
+    }
     const index = batches.findIndex((batch) => batch.id === batchId);
     const current = index >= 0 ? batches[index] : undefined;
     if (!current) return { ok: false, status: 404, error: "Batch not found." };

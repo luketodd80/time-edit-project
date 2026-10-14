@@ -1,6 +1,8 @@
 import { buildAdminPayload, isRangePreset, presetBounds } from "@/lib/admin";
 import { todayInNewYork } from "@/lib/dates";
-import { queueAuthorized, readQueue } from "@/lib/fullbay-edit-queue-store";
+import { queueAuthorized, readQueue, supersedeMoveTimePending } from "@/lib/fullbay-edit-queue-store";
+import { applyMoveTimeLeftovers } from "@/lib/move-time";
+import { readMoveTimeLeftovers } from "@/lib/move-time-store";
 import { readSignoffs } from "@/lib/signoff-store";
 import { SEED } from "@/lib/seed";
 import { snapshotFromReports } from "@/lib/utilization-history";
@@ -29,9 +31,11 @@ export async function GET(request: Request) {
   if (!start || !end || !DAY.test(start) || !DAY.test(end) || start > end) {
     return NextResponse.json({ ok: false, error: "from and to must be YYYY-MM-DD, with from on or before to." }, { status: 400 });
   }
-  const batches = await readQueue();
+  const leftovers = await readMoveTimeLeftovers();
+  const batches = leftovers.length > 0 ? await supersedeMoveTimePending() : await readQueue();
   const signoffs = await readSignoffs();
+  const reports = applyMoveTimeLeftovers(SEED, leftovers);
   const history = await syncUtilizationHistory(snapshotFromReports(SEED, batches));
-  const admin = buildAdminPayload({ today, start, end, reports: SEED, batches, signoffs, history });
+  const admin = buildAdminPayload({ today, start, end, reports, batches, signoffs, history });
   return NextResponse.json({ ok: true, ...admin });
 }

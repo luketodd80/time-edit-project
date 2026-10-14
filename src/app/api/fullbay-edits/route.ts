@@ -1,10 +1,10 @@
 import { AUTO_SIGNOFF_NOTE, parseQueueRequest, shopDaysCovered, shopDaysToAutoSignOff, undecidedSubmitFindingIds } from "@/lib/fullbay-edit-queue";
 import { enqueueIfAllowed, queueAuthorized, readQueue } from "@/lib/fullbay-edit-queue-store";
-import { applyMoveTimeLeftovers } from "@/lib/move-time";
+import { applyMoveTimeLeftovers, withoutStaleMoveTimeEdits } from "@/lib/move-time";
 import { readMoveTimeLeftovers } from "@/lib/move-time-store";
-import { requiredDecisionFindingIds, suggestionsNeedDecisionLabel } from "@/lib/review";
+import { requiredDecisionFindingIds, requiredFindingsForSubmit, suggestionsNeedDecisionLabel } from "@/lib/review";
 import { SEED } from "@/lib/seed";
-import { recordAutoSignoffs } from "@/lib/signoff-store";
+import { readSignoffs, recordAutoSignoffs } from "@/lib/signoff-store";
 import { notifySubmitWebhook } from "@/lib/submit-webhook";
 import type { ShopFilter } from "@/lib/types";
 import { NextResponse } from "next/server";
@@ -24,9 +24,12 @@ export async function POST(request: Request) {
   }
   const parsed = parseQueueRequest(body);
   if (!parsed.ok) return NextResponse.json({ ok: false, error: parsed.error }, { status: 400 });
-  const queued = await readQueue();
-  const reports = applyMoveTimeLeftovers(SEED, await readMoveTimeLeftovers());
-  const missing = undecidedSubmitFindingIds(queued, parsed.value, (pair) => requiredDecisionFindingIds(reports, pair));
+  const leftovers = await readMoveTimeLeftovers();
+  const leftoversOpen = leftovers.length > 0;
+  const queued = withoutStaleMoveTimeEdits(await readQueue(), leftoversOpen);
+  const reports = applyMoveTimeLeftovers(SEED, leftovers);
+  const signoffs = await readSignoffs();
+  const missing = undecidedSubmitFindingIds(queued, parsed.value, (pair) => requiredFindingsForSubmit(reports, pair, signoffs, leftoversOpen));
   if (missing.length > 0) {
     return NextResponse.json(
       { ok: false, error: `${suggestionsNeedDecisionLabel(missing.length)}: ${missing.join(", ")}`, findingIds: missing },

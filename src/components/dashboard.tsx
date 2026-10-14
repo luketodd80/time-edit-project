@@ -9,7 +9,7 @@ import { SubmitConfirmDialog } from "@/components/submit-confirm-dialog";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { editsForSubmit, findingCanBeDecided, latestQueueEdit, lineRevealFocusId, queueRequestForSubmit, shopDayLock, signoffApplyBlock, signoffLineBlocks, submitRefusal, suggestionsNeedingDecision, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
-import { applyMoveTimeLeftovers } from "@/lib/move-time";
+import { applyMoveTimeLeftovers, decisionsWithoutStaleMoveTime, isReopenedMoveTimeFinding, withoutStaleMoveTimeEdits } from "@/lib/move-time";
 import { attest, buildPlan, buildSubmission, filterReports, markDone, signoffKey, submissionFingerprint, submitBlockers } from "@/lib/review";
 import { updateReview, useReviewSnapshot } from "@/lib/review-store";
 import { SEED } from "@/lib/seed";
@@ -42,8 +42,10 @@ export function Dashboard() {
   const [moveTimeFindings, setMoveTimeFindings] = useState<Finding[]>([]);
   const highlightTimer = useRef<number | null>(null);
 
+  const leftoversOpen = moveTimeFindings.length > 0;
   const loadedReports = applyMoveTimeLeftovers(SEED, moveTimeFindings);
   const reports = filterReports(loadedReports, state.shopId, state.days);
+  const reviewBatches = withoutStaleMoveTimeEdits(queueBatches ?? [], leftoversOpen);
   const liveSubmission = buildSubmission(reports, state.decisions, state.shopId, state.days, state.submission?.submittedAt ?? "");
   const stale = state.submission != null && submissionFingerprint(state.submission) !== submissionFingerprint(liveSubmission);
 
@@ -103,6 +105,7 @@ export function Dashboard() {
       const decisions = { ...current.decisions };
       for (const batch of queueBatches) {
         for (const edit of batch.edits) {
+          if (leftoversOpen && isReopenedMoveTimeFinding(edit.findingId)) continue;
           if (latestQueueEdit(queueBatches, edit.findingId)?.status !== "rejected") continue;
           if (decisions[edit.findingId]?.kind === "reject") continue;
           decisions[edit.findingId] = { kind: "reject", start: "", end: "" };
@@ -111,7 +114,15 @@ export function Dashboard() {
       }
       return changed ? { ...current, decisions } : current;
     });
-  }, [queueBatches]);
+  }, [queueBatches, leftoversOpen]);
+
+  useEffect(() => {
+    if (!leftoversOpen) return;
+    updateReview((current) => {
+      const decisions = decisionsWithoutStaleMoveTime(current.decisions, true);
+      return decisions === current.decisions ? current : { ...current, decisions };
+    });
+  }, [leftoversOpen, moveTimeFindings]);
 
   function setShop(shopId: ShopFilter) {
     setSubmitError(null);
@@ -130,13 +141,13 @@ export function Dashboard() {
 
   function setDecision(findingId: string, decision: Decision | null) {
     const finding = reports.flatMap((report) => report.findings).find((item) => item.id === findingId);
-    if (finding && !findingCanBeDecided(queueBatches ?? [], finding.id)) return;
+    if (finding && !findingCanBeDecided(reviewBatches, finding.id)) return;
     if (finding && !finding.followUp && shopDayLock(queueBatches ?? [], recordedSignoffs(state.signoffs), finding.day, finding.shopId) === "signed-off") return;
     setSubmitError(null);
     updateReview((current) => {
       const decisions = { ...current.decisions };
       if (decision == null) delete decisions[findingId];
-      else decisions[findingId] = decision;
+      else decisions[findingId] = leftoversOpen && isReopenedMoveTimeFinding(findingId) ? { ...decision, moveTime: true } : decision;
       return { ...current, decisions };
     });
   }
@@ -151,7 +162,7 @@ export function Dashboard() {
       shopId: current.shopId === "all" || current.shopId === report.shopId ? current.shopId : report.shopId,
       days: current.days.includes(report.day) ? current.days : [report.day],
     }));
-    setReveal({ findingId, focusId: lineRevealFocusId(findingId, latestQueueEdit(queueBatches ?? [], findingId)?.status ?? null) });
+    setReveal({ findingId, focusId: lineRevealFocusId(findingId, latestQueueEdit(reviewBatches, findingId)?.status ?? null) });
     setHighlightedFindingId(findingId);
     if (highlightTimer.current != null) window.clearTimeout(highlightTimer.current);
     highlightTimer.current = window.setTimeout(() => setHighlightedFindingId(null), 4000);
@@ -275,15 +286,15 @@ export function Dashboard() {
 
   function buildQueuedSubmit() {
     const plan = buildPlan(reports, state.decisions);
-    const blockers = submitBlockers(plan, suggestionsNeedingDecision(reports, state.decisions, queueBatches ?? []).length);
+    const blockers = submitBlockers(plan, suggestionsNeedingDecision(reports, state.decisions, reviewBatches, recordedSignoffs(state.signoffs)).length);
     if (blockers.length > 0) {
       setSubmitError(blockers.join(" "));
       return null;
     }
     const submission = buildSubmission(reports, state.decisions, state.shopId, state.days, new Date().toISOString());
-    const queuedRequest = queueRequestForSubmit(queueBatches ?? [], submission);
+    const queuedRequest = queueRequestForSubmit(reviewBatches, submission);
     const queuedSubmission = { ...submission, edits: submission.edits.filter((edit) => queuedRequest.edits.some((queued) => queued.findingId === edit.findingId)) };
-    const refusal = submitRefusal(queueBatches ?? [], recordedSignoffs(state.signoffs), queuedRequest);
+    const refusal = submitRefusal(reviewBatches, recordedSignoffs(state.signoffs), queuedRequest);
     if (refusal) {
       setSubmitError(refusal);
       return null;
@@ -351,11 +362,13 @@ export function Dashboard() {
   }
 
   const signoffRecords = recordedSignoffs(state.signoffs);
-  const submitEdits = editsForSubmit(queueBatches ?? [], buildPlan(reports, state.decisions).edits);
-  const openFollowUps = suggestionsNeedingDecision(reports, state.decisions, queueBatches ?? [])
-    .filter((edit) => edit.followUp)
-    .map((edit) => ({ day: edit.day, shopId: edit.shopId }));
-  const submitLock = submitRefusal(queueBatches ?? [], signoffRecords, { shopId: state.shopId, days: state.days, edits: submitEdits }, openFollowUps);
+  const needingDecision = suggestionsNeedingDecision(reports, state.decisions, reviewBatches, signoffRecords);
+  const submitEdits = editsForSubmit(reviewBatches, buildPlan(reports, state.decisions).edits);
+  const openFollowUps = needingDecision.filter((edit) => edit.followUp).map((edit) => ({ day: edit.day, shopId: edit.shopId }));
+  const submitLock =
+    needingDecision.length > 0
+      ? null
+      : submitRefusal(reviewBatches, signoffRecords, { shopId: state.shopId, days: state.days, edits: submitEdits }, openFollowUps);
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6">
@@ -418,7 +431,8 @@ export function Dashboard() {
             submitError={submitError ?? queueError}
             submitLock={submitLock}
             isLocked={(day, shopId) => shopDayLock(queueBatches ?? [], signoffRecords, day, shopId) === "signed-off"}
-            batches={queueBatches ?? []}
+            batches={reviewBatches}
+            signoffs={signoffRecords}
             onDecision={setDecision}
             onRejectFailure={(findingId) => void rejectFailure(findingId)}
             rejectingId={rejectingId}

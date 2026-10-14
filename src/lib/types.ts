@@ -223,6 +223,11 @@ export interface Decision {
    */
   nonProIn?: string;
   nonProOut?: string;
+  /**
+   * Set when this decision was made after the move-time reopen.
+   * An older saved decision for the same finding is dropped while those rows are open.
+   */
+  moveTime?: boolean;
 }
 
 export interface Signoff {

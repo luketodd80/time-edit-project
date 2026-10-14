@@ -1,4 +1,4 @@
-import { queueAuthorized } from "@/lib/fullbay-edit-queue-store";
+import { queueAuthorized, supersedeMoveTimePending } from "@/lib/fullbay-edit-queue-store";
 import { openMoveTimeLeftovers, readMoveTimeLeftovers } from "@/lib/move-time-store";
 import { NextResponse } from "next/server";
 
@@ -10,6 +10,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
   const findings = await readMoveTimeLeftovers();
+  if (findings.length > 0) await supersedeMoveTimePending();
   return NextResponse.json({ ok: true, opened: findings.length > 0, findings });
 }
 
@@ -19,5 +20,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
   const opened = await openMoveTimeLeftovers(new Date().toISOString());
+  await supersedeMoveTimePending();
   return NextResponse.json({ ok: true, openedAt: opened.openedAt, findings: opened.findings });
 }
