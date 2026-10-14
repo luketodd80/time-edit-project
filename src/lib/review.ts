@@ -1,4 +1,4 @@
-import { resolvedNonProChange } from "@/lib/move-time";
+import { isReopenedMoveTimeFinding, resolvedNonProChange } from "@/lib/move-time";
 import { buildNonProEdit, nonProEditType } from "@/lib/nonpro";
 import { SHOPS, type DayReport, type Decision, type Finding, type PlannedEdit, type ServiceOrder, type ShopFilter, type ShopId, type Signoff, type SkippedOrder, type Submission, type Technician } from "@/lib/types";
 import { appliedWindow } from "@/lib/time";
@@ -75,6 +75,23 @@ export function techFor(report: DayReport, techId: string): Technician | undefin
  * Findings a manager must accept, reject, or override for this shop and day.
  * Invoiced orders and rows with no recommendation are not included. An empty list means this shop has nothing to sign off.
  */
+/**
+ * Findings a submit must decide.
+ * On a signed-off shop day, once move-time leftovers are open, only those reopened lines count.
+ */
+export function requiredFindingsForSubmit(
+  reports: DayReport[],
+  pair: { day: string; shopId: ShopId },
+  signoffs: { day: string; shopId: ShopId; doneAt?: string | null }[],
+  leftoversOpen: boolean,
+): string[] {
+  const ids = requiredDecisionFindingIds(reports, pair);
+  if (!leftoversOpen) return ids;
+  const signed = signoffs.some((item) => item.day === pair.day && item.shopId === pair.shopId && item.doneAt);
+  if (!signed) return ids;
+  return ids.filter((id) => isReopenedMoveTimeFinding(id));
+}
+
 export function requiredDecisionFindingIds(reports: DayReport[], pair: { day: string; shopId: ShopId }): string[] {
   const report = reports.find((item) => item.day === pair.day && item.shopId === pair.shopId);
   if (!report) return [];

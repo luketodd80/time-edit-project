@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay } from "@/lib/dates";
-import { latestQueueEdit, reviewApplyText, suggestionsNeedingDecision, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
+import { latestQueueEdit, reviewApplyText, suggestionsNeedingDecision, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { moveTimeLines, shiftClockOutNote } from "@/lib/move-time";
 import { buildNonProEdit, clampSplitTime, defaultKeptWindow, defaultPartialChoice, describeNonProEdit, splitMidpoint } from "@/lib/nonpro";
 import {
@@ -34,6 +34,7 @@ export function ReviewView({
   submitLock,
   isLocked,
   batches,
+  signoffs = [],
   onDecision,
   onRejectFailure,
   rejectingId,
@@ -50,6 +51,7 @@ export function ReviewView({
   submitLock: string | null;
   isLocked: (day: string, shopId: DayReport["shopId"]) => boolean;
   batches: FullbayEditBatch[];
+  signoffs?: RecordedSignoff[];
   onDecision: (findingId: string, decision: Decision | null) => void;
   onRejectFailure: (findingId: string) => void;
   rejectingId: string | null;
@@ -60,7 +62,7 @@ export function ReviewView({
   onSubmit: () => void;
 }) {
   const plan = buildPlan(reports, decisions);
-  const needingDecision = suggestionsNeedingDecision(reports, decisions, batches);
+  const needingDecision = suggestionsNeedingDecision(reports, decisions, batches, signoffs);
   const nothingToDecide = plan.edits.length + plan.rejected.length + plan.undecided.length + plan.invalid.length === 0;
   const waitingOnDecisions = needingDecision.length > 0 && submitLock == null && !nothingToDecide;
 

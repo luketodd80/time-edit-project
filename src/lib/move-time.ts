@@ -238,6 +238,11 @@ export function shiftClockOutNote(shiftClockOut: string | undefined, decision: D
   return `The shift clocked out at ${formatMoveClock(shiftClockOut)}. Accept stops there.`;
 }
 
+/** Pending Cody edit from the October 14 Greenville submit. It must not be sent once move-time leftovers are open. */
+export const STALE_CODY_BATCH_ID = "4d4ebbfa-4c87-4b69-be4e-1169659247be";
+
+export const CODY_KESTER_MOVE_TIME_ID = "2026-10-13-greenville-cody-kester-02";
+
 /** Follow-up finding that can be submitted after Dayton 10/13 is signed off. */
 export const NICK_SONTAG_FOLLOW_UP_ID = "2026-10-13-dayton-nick-sontag-followup";
 
@@ -245,6 +250,63 @@ const FOLLOW_UP_IDS = new Set<string>([NICK_SONTAG_FOLLOW_UP_ID]);
 
 export function isMoveTimeFollowUp(findingId: string): boolean {
   return FOLLOW_UP_IDS.has(findingId);
+}
+
+const REOPENED_MOVE_TIME_IDS = new Set<string>([
+  CODY_KESTER_MOVE_TIME_ID,
+  "2026-10-13-greenville-david-johnson-13",
+  "2026-10-13-greenville-david-johnson-20",
+  NICK_SONTAG_FOLLOW_UP_ID,
+]);
+
+export function isReopenedMoveTimeFinding(findingId: string): boolean {
+  return REOPENED_MOVE_TIME_IDS.has(findingId);
+}
+
+/**
+ * An edit from before the move-time reopen. A later submit of the same finding carries `nonProChange`.
+ * `superseded` stays stale even if the leftovers file is closed, so that pending Cody edit is never sent.
+ */
+export function isStaleMoveTimeQueueEdit(
+  edit: { findingId: string; nonProChange?: unknown; status?: string },
+  leftoversOpen: boolean,
+): boolean {
+  if (edit.status === "superseded") return true;
+  return leftoversOpen && isReopenedMoveTimeFinding(edit.findingId) && edit.nonProChange == null;
+}
+
+export function withoutStaleMoveTimeEdits<T extends { edits: Array<{ findingId: string; nonProChange?: unknown; status?: string }> }>(
+  batches: T[],
+  leftoversOpen: boolean,
+): T[] {
+  if (!leftoversOpen) return batches;
+  return batches.map((batch) => {
+    const edits = batch.edits.filter((edit) => !isStaleMoveTimeQueueEdit(edit, true));
+    return edits.length === batch.edits.length ? batch : { ...batch, edits };
+  });
+}
+
+/** Drop decisions saved before the reopen. A decision made on the new row sets `moveTime`. */
+export function decisionsWithoutStaleMoveTime(decisions: Record<string, Decision>, leftoversOpen: boolean): Record<string, Decision> {
+  if (!leftoversOpen) return decisions;
+  let changed = false;
+  const next = { ...decisions };
+  for (const id of REOPENED_MOVE_TIME_IDS) {
+    const decision = next[id];
+    if (!decision || decision.moveTime) continue;
+    delete next[id];
+    changed = true;
+  }
+  return changed ? next : decisions;
+}
+
+/** True once the four October 13 move-time rows have been merged into the reports. */
+export function moveTimeLeftoversApplied(reports: DayReport[]): boolean {
+  return reports.some((report) =>
+    report.findings.some(
+      (finding) => isReopenedMoveTimeFinding(finding.id) && (finding.followUp === true || finding.recommendation?.nonProChange != null),
+    ),
+  );
 }
 
 function findingBase(day: string, shopId: ShopId, techId: string, id: string, start: string, end: string, minutes: number, detail: string): Omit<Finding, "recommendation"> {

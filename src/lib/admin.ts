@@ -7,6 +7,7 @@ import {
   type FullbayQueueEdit,
   type RecordedSignoff,
 } from "@/lib/fullbay-edit-queue";
+import { isReopenedMoveTimeFinding } from "@/lib/move-time";
 import { requiredDecisionFindingIds, techFor } from "@/lib/review";
 import { SHOPS, type DayReport, type Finding, type ShopId } from "@/lib/types";
 import {
@@ -336,7 +337,7 @@ function buildCell(
     }
   }
 
-  const counts: Record<FullbayApplyStatus, number> = { pending: 0, applied: 0, failed: 0, already_done: 0, not_a_gap: 0, rejected: 0 };
+  const counts: Record<FullbayApplyStatus, number> = { pending: 0, applied: 0, failed: 0, already_done: 0, not_a_gap: 0, rejected: 0, superseded: 0 };
   for (const edit of latest.values()) counts[edit.status] += 1;
   const rejected = hasDecided ? [...decided].filter((id) => !latest.has(id)).length : null;
   const signoff = signoffs.find((item) => item.day === day && item.shopId === shopId && item.doneAt);
@@ -459,15 +460,18 @@ function lineFromFinding(
 ): AdminLine {
   const tech = techFor(report, finding.techId);
   const recommendation = finding.recommendation;
+  const reopened = isReopenedMoveTimeFinding(finding.id) && recommendation?.nonProChange != null;
+  const queued = edit && reopened && (edit.status === "superseded" || edit.nonProChange == null) ? undefined : edit;
   let decision: string;
-  if (edit) decision = edit.decision === "override" ? "Override" : "Accepted";
+  if (reopened && !queued) decision = "Undecided";
+  else if (queued) decision = queued.decision === "override" ? "Override" : "Accepted";
   else if (hasDecided && decided.has(finding.id)) decision = "Rejected";
   else if (hasDecided || submits > 0) decision = "Undecided / not in submit";
   else decision = "Not submitted";
-  const order = edit?.orderId || recommendation?.orderId || (finding.nonPro ? "Non-Pro" : "");
-  const work = edit?.work || recommendation?.work || "";
-  const window = edit ? `${edit.newClockIn}–${edit.newClockOut}` : recommendation ? `${recommendation.start}–${recommendation.end}` : `${finding.start}–${finding.end}`;
-  const minutes = edit?.minutes ?? recommendation?.minutes ?? finding.minutes;
+  const order = queued?.orderId || recommendation?.orderId || (finding.nonPro ? "Non-Pro" : "");
+  const work = queued?.work || recommendation?.work || "";
+  const window = queued ? `${queued.newClockIn}–${queued.newClockOut}` : recommendation ? `${recommendation.start}–${recommendation.end}` : `${finding.start}–${finding.end}`;
+  const minutes = queued?.minutes ?? recommendation?.minutes ?? finding.minutes;
   return {
     findingId: finding.id,
     tech: tech?.name ?? finding.techId,
@@ -477,9 +481,9 @@ function lineFromFinding(
     minutes,
     nonPro: Boolean(finding.nonPro),
     decision,
-    status: edit?.status ?? null,
-    note: edit?.applyNote ?? "",
-    excluded: edit ? editAddsNoJobTime(edit) : false,
+    status: queued?.status ?? null,
+    note: queued?.applyNote ?? "",
+    excluded: queued ? editAddsNoJobTime(queued) : false,
     submits,
   };
 }

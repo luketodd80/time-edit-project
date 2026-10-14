@@ -1,9 +1,9 @@
 import { buildPlan, shopName, techsWithFindings } from "@/lib/review";
-import { isMoveTimeFollowUp } from "@/lib/move-time";
+import { CODY_KESTER_MOVE_TIME_ID, decisionsWithoutStaleMoveTime, isMoveTimeFollowUp, isReopenedMoveTimeFinding, moveTimeLeftoversApplied, STALE_CODY_BATCH_ID, withoutStaleMoveTimeEdits } from "@/lib/move-time";
 import { SHOPS, type DayReport, type Decision, type NonProChange, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 
-export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done" | "not_a_gap" | "rejected";
+export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done" | "not_a_gap" | "rejected" | "superseded";
 
 /** One accepted or overridden clock edit waiting for a Fullbay Time Stamp apply. */
 export interface FullbayQueueEdit {
@@ -507,7 +507,7 @@ export function applyConfirmations(
       ...batch,
       edits: batch.edits.map((edit) => {
         const result = byId.get(edit.findingId);
-        if (!result) return edit;
+        if (!result || edit.status === "superseded") return edit;
         const note = typeof result.applyNote === "string" && result.applyNote.trim().length > 0 ? result.applyNote.trim() : null;
         const resolved = editIsResolved(result.status);
         return {
@@ -573,8 +573,29 @@ export function rejectFailureInQueue(
   return { ok: true, batches: next, batch: updated };
 }
 
+/**
+ * The pending Cody edit in batch 4d4ebbfa is replaced by the move-time reopen.
+ * Other edits in the queue stay as they are.
+ */
+export function supersedeStaleCodyEdit(batches: FullbayEditBatch[]): { batches: FullbayEditBatch[]; changed: boolean } {
+  let changed = false;
+  const next = batches.map((batch) => {
+    if (batch.id !== STALE_CODY_BATCH_ID) return batch;
+    let batchChanged = false;
+    const edits = batch.edits.map((edit) => {
+      if (edit.findingId !== CODY_KESTER_MOVE_TIME_ID || edit.status !== "pending") return edit;
+      batchChanged = true;
+      changed = true;
+      return { ...edit, status: "superseded" as const, applyNote: "Superseded by the Non-Pro move-time reopen. Not sent." };
+    });
+    return batchChanged ? { ...batch, edits } : batch;
+  });
+  return { batches: changed ? next : batches, changed };
+}
+
 /** Review copy for a queued finding. Resolved and pending rows are not open actions. A failed row keeps its note. */
 export function reviewApplyText(edit: FullbayQueueEdit): string {
+  if (edit.status === "superseded") return "Superseded. Decide the move-time line again.";
   if (edit.status === "pending") return "Waiting on Fullbay.";
   if (edit.status === "failed") return edit.applyNote ? `Fullbay apply failed. ${edit.applyNote}` : "Fullbay apply failed.";
   if (edit.status === "rejected") return rejectedAfterFailureText(edit);
@@ -626,7 +647,7 @@ function currentTimesText(clockIn: string | null | undefined, clockOut: string |
 /** Accept, Reject, and Override stay available only for a finding that was never pushed, or whose latest push failed. */
 export function findingCanBeDecided(batches: FullbayEditBatch[], findingId: string): boolean {
   const latest = latestQueueEdit(batches, findingId);
-  return latest == null || latest.status === "failed";
+  return latest == null || latest.status === "failed" || latest.status === "superseded";
 }
 
 /**
@@ -637,7 +658,7 @@ export function findingCanBeDecided(batches: FullbayEditBatch[], findingId: stri
 export function editsForSubmit<T extends { findingId: string; day: string; shopId: ShopId }>(batches: FullbayEditBatch[], edits: T[]): T[] {
   return edits.filter((edit) => {
     const latest = latestQueueEdit(batches, edit.findingId);
-    return latest == null || latest.status === "failed";
+    return latest == null || latest.status === "failed" || latest.status === "superseded";
   });
 }
 
@@ -655,19 +676,30 @@ function findingAlreadyDecided(batches: FullbayEditBatch[], findingId: string): 
  * Suggestions on the current shop and day that still have no accept, reject, or edited choice,
  * in the same order Review shows them. Applied, failed, and rejected lines from earlier submits are skipped.
  */
-export function suggestionsNeedingDecision(reports: DayReport[], decisions: Record<string, Decision>, batches: FullbayEditBatch[]): PlannedEdit[] {
+export function suggestionsNeedingDecision(
+  reports: DayReport[],
+  decisions: Record<string, Decision>,
+  batches: FullbayEditBatch[],
+  signoffs: { day: string; shopId: ShopId; doneAt?: string | null }[] = [],
+): PlannedEdit[] {
+  const leftoversOpen = moveTimeLeftoversApplied(reports);
+  const visible = withoutStaleMoveTimeEdits(batches, leftoversOpen);
+  const activeDecisions = decisionsWithoutStaleMoveTime(decisions, leftoversOpen);
+  const signed = new Set(signoffs.filter((item) => item.doneAt).map((item) => `${item.day}|${item.shopId}`));
   const open = new Map(
-    buildPlan(reports, decisions).undecided
-      .filter((edit) => !findingAlreadyDecided(batches, edit.findingId))
+    buildPlan(reports, activeDecisions).undecided
+      .filter((edit) => !findingAlreadyDecided(visible, edit.findingId))
       .map((edit) => [edit.findingId, edit]),
   );
   const ordered: PlannedEdit[] = [];
   const days = [...new Set(reports.map((report) => report.day))].sort();
   for (const day of days) {
     for (const report of reports.filter((item) => item.day === day)) {
+      const signedDay = leftoversOpen && signed.has(`${report.day}|${report.shopId}`);
       for (const tech of techsWithFindings(report)) {
         const findings = report.findings.filter((finding) => finding.techId === tech.id).slice().sort((a, b) => a.start.localeCompare(b.start));
         for (const finding of findings) {
+          if (signedDay && !isReopenedMoveTimeFinding(finding.id)) continue;
           const edit = open.get(finding.id);
           if (edit) ordered.push(edit);
         }
@@ -770,7 +802,7 @@ export function submitRefusal(
     editsOnSubmitted.every((edit) => {
       if (edit.findingId == null) return false;
       const latest = latestQueueEdit(batches, edit.findingId);
-      return latest == null || latest.status === "failed";
+      return latest == null || latest.status === "failed" || latest.status === "superseded";
     });
   if (onlyNewOrFailed) return null;
   return `Already submitted: ${labelPairs(again)}. Submit is closed for a shop and day that was already submitted.`;
