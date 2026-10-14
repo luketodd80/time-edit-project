@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -268,9 +268,11 @@ describe("reopen move-time leftovers", { concurrency: false }, () => {
     const previousQueue = process.env.FULLBAY_EDIT_QUEUE_PATH;
     const previousSignoff = process.env.SHOP_DAY_SIGNOFF_PATH;
     const previousMove = process.env.MOVE_TIME_LEFTOVER_PATH;
+    const previousMoveSeed = process.env.MOVE_TIME_LEFTOVER_SEED_PATH;
     process.env.FULLBAY_EDIT_QUEUE_PATH = join(directory, "queue.json");
     process.env.SHOP_DAY_SIGNOFF_PATH = join(directory, "signoffs.json");
     process.env.MOVE_TIME_LEFTOVER_PATH = join(directory, "move-time.json");
+    process.env.MOVE_TIME_LEFTOVER_SEED_PATH = join(directory, "missing-seed.json");
     try {
       assert.equal((await readMoveTimeLeftovers()).length, 0);
       const { POST } = await import("@/app/api/admin/reopen-move-time/route");
@@ -320,6 +322,48 @@ describe("reopen move-time leftovers", { concurrency: false }, () => {
       else process.env.SHOP_DAY_SIGNOFF_PATH = previousSignoff;
       if (previousMove === undefined) delete process.env.MOVE_TIME_LEFTOVER_PATH;
       else process.env.MOVE_TIME_LEFTOVER_PATH = previousMove;
+      if (previousMoveSeed === undefined) delete process.env.MOVE_TIME_LEFTOVER_SEED_PATH;
+      else process.env.MOVE_TIME_LEFTOVER_SEED_PATH = previousMoveSeed;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("stays open from the seed when the live leftovers file is missing", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "move-time-seed-"));
+    const previousQueue = process.env.FULLBAY_EDIT_QUEUE_PATH;
+    const previousQueueSeed = process.env.FULLBAY_EDIT_QUEUE_SEED_PATH;
+    const previousSignoff = process.env.SHOP_DAY_SIGNOFF_PATH;
+    const previousMove = process.env.MOVE_TIME_LEFTOVER_PATH;
+    const previousMoveSeed = process.env.MOVE_TIME_LEFTOVER_SEED_PATH;
+    const live = join(directory, "move-time.json");
+    process.env.FULLBAY_EDIT_QUEUE_PATH = join(directory, "queue.json");
+    process.env.FULLBAY_EDIT_QUEUE_SEED_PATH = join(directory, "empty-seed.json");
+    process.env.SHOP_DAY_SIGNOFF_PATH = join(directory, "signoffs.json");
+    process.env.MOVE_TIME_LEFTOVER_PATH = live;
+    delete process.env.MOVE_TIME_LEFTOVER_SEED_PATH;
+    try {
+      assert.equal(existsSync(live), false);
+      assert.equal((await readMoveTimeLeftovers()).length, 4);
+      const { POST } = await import("@/app/api/admin/reopen-move-time/route");
+      const response = await POST(new Request("http://127.0.0.1/api/admin/reopen-move-time", { method: "POST" }));
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as { openedAt?: string; findings?: unknown[] };
+      assert.equal(body.openedAt, "2026-10-14T20:13:00.000Z");
+      assert.equal(body.findings?.length, 4);
+      assert.equal(existsSync(live), false);
+      writeFileSync(live, "{}\n");
+      assert.equal((await readMoveTimeLeftovers()).length, 0);
+    } finally {
+      if (previousQueue === undefined) delete process.env.FULLBAY_EDIT_QUEUE_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_PATH = previousQueue;
+      if (previousQueueSeed === undefined) delete process.env.FULLBAY_EDIT_QUEUE_SEED_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_SEED_PATH = previousQueueSeed;
+      if (previousSignoff === undefined) delete process.env.SHOP_DAY_SIGNOFF_PATH;
+      else process.env.SHOP_DAY_SIGNOFF_PATH = previousSignoff;
+      if (previousMove === undefined) delete process.env.MOVE_TIME_LEFTOVER_PATH;
+      else process.env.MOVE_TIME_LEFTOVER_PATH = previousMove;
+      if (previousMoveSeed === undefined) delete process.env.MOVE_TIME_LEFTOVER_SEED_PATH;
+      else process.env.MOVE_TIME_LEFTOVER_SEED_PATH = previousMoveSeed;
       rmSync(directory, { recursive: true, force: true });
     }
   });
