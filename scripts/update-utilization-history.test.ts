@@ -34,6 +34,7 @@ describe("history update", () => {
       assert.ok(afterDays.includes("2026-10-09"));
       assert.ok(afterDays.includes("2026-10-10"));
       assert.ok(afterDays.includes("2026-10-12"));
+      assert.ok(afterDays.includes("2026-10-13"));
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
