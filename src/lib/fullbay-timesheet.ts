@@ -10,6 +10,7 @@ import { THURSDAY_DETAILS_CSV } from "@/lib/thursday-details-csv";
 import { FRIDAY_OCTOBER_9_DETAILS_CSV } from "@/lib/friday-october-9-details-csv";
 import { SATURDAY_OCTOBER_10_DETAILS_CSV } from "@/lib/saturday-october-10-details-csv";
 import { MONDAY_OCTOBER_12_DETAILS_CSV } from "@/lib/monday-october-12-details-csv";
+import { TUESDAY_OCTOBER_13_DETAILS_CSV } from "@/lib/tuesday-october-13-details-csv";
 
 /**
  * Shop foremen. They are left out of time-gap review and utilization entirely.
@@ -233,8 +234,18 @@ function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function parseClockSeconds(value: string): number | null {
-  const match = /^(\d{1,2}):(\d{2}):(\d{2})(AM|PM)/i.exec(value.trim());
+function dayOffset(day: string, shiftDate: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{4}-\d{2}-\d{2}$/.test(shiftDate)) return 0;
+  const toUtc = (iso: string) => Date.parse(`${iso}T12:00:00Z`);
+  return Math.round((toUtc(day) - toUtc(shiftDate)) / 86400000);
+}
+
+/**
+ * Seconds since midnight of `shiftDate`. A clock-out at 12:00 AM the next calendar day is 24:00:00
+ * on this shift, not midnight at the start of the day.
+ */
+function parseClockSeconds(value: string, shiftDate?: string): number | null {
+  const match = /^(\d{1,2}):(\d{2}):(\d{2})(AM|PM)(?:\s+(\d{1,2})\/(\d{1,2})\/(\d{4}))?/i.exec(value.trim());
   if (!match) return null;
   let hours = Number(match[1]);
   const minutes = Number(match[2]);
@@ -246,7 +257,12 @@ function parseClockSeconds(value: string): number | null {
     hours += 12;
   }
   if (hours > 23 || minutes > 59 || seconds > 59) return null;
-  return hours * 3600 + minutes * 60 + seconds;
+  let total = hours * 3600 + minutes * 60 + seconds;
+  if (shiftDate && match[5] && match[6] && match[7]) {
+    const clockDay = `${match[7]}-${match[5].padStart(2, "0")}-${match[6].padStart(2, "0")}`;
+    total += dayOffset(clockDay, shiftDate) * 86400;
+  }
+  return total;
 }
 
 function clockLabel(totalMinutes: number): string {
@@ -438,14 +454,14 @@ interface BuiltTech {
   firstStart: number;
 }
 
-function segmentsFromRows(rows: FullbayTimesheetRow[]): Segment[] {
+function segmentsFromRows(rows: FullbayTimesheetRow[], shiftDate: string): Segment[] {
   const segments: Segment[] = [];
   for (const row of rows) {
     const complaint = parseComplaint(row.so_complaint);
     if (!complaint) continue;
-    const start = parseClockSeconds(row.clock_in);
+    const start = parseClockSeconds(row.clock_in, shiftDate);
     if (start == null) continue;
-    const end = row.clock_out ? parseClockSeconds(row.clock_out) : null;
+    const end = row.clock_out ? parseClockSeconds(row.clock_out, shiftDate) : null;
     segments.push({ start, end, hours: Number(row.hours) || 0, orderId: complaint.orderId, title: complaint.title });
   }
   return segments;
@@ -612,13 +628,13 @@ function isAttendanceActivity(activity: string): boolean {
  * It is not a clock punch. It does not create gap findings and it does not count toward clocked hours.
  * Service-order rows for the same person still count on their own.
  */
-function isInactiveDayPlaceholder(row: FullbayTimesheetRow): boolean {
+function isInactiveDayPlaceholder(row: FullbayTimesheetRow, shiftDate: string): boolean {
   if (row.so_complaint.trim()) return false;
   if (row.clock_in_activity.trim().toLowerCase() !== "inactive") return false;
   if (Math.abs((Number(row.hours) || 0) - 24) > 0.001) return false;
-  const start = parseClockSeconds(row.clock_in);
-  const end = row.clock_out ? parseClockSeconds(row.clock_out) : null;
-  return start === 0 && end === 0;
+  const start = parseClockSeconds(row.clock_in, shiftDate);
+  const end = row.clock_out ? parseClockSeconds(row.clock_out, shiftDate) : null;
+  return start === 0 && (end === 0 || end === 86400);
 }
 
 function buildTech(
@@ -635,10 +651,10 @@ function buildTech(
   const punches: Punch[] = [];
   const segments: Segment[] = [];
   for (const row of rows) {
-    if (isInactiveDayPlaceholder(row)) continue;
-    const start = parseClockSeconds(row.clock_in);
+    if (isInactiveDayPlaceholder(row, day)) continue;
+    const start = parseClockSeconds(row.clock_in, day);
     if (start == null) continue;
-    const end = row.clock_out ? parseClockSeconds(row.clock_out) : null;
+    const end = row.clock_out ? parseClockSeconds(row.clock_out, day) : null;
     const hours = Number(row.hours) || 0;
     const complaint = parseComplaint(row.so_complaint);
     if (complaint) {
@@ -1036,7 +1052,7 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
     const list = peersByShop.get(group.shopId) ?? [];
     const personKey = normalizePersonName(group.name);
     const personSegments = segmentsByPerson.get(personKey) ?? [];
-    for (const segment of segmentsFromRows(group.rows)) {
+    for (const segment of segmentsFromRows(group.rows, file.date)) {
       list.push({ name: group.name, segment });
       personSegments.push({ ...segment, shopId: group.shopId });
     }
@@ -1088,7 +1104,7 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
   return reports;
 }
 
-/** October 2 through October 12 use the Details List download (Clock In Comment). */
+/** October 2 through October 13 use the Details List download (Clock In Comment). */
 export const OCTOBER_2_REPORTS = timesheetToDayReports(parseDetailsListCsv(FRIDAY_DETAILS_CSV, "2026-10-02"));
 export const OCTOBER_3_REPORTS = timesheetToDayReports(parseDetailsListCsv(SATURDAY_DETAILS_CSV, "2026-10-03"));
 export const OCTOBER_5_REPORTS = timesheetToDayReports(parseDetailsListCsv(MONDAY_DETAILS_CSV, "2026-10-05"));
@@ -1098,3 +1114,4 @@ export const OCTOBER_8_REPORTS = timesheetToDayReports(parseDetailsListCsv(THURS
 export const OCTOBER_9_REPORTS = timesheetToDayReports(parseDetailsListCsv(FRIDAY_OCTOBER_9_DETAILS_CSV, "2026-10-09"));
 export const OCTOBER_10_REPORTS = timesheetToDayReports(parseDetailsListCsv(SATURDAY_OCTOBER_10_DETAILS_CSV, "2026-10-10"));
 export const OCTOBER_12_REPORTS = timesheetToDayReports(parseDetailsListCsv(MONDAY_OCTOBER_12_DETAILS_CSV, "2026-10-12"));
+export const OCTOBER_13_REPORTS = timesheetToDayReports(parseDetailsListCsv(TUESDAY_OCTOBER_13_DETAILS_CSV, "2026-10-13"));
