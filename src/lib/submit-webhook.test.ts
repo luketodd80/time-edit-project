@@ -62,6 +62,32 @@ describe("submit webhook", () => {
       editCount: 3,
       techs: ["Cole Lozan", "Zach Spencer"],
       dashboardUrl: SUBMIT_DASHBOARD_URL,
+      edits: [
+        {
+          findingId: "2026-10-05-dayton-cole-lozan-01",
+          orderId: "D-90228",
+          decision: "accept",
+          newClockIn: "08:14",
+          newClockOut: "08:26",
+          minutes: 12,
+        },
+        {
+          findingId: "2026-10-05-dayton-cole-lozan-02",
+          orderId: "D-90228",
+          decision: "override",
+          newClockIn: "09:00",
+          newClockOut: "09:10",
+          minutes: 12,
+        },
+        {
+          findingId: "2026-10-05-dayton-zach-spencer-01",
+          orderId: "D-90148",
+          decision: "accept",
+          newClockIn: "08:14",
+          newClockOut: "08:26",
+          minutes: 12,
+        },
+      ],
     });
     assert.equal(payload.dashboardUrl, "https://time-edit-project.onrender.com/");
     assert.equal("password" in payload, false);

@@ -773,7 +773,9 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
   it("stores a pending batch and confirms one edit", async () => {
     const directory = mkdtempSync(join(tmpdir(), "fullbay-edit-queue-"));
     const previous = process.env.FULLBAY_EDIT_QUEUE_PATH;
+    const previousSeed = process.env.FULLBAY_EDIT_QUEUE_SEED_PATH;
     process.env.FULLBAY_EDIT_QUEUE_PATH = join(directory, "queue.json");
+    process.env.FULLBAY_EDIT_QUEUE_SEED_PATH = join(directory, "empty-seed.json");
     try {
       const stored = await enqueueBatch({
         submittedAt: "2026-10-05T15:00:00.000Z",
@@ -808,6 +810,8 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
     } finally {
       if (previous === undefined) delete process.env.FULLBAY_EDIT_QUEUE_PATH;
       else process.env.FULLBAY_EDIT_QUEUE_PATH = previous;
+      if (previousSeed === undefined) delete process.env.FULLBAY_EDIT_QUEUE_SEED_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_SEED_PATH = previousSeed;
       rmSync(directory, { recursive: true, force: true });
     }
   });

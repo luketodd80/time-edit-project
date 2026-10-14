@@ -1,3 +1,4 @@
+import { clockOfDay, nonProCoversSpan, pairNonProMove, parseClockOfDay } from "@/lib/move-time";
 import type { DayReport, Finding, NonProNeighbor, NonProOrderOption, NonProReview, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
 import { SHOPS } from "@/lib/types";
 import { formatClock } from "@/lib/time";
@@ -765,8 +766,90 @@ function buildTech(
         commentFromClockIn,
         wholePunch && (fullPiece || parentIsFull),
         nextIsAttendance && reachesPunchEnd,
+        open ? null : endSeconds,
       );
     }
+  }
+
+  function attendanceSpans(): Array<[number, number]> {
+    const spans: Array<[number, number]> = [];
+    for (const punch of punches) {
+      if (!isAttendanceActivity(punch.activity) || punch.end == null) continue;
+      spans.push([punch.start, impliedEnd(punch.start, punch.end, punch.hours)]);
+    }
+    return spans;
+  }
+
+  /** The open time from the previous service order to the next one is already Non-Pro. */
+  function betweenOrdersCoveredByNonPro(startSeconds: number, endSeconds: number): boolean {
+    let previousEnd: number | null = null;
+    let nextStart: number | null = null;
+    for (const segment of segments) {
+      const segmentEnd = impliedEnd(segment.start, segment.end, segment.hours);
+      if (segmentEnd <= startSeconds + 5 && (previousEnd == null || segmentEnd >= previousEnd)) previousEnd = segmentEnd;
+      if (segment.start >= endSeconds - 5 && (nextStart == null || segment.start < nextStart)) nextStart = segment.start;
+    }
+    if (previousEnd == null || nextStart == null) return false;
+    return nonProCoversSpan(previousEnd, nextStart, attendanceSpans());
+  }
+
+  function pushCovered(start: string, end: string, minutes: number, detail: string) {
+    push({
+      kind: "gap",
+      start,
+      end,
+      minutes,
+      detail,
+      suggested: "Covered by Non-Pro. No edit.",
+      notAGap: true,
+      recommendation: null,
+    });
+  }
+
+  function annotateMoveTime(recommendation: Recommendation, gapStart: number, gapEnd: number, shiftOut: number | null): Recommendation {
+    const previous = previousSegment(gapStart, segments);
+    const next = nearestOrder(gapStart, gapEnd, segments);
+    const segment = recommendation.summary.startsWith("Start ") ? next?.segment ?? null : previous;
+    if (!segment) return recommendation;
+    const segmentEnd = impliedEnd(segment.start, segment.end, segment.hours);
+    const soIn = clockOfDay(segment.start, true);
+    const soOut = clockOfDay(segmentEnd, true);
+    let nextOut = gapEnd;
+    let cappedAtShift = false;
+    if (shiftOut != null && nextOut > shiftOut && !recommendation.summary.startsWith("Start ")) {
+      nextOut = Math.max(segmentEnd, shiftOut);
+      cappedAtShift = true;
+    }
+    const overlapping = attendanceSpans().find(([start, end]) => start < nextOut && gapStart < end && start < gapEnd);
+    if (!overlapping) return recommendation;
+    // This stretch is the Non-Pro punch itself. The attendance review already decides it.
+    if (Math.abs(overlapping[0] - gapStart) <= 5 && Math.abs(overlapping[1] - gapEnd) <= 5) return recommendation;
+    const paired = pairNonProMove({
+      soIn,
+      soOut,
+      newIn: clockOfDay(recommendation.summary.startsWith("Start ") ? gapStart : segment.start, true),
+      newOut: clockOfDay(nextOut, true),
+      nonProIn: clockOfDay(overlapping[0], true),
+      nonProOut: clockOfDay(overlapping[1], true),
+      shiftClockOut: shiftOut == null ? null : clockOfDay(shiftOut, true),
+    });
+    if (!paired) return recommendation;
+    const endMinute = paired.newOut.slice(0, 5);
+    const capped = cappedAtShift && endMinute !== recommendation.end;
+    const startMinute = parseClockOfDay(`${recommendation.start}:00`);
+    const endSec = parseClockOfDay(`${endMinute}:00`);
+    const minutes = capped && startMinute != null && endSec != null ? Math.max(0, Math.round((endSec - startMinute) / 60)) : recommendation.minutes;
+    return {
+      ...recommendation,
+      ...(capped ? { end: endMinute, minutes } : {}),
+      soClockIn: soIn,
+      soClockOut: soOut,
+      soNewClockIn: paired.newIn,
+      soNewClockOut: paired.newOut,
+      ...(shiftOut != null ? { shiftClockOut: clockOfDay(shiftOut, true) } : {}),
+      nonProChange: paired.nonProChange,
+      summary: `${recommendation.summary} This also ${paired.nonProChange.remove ? "removes the Non-Pro row it covers" : "shortens the Non-Pro row by the overlap"}.`,
+    };
   }
 
   function pushGap(
@@ -778,6 +861,7 @@ function buildTech(
     commentFromClockIn: boolean,
     wholePunch: boolean,
     nextIsAttendance: boolean,
+    shiftOutSeconds: number | null,
   ) {
     const window = windowOf(startSeconds, endSeconds);
     if (!window) return;
@@ -807,6 +891,10 @@ function buildTech(
       return;
     }
     if (rules && attendance) {
+      if (betweenOrdersCoveredByNonPro(startSeconds, endSeconds)) {
+        pushCovered(window.start, window.end, window.minutes, detail);
+        return;
+      }
       push({
         kind: "gap",
         start: window.start,
@@ -819,18 +907,26 @@ function buildTech(
       });
       return;
     }
+    if (rules && nonProCoversSpan(startSeconds, endSeconds, attendanceSpans())) {
+      pushCovered(window.start, window.end, window.minutes, detail);
+      return;
+    }
     const peer = commentFromClockIn ? overlappingHelp(comment, startSeconds, endSeconds, name, peers) : null;
     if (peer) {
       const span = segmentSpan(peer.segment);
       const orderLabel = peer.segment.title ? `${peer.segment.orderId} / ${peer.segment.title}` : peer.segment.orderId;
       detail += ` ${peer.name}’s overlapping order is ${orderLabel} (${formatClock(span.start)}–${formatClock(span.end)}).`;
+      const peerBase = recommendationForPeer(window.start, window.end, window.minutes, peer, comment, open);
+      const peerRecommendation = rules
+        ? annotateMoveTime(peerBase, startSeconds, endSeconds, shiftOutSeconds)
+        : peerBase;
       push({
         kind: "gap",
-        start: window.start,
-        end: window.end,
-        minutes: window.minutes,
+        start: peerRecommendation.start,
+        end: peerRecommendation.end,
+        minutes: peerRecommendation.minutes,
         detail,
-        recommendation: recommendationForPeer(window.start, window.end, window.minutes, peer, comment, open),
+        recommendation: peerRecommendation,
       });
       return;
     }
@@ -857,13 +953,14 @@ function buildTech(
         });
         return;
       }
+      const moved = annotateMoveTime(recommendation, startSeconds, endSeconds, shiftOutSeconds);
       push({
         kind: "gap",
-        start: window.start,
-        end: window.end,
-        minutes: window.minutes,
+        start: moved.start,
+        end: moved.end,
+        minutes: moved.minutes,
         detail,
-        recommendation,
+        recommendation: moved,
       });
       return;
     }
@@ -892,13 +989,14 @@ function buildTech(
       });
       return;
     }
+    const moved = rules ? annotateMoveTime(recommendation, startSeconds, endSeconds, shiftOutSeconds) : recommendation;
     push({
       kind: "gap",
-      start: window.start,
-      end: window.end,
-      minutes: window.minutes,
+      start: moved.start,
+      end: moved.end,
+      minutes: moved.minutes,
       detail,
-      recommendation,
+      recommendation: moved,
     });
   }
 

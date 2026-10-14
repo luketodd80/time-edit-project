@@ -1,0 +1,248 @@
+import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, it } from "node:test";
+import { submitRefusal, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
+import { parseQueueRequest } from "@/lib/fullbay-edit-queue";
+import { OCTOBER_12_REPORTS, timesheetToDayReports } from "@/lib/fullbay-timesheet";
+import {
+  applyMoveTimeLeftovers,
+  isMoveTimeFollowUp,
+  moveTimeLeftoverFindings,
+  moveTimeLines,
+  NICK_SONTAG_FOLLOW_UP_ID,
+  pairNonProMove,
+} from "@/lib/move-time";
+import { readMoveTimeLeftovers } from "@/lib/move-time-store";
+import { queueFilePath } from "@/lib/fullbay-edit-queue-store";
+import { signoffFilePath } from "@/lib/signoff-store";
+import { SEED } from "@/lib/seed";
+import type { ShopId } from "@/lib/types";
+
+describe("Non-Pro move time", () => {
+  it("shortens the Non-Pro row by the overlap and removes it when the service order covers it", () => {
+    const shortened = pairNonProMove({
+      soIn: "07:13:12",
+      soOut: "08:00:45",
+      newIn: "07:13:12",
+      newOut: "08:22:00",
+      nonProIn: "08:00:45",
+      nonProOut: "09:06:40",
+      shiftClockOut: "17:00:53",
+    });
+    assert.deepEqual(shortened?.nonProChange, {
+      original: { in: "08:00:45", out: "09:06:40" },
+      new: { in: "08:22:00", out: "09:06:40" },
+    });
+
+    const removed = pairNonProMove({
+      soIn: "10:31:48",
+      soOut: "10:52:24",
+      newIn: "10:31:48",
+      newOut: "11:09:37",
+      nonProIn: "10:52:51",
+      nonProOut: "11:09:37",
+    });
+    assert.equal(removed?.nonProChange.remove, true);
+    assert.equal(removed?.nonProChange.new, undefined);
+  });
+
+  it("stops an extension at the shift clock-out unless override allows it", () => {
+    const capped = pairNonProMove({
+      soIn: "13:05:22",
+      soOut: "16:03:06",
+      newIn: "13:05:22",
+      newOut: "17:04:21",
+      nonProIn: "16:03:07",
+      nonProOut: "17:04:21",
+      shiftClockOut: "16:03:06",
+    });
+    assert.equal(capped, null);
+
+    const overridden = pairNonProMove({
+      soIn: "13:05:22",
+      soOut: "16:03:06",
+      newIn: "13:05:22",
+      newOut: "17:04:21",
+      nonProIn: "16:03:07",
+      nonProOut: "17:04:21",
+      shiftClockOut: "16:03:06",
+      allowPastClockOut: true,
+    });
+    assert.equal(overridden?.nonProChange.remove, true);
+  });
+
+  it("labels the service-order change and the Non-Pro change", () => {
+    const cody = moveTimeLeftoverFindings().find((finding) => finding.id.endsWith("cody-kester-02"));
+    const lines = cody?.recommendation ? moveTimeLines(cody.recommendation.orderId, cody.recommendation) : null;
+    assert.equal(lines?.so, "G-89820: out 8:00:45 AM -> 8:22:00 AM (+21 min)");
+    assert.equal(lines?.nonPro, "Non-Pro: start 8:00:45 AM -> 8:22:00 AM (-21 min)");
+    const nick = moveTimeLeftoverFindings().find((finding) => finding.id === NICK_SONTAG_FOLLOW_UP_ID);
+    assert.equal(nick?.followUp, true);
+    assert.equal(isMoveTimeFollowUp(nick?.id ?? ""), true);
+    assert.equal(moveTimeLines("D-89868", nick!.recommendation!)?.nonPro, "Non-Pro removed");
+  });
+
+  it("does not suggest Gage Wills’s Greenville October 12 gaps that Non-Pro already covers", () => {
+    const findings = OCTOBER_12_REPORTS.find((report) => report.shopId === "greenville")?.findings.filter(
+      (finding) => finding.techId === "gage-wills" && finding.start >= "14:05" && finding.start <= "14:22",
+    );
+    const covered = findings?.filter((finding) => finding.suggested?.includes("Covered by Non-Pro"));
+    assert.equal(covered?.length, 2);
+    assert.equal(covered?.every((finding) => finding.recommendation == null && finding.nonPro == null && finding.notAGap === true), true);
+  });
+
+  it("attaches a Non-Pro removal when a suggestion extends through that punch, and caps at clock-out", () => {
+    const reports = timesheetToDayReports({
+      date: "2026-10-06",
+      rows: [
+        row("7:00:00AM 10/6/2026", "10:00:00AM 10/6/2026", 3, ""),
+        row("7:00:00AM 10/6/2026", "8:00:00AM 10/6/2026", 1, "S-1 / Brakes"),
+        row("8:30:00AM 10/6/2026", "9:00:00AM 10/6/2026", 0.5, "", "Shop Meeting"),
+        row("9:00:00AM 10/6/2026", "10:00:00AM 10/6/2026", 1, "S-2 / QC"),
+      ],
+    });
+    const gap = reports[0]?.findings.find((finding) => finding.recommendation?.nonProChange?.remove === true);
+    assert.equal(gap?.recommendation?.orderId, "S-2");
+    assert.ok((gap?.recommendation?.end ?? "") <= "10:00");
+    assert.equal(gap?.recommendation?.shiftClockOut, "10:00:00");
+  });
+
+  it("lets a follow-up submit on a signed-off day and still refuses every other edit", () => {
+    const signoffs: RecordedSignoff[] = [{ day: "2026-10-13", shopId: "dayton", doneAt: "2026-10-14T14:00:00.000Z" }];
+    const followUp = submitRefusal([], signoffs, {
+      shopId: "dayton",
+      days: ["2026-10-13"],
+      edits: [{ findingId: NICK_SONTAG_FOLLOW_UP_ID, day: "2026-10-13", shopId: "dayton" }],
+    });
+    assert.equal(followUp, null);
+    const other = submitRefusal([], signoffs, {
+      shopId: "dayton",
+      days: ["2026-10-13"],
+      edits: [{ findingId: "2026-10-13-dayton-nick-sontag-12", day: "2026-10-13", shopId: "dayton" }],
+    });
+    assert.match(other ?? "", /Already signed off/);
+    const waiting = submitRefusal(
+      [],
+      signoffs,
+      { shopId: "dayton", days: ["2026-10-13"], edits: [] },
+      [{ day: "2026-10-13", shopId: "dayton" }],
+    );
+    assert.equal(waiting, null);
+  });
+
+  it("keeps an older edit without nonProChange and accepts the new field", () => {
+    const older = parseQueueRequest({
+      submittedAt: "2026-10-14T15:00:00.000Z",
+      shopId: "greenville",
+      days: ["2026-10-13"],
+      edits: [edit()],
+    });
+    assert.equal(older.ok, true);
+    if (older.ok) assert.equal(older.value.edits[0]?.nonProChange, undefined);
+
+    const next = parseQueueRequest({
+      submittedAt: "2026-10-14T15:00:00.000Z",
+      shopId: "greenville",
+      days: ["2026-10-13"],
+      edits: [
+        edit({
+          nonProChange: {
+            original: { in: "08:00:45", out: "09:06:40" },
+            new: { in: "08:22:00", out: "09:06:40" },
+          },
+        }),
+      ],
+    });
+    assert.equal(next.ok, true);
+    if (next.ok) assert.equal(next.value.edits[0]?.nonProChange?.new?.in, "08:22:00");
+  });
+});
+
+describe("reopen move-time leftovers", { concurrency: false }, () => {
+  it("adds the four rows and does not write the queue or sign-offs", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "move-time-"));
+    const previousQueue = process.env.FULLBAY_EDIT_QUEUE_PATH;
+    const previousSignoff = process.env.SHOP_DAY_SIGNOFF_PATH;
+    const previousMove = process.env.MOVE_TIME_LEFTOVER_PATH;
+    process.env.FULLBAY_EDIT_QUEUE_PATH = join(directory, "queue.json");
+    process.env.SHOP_DAY_SIGNOFF_PATH = join(directory, "signoffs.json");
+    process.env.MOVE_TIME_LEFTOVER_PATH = join(directory, "move-time.json");
+    try {
+      assert.equal((await readMoveTimeLeftovers()).length, 0);
+      const { POST } = await import("@/app/api/admin/reopen-move-time/route");
+      const response = await POST(new Request("http://127.0.0.1/api/admin/reopen-move-time", { method: "POST" }));
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as {
+        findings: Array<{
+          id: string;
+          followUp?: boolean;
+          recommendation: { nonProChange?: { remove?: boolean; new?: { in: string } } };
+        }>;
+      };
+      assert.deepEqual(
+        body.findings.map((finding) => finding.id),
+        [
+          "2026-10-13-greenville-cody-kester-02",
+          "2026-10-13-greenville-david-johnson-13",
+          "2026-10-13-greenville-david-johnson-20",
+          NICK_SONTAG_FOLLOW_UP_ID,
+        ],
+      );
+      assert.equal(body.findings[0]?.recommendation.nonProChange?.new?.in, "08:22:00");
+      assert.equal(body.findings[1]?.recommendation.nonProChange?.remove, true);
+      assert.equal(body.findings[3]?.followUp, true);
+      assert.equal(existsSync(queueFilePath()), false);
+      assert.equal(existsSync(signoffFilePath()), false);
+      const merged = applyMoveTimeLeftovers(SEED, await readMoveTimeLeftovers());
+      const greenville = merged.find((report) => report.day === "2026-10-13" && report.shopId === "greenville");
+      const cody = greenville?.findings.find((finding) => finding.id.endsWith("cody-kester-02"));
+      assert.equal(cody?.nonPro, undefined);
+      assert.equal(cody?.recommendation?.orderId, "G-89820");
+      const dayton = merged.find((report) => report.day === "2026-10-13" && report.shopId === "dayton");
+      assert.equal(dayton?.findings.some((finding) => finding.id === NICK_SONTAG_FOLLOW_UP_ID), true);
+      const again = await POST(new Request("http://127.0.0.1/api/admin/reopen-move-time", { method: "POST" }));
+      assert.equal(again.status, 200);
+      assert.equal(existsSync(queueFilePath()), false);
+      assert.equal(existsSync(signoffFilePath()), false);
+    } finally {
+      if (previousQueue === undefined) delete process.env.FULLBAY_EDIT_QUEUE_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_PATH = previousQueue;
+      if (previousSignoff === undefined) delete process.env.SHOP_DAY_SIGNOFF_PATH;
+      else process.env.SHOP_DAY_SIGNOFF_PATH = previousSignoff;
+      if (previousMove === undefined) delete process.env.MOVE_TIME_LEFTOVER_PATH;
+      else process.env.MOVE_TIME_LEFTOVER_PATH = previousMove;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+function edit(overrides: Record<string, unknown> = {}) {
+  return {
+    findingId: "2026-10-13-greenville-cody-kester-02",
+    day: "2026-10-13",
+    shopId: "greenville" as ShopId,
+    techName: "Cody Kester",
+    orderId: "G-89820",
+    work: "Remove Paccar engine and",
+    decision: "accept",
+    newClockIn: "07:13",
+    newClockOut: "08:22",
+    minutes: 21,
+    ...overrides,
+  };
+}
+
+function row(clockIn: string, clockOut: string, hours: number, complaint: string, activity = "Inactive") {
+  return {
+    shop: "The Service Company - Springfield (S)",
+    employee: "Gap Tech",
+    clock_in: clockIn,
+    clock_out: clockOut,
+    hours,
+    so_complaint: complaint,
+    comment: "",
+    clock_in_activity: activity,
+  };
+}

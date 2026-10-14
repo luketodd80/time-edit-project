@@ -1,5 +1,6 @@
 import { buildPlan, shopName, techsWithFindings } from "@/lib/review";
-import { SHOPS, type DayReport, type Decision, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
+import { isMoveTimeFollowUp } from "@/lib/move-time";
+import { SHOPS, type DayReport, type Decision, type NonProChange, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 
 export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done" | "not_a_gap" | "rejected";
@@ -37,6 +38,11 @@ export interface FullbayQueueEdit {
    * `keep` is not queued. `rows` lists every service-order punch this choice changes.
    */
   nonPro?: NonProEditPayload;
+  /**
+   * Non-Pro row shortened or removed by this same service-order edit.
+   * Absent on older queue rows. `nonPro` remains the attendance-choice payload.
+   */
+  nonProChange?: NonProChange;
 }
 
 /** A finding the manager accepted, overrode, or rejected. Undecided findings are omitted. */
@@ -159,6 +165,7 @@ export function queueEditFromPlanned(edit: PlannedEdit): FullbayQueueEdit {
     applyNote: null,
   };
   if (edit.nonPro && edit.nonPro.editType !== "keep") queued.nonPro = edit.nonPro;
+  if (edit.nonProChange) queued.nonProChange = edit.nonProChange;
   return queued;
 }
 
@@ -275,6 +282,8 @@ function parseQueueEdit(item: unknown): { ok: true; value: FullbayQueueEdit } | 
   }
   const nonPro = parseNonPro(edit.nonPro);
   if (!nonPro.ok) return nonPro;
+  const nonProChange = parseNonProChange(edit.nonProChange);
+  if (!nonProChange.ok) return nonProChange;
   return {
     ok: true,
     value: {
@@ -293,8 +302,45 @@ function parseQueueEdit(item: unknown): { ok: true; value: FullbayQueueEdit } | 
       appliedAt: null,
       applyNote: null,
       ...(nonPro.value ? { nonPro: nonPro.value } : {}),
+      ...(nonProChange.value ? { nonProChange: nonProChange.value } : {}),
     },
   };
+}
+
+const MOVE_CLOCK = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+
+function parseMoveClock(value: unknown, label: string): { ok: true; value: string } | { ok: false; error: string } {
+  if (typeof value !== "string" || !MOVE_CLOCK.test(value)) return { ok: false, error: `${label} must be HH:MM or HH:MM:SS.` };
+  return { ok: true, value };
+}
+
+function parseMoveSpan(value: unknown, label: string): { ok: true; value: { in: string; out: string } } | { ok: false; error: string } {
+  if (!value || typeof value !== "object") return { ok: false, error: `${label} must be { in, out }.` };
+  const span = value as Record<string, unknown>;
+  const clockIn = parseMoveClock(span.in, `${label}.in`);
+  if (!clockIn.ok) return clockIn;
+  const clockOut = parseMoveClock(span.out, `${label}.out`);
+  if (!clockOut.ok) return clockOut;
+  if (clockOut.value <= clockIn.value) return { ok: false, error: `${label}.out must be after ${label}.in.` };
+  return { ok: true, value: { in: clockIn.value, out: clockOut.value } };
+}
+
+/** Optional on older edits. A shorten has original and new. A removal has remove: true. */
+function parseNonProChange(value: unknown): { ok: true; value: NonProChange | undefined } | { ok: false; error: string } {
+  if (value == null) return { ok: true, value: undefined };
+  if (typeof value !== "object") return { ok: false, error: "nonProChange must be an object." };
+  const record = value as Record<string, unknown>;
+  if (record.remove === true && record.new == null) {
+    if (record.original == null) return { ok: true, value: { remove: true } };
+    const original = parseMoveSpan(record.original, "nonProChange.original");
+    if (!original.ok) return original;
+    return { ok: true, value: { remove: true, original: original.value } };
+  }
+  const original = parseMoveSpan(record.original, "nonProChange.original");
+  if (!original.ok) return original;
+  const next = parseMoveSpan(record.new, "nonProChange.new");
+  if (!next.ok) return next;
+  return { ok: true, value: { original: original.value, new: next.value } };
 }
 
 const NON_PRO_TYPES = new Set<NonProEditType>(["extend_prev_out", "move_next_in", "split", "move_to_so", "partial", "keep"]);
@@ -690,6 +736,7 @@ export function submitRefusal(
   batches: FullbayEditBatch[],
   signoffs: RecordedSignoff[],
   request: { shopId: ShopFilter; days: string[]; edits?: Array<ShopDayRef & { findingId?: string }> },
+  openFollowUpPairs: ShopDayRef[] = [],
 ): string | null {
   const pairs = shopDaysCovered(request.shopId, request.days);
   const seen = new Set(pairs.map((pair) => pairKey(pair.day, pair.shopId)));
@@ -701,8 +748,13 @@ export function submitRefusal(
   }
 
   const signed = pairs.filter((pair) => signoffs.some((signoff) => signoff.day === pair.day && signoff.shopId === pair.shopId && signoff.doneAt));
-  if (signed.length > 0) {
-    return `Already signed off: ${labelPairs(signed)}. Submit is closed for a signed-off shop and day.`;
+  const blockingSigned = signed.filter((pair) => {
+    const edits = (request.edits ?? []).filter((edit) => edit.day === pair.day && edit.shopId === pair.shopId);
+    if (edits.length > 0) return edits.some((edit) => edit.findingId == null || !isMoveTimeFollowUp(edit.findingId));
+    return !openFollowUpPairs.some((open) => open.day === pair.day && open.shopId === pair.shopId);
+  });
+  if (blockingSigned.length > 0) {
+    return `Already signed off: ${labelPairs(blockingSigned)}. Submit is closed for a signed-off shop and day.`;
   }
 
   const submitted = new Set<string>();

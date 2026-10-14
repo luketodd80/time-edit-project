@@ -58,6 +58,19 @@ export interface Recommendation {
   minutes: number;
   summary: string;
   optional?: boolean;
+  /** Service-order punch before this edit. Seconds are kept when Fullbay has them. */
+  soClockIn?: string;
+  soClockOut?: string;
+  /** Service-order punch after this edit, with seconds when they differ from `start` and `end`. */
+  soNewClockIn?: string;
+  soNewClockOut?: string;
+  /** Shift clock-out. Accept stops here. Override may pass it. */
+  shiftClockOut?: string;
+  /**
+   * Set when this edit overlaps a Non-Pro punch.
+   * `new` shortens that row. `remove` deletes it. Older recommendations omit this.
+   */
+  nonProChange?: NonProChange;
 }
 
 export interface Finding {
@@ -84,6 +97,11 @@ export interface Finding {
    * `recommendation` stays null so this is not a one-click time suggestion.
    */
   nonPro?: NonProReview;
+  /**
+   * A later correction for a shop day that may already be signed off.
+   * It can be decided and submitted on its own. It does not reopen the sign-off.
+   */
+  followUp?: boolean;
   recommendation: Recommendation | null;
 }
 
@@ -154,6 +172,17 @@ export interface NonProEditPayload {
   keptClockOut?: string;
 }
 
+/**
+ * Non-Pro row changed by the same service-order edit.
+ * A shorten is `{ original, new }`. A full cover is `{ remove: true }`.
+ * Older edits omit this and keep using `nonPro` for attendance choices.
+ */
+export interface NonProChange {
+  original?: { in: string; out: string };
+  new?: { in: string; out: string };
+  remove?: true;
+}
+
 /** One shop's loaded day. Days with no report are simply absent. */
 export interface DayReport {
   day: string;
@@ -188,6 +217,12 @@ export interface Decision {
    * On the other choices, `start` and `end` are the adjusted service-order times when the manager edits them.
    */
   nonProRemainder?: NonProRemainder;
+  /**
+   * Override clock for the Non-Pro row that stays, HH:MM.
+   * Blank keeps the recommended shorten, or the removal when the recommendation removes the row.
+   */
+  nonProIn?: string;
+  nonProOut?: string;
 }
 
 export interface Signoff {
@@ -214,6 +249,10 @@ export interface PlannedEdit {
   error: string | null;
   /** Present for a Non-Pro review decision, including keep. */
   nonPro?: NonProEditPayload;
+  /** Present when this service-order edit also shortens or removes a Non-Pro row. */
+  nonProChange?: NonProChange;
+  /** True when this line is a follow-up that can be submitted after the shop day is signed off. */
+  followUp?: boolean;
 }
 
 export interface SkippedOrder {
