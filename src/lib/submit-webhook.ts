@@ -13,6 +13,17 @@ export interface SubmitWebhookEnv {
   SUBMIT_WEBHOOK_KEY_HEADER?: string;
 }
 
+export interface SubmitWebhookEdit {
+  findingId: string;
+  orderId: string;
+  decision: "accept" | "override";
+  newClockIn: string;
+  newClockOut: string;
+  minutes: number;
+  nonPro?: FullbayEditBatch["edits"][number]["nonPro"];
+  nonProChange?: FullbayEditBatch["edits"][number]["nonProChange"];
+}
+
 export interface SubmitWebhookPayload {
   event: "time-edit.submitted";
   batchId: string;
@@ -23,6 +34,8 @@ export interface SubmitWebhookPayload {
   editCount: number;
   techs: string[];
   dashboardUrl: string;
+  /** Same queued edits, including nonProChange when this edit moves Non-Pro time. */
+  edits: SubmitWebhookEdit[];
 }
 
 function webhookEnv(env?: SubmitWebhookEnv): SubmitWebhookEnv {
@@ -58,6 +71,16 @@ export function submitWebhookPayload(batch: FullbayEditBatch): SubmitWebhookPayl
     editCount: batch.edits.length,
     techs,
     dashboardUrl: SUBMIT_DASHBOARD_URL,
+    edits: batch.edits.map((edit) => ({
+      findingId: edit.findingId,
+      orderId: edit.orderId,
+      decision: edit.decision,
+      newClockIn: edit.newClockIn,
+      newClockOut: edit.newClockOut,
+      minutes: edit.minutes,
+      ...(edit.nonPro ? { nonPro: edit.nonPro } : {}),
+      ...(edit.nonProChange ? { nonProChange: edit.nonProChange } : {}),
+    })),
   };
 }
 

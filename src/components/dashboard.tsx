@@ -9,10 +9,11 @@ import { SubmitConfirmDialog } from "@/components/submit-confirm-dialog";
 import { SummaryView } from "@/components/summary-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { editsForSubmit, findingCanBeDecided, latestQueueEdit, lineRevealFocusId, queueRequestForSubmit, shopDayLock, signoffApplyBlock, signoffLineBlocks, submitRefusal, suggestionsNeedingDecision, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
+import { applyMoveTimeLeftovers } from "@/lib/move-time";
 import { attest, buildPlan, buildSubmission, filterReports, markDone, signoffKey, submissionFingerprint, submitBlockers } from "@/lib/review";
 import { updateReview, useReviewSnapshot } from "@/lib/review-store";
 import { SEED } from "@/lib/seed";
-import type { Decision, ShopFilter, ShopId, Signoff, ViewId } from "@/lib/types";
+import type { Decision, Finding, ShopFilter, ShopId, Signoff, ViewId } from "@/lib/types";
 
 function recordedSignoffs(signoffs: Record<string, Signoff>): RecordedSignoff[] {
   const list: RecordedSignoff[] = [];
@@ -38,9 +39,11 @@ export function Dashboard() {
   const [rejectError, setRejectError] = useState<{ findingId: string; message: string } | null>(null);
   const [reveal, setReveal] = useState<{ findingId: string; focusId: string } | null>(null);
   const [highlightedFindingId, setHighlightedFindingId] = useState<string | null>(null);
+  const [moveTimeFindings, setMoveTimeFindings] = useState<Finding[]>([]);
   const highlightTimer = useRef<number | null>(null);
 
-  const reports = filterReports(SEED, state.shopId, state.days);
+  const loadedReports = applyMoveTimeLeftovers(SEED, moveTimeFindings);
+  const reports = filterReports(loadedReports, state.shopId, state.days);
   const liveSubmission = buildSubmission(reports, state.decisions, state.shopId, state.days, state.submission?.submittedAt ?? "");
   const stale = state.submission != null && submissionFingerprint(state.submission) !== submissionFingerprint(liveSubmission);
 
@@ -48,7 +51,11 @@ export function Dashboard() {
     let cancelled = false;
     async function loadQueue() {
       try {
-        const [queueResponse, signoffResponse] = await Promise.all([fetch("/api/fullbay-edits/latest"), fetch("/api/signoffs")]);
+        const [queueResponse, signoffResponse, moveTimeResponse] = await Promise.all([
+          fetch("/api/fullbay-edits/latest"),
+          fetch("/api/signoffs"),
+          fetch("/api/admin/reopen-move-time"),
+        ]);
         if (cancelled) return;
         if (queueResponse.ok) {
           const body = (await queueResponse.json()) as { batches?: FullbayEditBatch[] };
@@ -57,6 +64,10 @@ export function Dashboard() {
         if (signoffResponse.ok) {
           const body = (await signoffResponse.json()) as { signoffs?: RecordedSignoff[] };
           setServerSignoffs(body.signoffs ?? []);
+        }
+        if (moveTimeResponse.ok) {
+          const body = (await moveTimeResponse.json()) as { findings?: Finding[] };
+          setMoveTimeFindings(body.findings ?? []);
         }
       } catch {
         // The next poll retries. Mark-done fetches again before it writes a sign-off.
@@ -120,7 +131,7 @@ export function Dashboard() {
   function setDecision(findingId: string, decision: Decision | null) {
     const finding = reports.flatMap((report) => report.findings).find((item) => item.id === findingId);
     if (finding && !findingCanBeDecided(queueBatches ?? [], finding.id)) return;
-    if (finding && shopDayLock(queueBatches ?? [], recordedSignoffs(state.signoffs), finding.day, finding.shopId) === "signed-off") return;
+    if (finding && !finding.followUp && shopDayLock(queueBatches ?? [], recordedSignoffs(state.signoffs), finding.day, finding.shopId) === "signed-off") return;
     setSubmitError(null);
     updateReview((current) => {
       const decisions = { ...current.decisions };
@@ -131,7 +142,7 @@ export function Dashboard() {
   }
 
   function revealLine(findingId: string) {
-    const report = SEED.find((item) => item.findings.some((finding) => finding.id === findingId));
+    const report = loadedReports.find((item) => item.findings.some((finding) => finding.id === findingId));
     if (!report) return;
     setSubmitConfirmCount(null);
     updateReview((current) => ({
@@ -341,7 +352,10 @@ export function Dashboard() {
 
   const signoffRecords = recordedSignoffs(state.signoffs);
   const submitEdits = editsForSubmit(queueBatches ?? [], buildPlan(reports, state.decisions).edits);
-  const submitLock = submitRefusal(queueBatches ?? [], signoffRecords, { shopId: state.shopId, days: state.days, edits: submitEdits });
+  const openFollowUps = suggestionsNeedingDecision(reports, state.decisions, queueBatches ?? [])
+    .filter((edit) => edit.followUp)
+    .map((edit) => ({ day: edit.day, shopId: edit.shopId }));
+  const submitLock = submitRefusal(queueBatches ?? [], signoffRecords, { shopId: state.shopId, days: state.days, edits: submitEdits }, openFollowUps);
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6">

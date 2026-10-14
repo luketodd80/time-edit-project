@@ -1,3 +1,4 @@
+import { resolvedNonProChange } from "@/lib/move-time";
 import { buildNonProEdit, nonProEditType } from "@/lib/nonpro";
 import { SHOPS, type DayReport, type Decision, type Finding, type PlannedEdit, type ServiceOrder, type ShopFilter, type ShopId, type Signoff, type SkippedOrder, type Submission, type Technician } from "@/lib/types";
 import { appliedWindow } from "@/lib/time";
@@ -279,11 +280,17 @@ function plannedEdit(
 ): PlannedEdit | null {
   if (finding.nonPro) return plannedNonProEdit(report, finding, decision);
   if (!finding.recommendation || !isEligible(report, finding)) return null;
+  const moveDecision = decision?.nonProEditType ? undefined : decision;
   const order = orderFor(report, finding.recommendation.orderId);
   const tech = techFor(report, finding.techId);
   if (!order || !tech) return null;
 
-  if (!decision) {
+  const nonProChange = resolvedNonProChange(finding.recommendation, moveDecision);
+  const moveFields = {
+    ...(nonProChange ? { nonProChange } : {}),
+    ...(finding.followUp ? { followUp: true } : {}),
+  };
+  if (!moveDecision) {
     return {
       findingId: finding.id,
       day: report.day,
@@ -292,15 +299,16 @@ function plannedEdit(
       orderId: order.id,
       work: finding.recommendation.work,
       orderStatus: order.status,
-      decision: "undecided",
+      decision: "undecided" as const,
       start: finding.recommendation.start,
       end: finding.recommendation.end,
       minutes: 0,
       error: null,
+      ...moveFields,
     };
   }
 
-  const window = appliedWindow(finding.recommendation, decision);
+  const window = appliedWindow(finding.recommendation, moveDecision);
   return {
     findingId: finding.id,
     day: report.day,
@@ -309,11 +317,12 @@ function plannedEdit(
     orderId: order.id,
     work: finding.recommendation.work,
     orderStatus: order.status,
-    decision: decision.kind,
+    decision: moveDecision.kind,
     start: window.start,
     end: window.end,
-    minutes: decision.kind === "reject" || !window.valid ? 0 : window.minutes,
+    minutes: moveDecision.kind === "reject" || !window.valid ? 0 : window.minutes,
     error: window.error,
+    ...moveFields,
   };
 }
 

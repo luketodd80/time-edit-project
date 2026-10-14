@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay } from "@/lib/dates";
 import { latestQueueEdit, reviewApplyText, suggestionsNeedingDecision, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
+import { moveTimeLines, shiftClockOutNote } from "@/lib/move-time";
 import { buildNonProEdit, clampSplitTime, defaultKeptWindow, defaultPartialChoice, describeNonProEdit, splitMidpoint } from "@/lib/nonpro";
 import {
   buildPlan,
@@ -281,7 +282,7 @@ function TechDay({
                 tech={tech}
                 finding={finding}
                 decision={decisions[finding.id]}
-                locked={locked}
+                locked={locked && !finding.followUp}
                 queued={latestQueueEdit(batches, finding.id)}
                 onDecision={onDecision}
                 onRejectFailure={onRejectFailure}
@@ -384,6 +385,8 @@ function DayRows({
   highlighted: boolean;
 }) {
   const recommendation = finding.recommendation;
+  const moveLines = recommendation?.nonProChange ? moveTimeLines(recommendation.orderId, recommendation, decision) : null;
+  const clockNote = recommendation?.nonProChange ? shiftClockOutNote(recommendation.shiftClockOut, decision) : null;
   const order = recommendation ? report.orders.find((item) => item.id === recommendation.orderId) : undefined;
   const eligible = isEligible(report, finding);
   const preview = recommendation && decision ? appliedWindow(recommendation, decision) : null;
@@ -414,7 +417,15 @@ function DayRows({
       return;
     }
     if (kind === "override") {
-      onDecision(finding.id, { kind, start: recommendation.start, end: recommendation.end });
+      const change = recommendation.nonProChange;
+      const nonProIn = (change?.new?.in ?? change?.original?.in ?? "").slice(0, 5);
+      const nonProOut = (change?.new?.out ?? change?.original?.out ?? "").slice(0, 5);
+      onDecision(finding.id, {
+        kind,
+        start: recommendation.start,
+        end: recommendation.end,
+        ...(change && nonProIn && nonProOut ? { nonProIn, nonProOut } : {}),
+      });
       return;
     }
     onDecision(finding.id, { kind, start: "", end: "" });
@@ -430,6 +441,15 @@ function DayRows({
         <td className="px-3 py-3 whitespace-nowrap">{missedText(finding)}</td>
         <td className="px-3 py-3 leading-6">
           <p>{suggestedText(finding)}</p>
+          {moveLines ? (
+            <div className="mt-2 flex flex-col gap-1">
+              <p>{moveLines.so}</p>
+              <p>{moveLines.nonPro}</p>
+              <Badge variant="outline" className="mt-1 w-fit">Moves Non-Pro time</Badge>
+              {finding.followUp ? <p className="text-muted-foreground">Follow-up. The shop day stays signed off. This line can be submitted on its own.</p> : null}
+              {clockNote ? <p className="text-muted-foreground">{clockNote}</p> : null}
+            </div>
+          ) : null}
           {queued ? (
             <p className={`mt-3 ${openFailure ? "text-destructive" : queued.status === "already_done" || queued.status === "rejected" ? "font-medium text-green-950" : "font-medium"}`}>{reviewApplyText(queued)}</p>
           ) : null}
@@ -498,10 +518,10 @@ function DayRows({
                     type="time"
                     step={60}
                     value={decision.start}
-                    onChange={(event) => onDecision(finding.id, { kind: "override", start: event.target.value, end: decision.end })}
+                    onChange={(event) => onDecision(finding.id, { ...decision, kind: "override", start: event.target.value })}
                     className="h-10 bg-white text-base md:text-base"
                   />
-                  <Button type="button" variant="ghost" onClick={() => onDecision(finding.id, { kind: "override", start: "", end: decision.end })}>
+                  <Button type="button" variant="ghost" onClick={() => onDecision(finding.id, { ...decision, kind: "override", start: "" })}>
                     Clear
                   </Button>
                 </div>
@@ -515,17 +535,44 @@ function DayRows({
                     type="time"
                     step={60}
                     value={decision.end}
-                    onChange={(event) => onDecision(finding.id, { kind: "override", start: decision.start, end: event.target.value })}
+                    onChange={(event) => onDecision(finding.id, { ...decision, kind: "override", end: event.target.value })}
                     className="h-10 bg-white text-base md:text-base"
                   />
-                  <Button type="button" variant="ghost" onClick={() => onDecision(finding.id, { kind: "override", start: decision.start, end: "" })}>
+                  <Button type="button" variant="ghost" onClick={() => onDecision(finding.id, { ...decision, kind: "override", end: "" })}>
                     Clear
                   </Button>
                 </div>
                 <p className="text-muted-foreground">Recommended {formatClock(recommendation.end)}</p>
               </div>
+              {recommendation.nonProChange ? (
+                <>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor={`${finding.id}-nonpro-start`}>Non-Pro start</Label>
+                    <Input
+                      id={`${finding.id}-nonpro-start`}
+                      type="time"
+                      step={60}
+                      value={decision.nonProIn ?? ""}
+                      onChange={(event) => onDecision(finding.id, { ...decision, kind: "override", nonProIn: event.target.value })}
+                      className="h-10 bg-white text-base md:text-base"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor={`${finding.id}-nonpro-end`}>Non-Pro end</Label>
+                    <Input
+                      id={`${finding.id}-nonpro-end`}
+                      type="time"
+                      step={60}
+                      value={decision.nonProOut ?? ""}
+                      onChange={(event) => onDecision(finding.id, { ...decision, kind: "override", nonProOut: event.target.value })}
+                      className="h-10 bg-white text-base md:text-base"
+                    />
+                  </div>
+                </>
+              ) : null}
               <p className="text-muted-foreground sm:col-span-2">
                 Change the start, the end, or both. A blank or unchanged field keeps that side as recommended.
+                {recommendation.nonProChange ? " Non-Pro start and end edit the Non-Pro row. Leave them blank to keep the suggested shorten or removal." : ""}
               </p>
               {preview.valid ? (
                 <p className="sm:col-span-2">

@@ -1245,9 +1245,9 @@ describe("October 12 download", () => {
         ]),
       ),
       {
-        dayton: { techs: 9, suggestions: 12 },
+        dayton: { techs: 9, suggestions: 11 },
         covington: { techs: 5, suggestions: 5 },
-        greenville: { techs: 6, suggestions: 5 },
+        greenville: { techs: 6, suggestions: 2 },
         springfield: { techs: 4, suggestions: 14 },
         mobile: { techs: 2, suggestions: 2 },
         columbus: { techs: 4, suggestions: 0 },
@@ -1317,7 +1317,7 @@ describe("October 13 download", () => {
         (sum, report) => sum + requiredDecisionFindingIds(OCTOBER_12_REPORTS, { day: report.day, shopId: report.shopId }).length,
         0,
       ),
-      38,
+      34,
     );
   });
 
@@ -1378,8 +1378,8 @@ describe("October 13 download", () => {
       {
         dayton: { techs: 7, suggestions: 5 },
         covington: { techs: 5, suggestions: 4 },
-        greenville: { techs: 6, suggestions: 7 },
-        springfield: { techs: 4, suggestions: 14 },
+        greenville: { techs: 6, suggestions: 4 },
+        springfield: { techs: 4, suggestions: 13 },
         mobile: { techs: 2, suggestions: 3 },
         columbus: { techs: 4, suggestions: 0 },
       },
