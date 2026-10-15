@@ -1893,14 +1893,14 @@
           "name": "Cody Kester",
           "clockedHours": 8.8,
           "soHours": 7.7,
-          "addedMinutes": 0
+          "addedMinutes": 21
         },
         {
           "id": "david-johnson",
           "name": "David Johnson",
           "clockedHours": 9.29,
           "soHours": 8.83,
-          "addedMinutes": 23
+          "addedMinutes": 1
         },
         {
           "id": "gage-wills",
@@ -1991,7 +1991,7 @@
     {
       "day": "2026-10-14",
       "shopId": "columbus",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "derek-roby",
@@ -2005,14 +2005,14 @@
           "name": "Griffin Davis",
           "clockedHours": 10.09,
           "soHours": 9.95,
-          "addedMinutes": 0
+          "addedMinutes": 5
         },
         {
           "id": "justin-winner",
           "name": "Justin Winner",
           "clockedHours": 9.06,
           "soHours": 9.01,
-          "addedMinutes": 0
+          "addedMinutes": 1
         },
         {
           "id": "stephen-hill",
@@ -2026,7 +2026,7 @@
     {
       "day": "2026-10-14",
       "shopId": "covington",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "anthony-montgomery",
