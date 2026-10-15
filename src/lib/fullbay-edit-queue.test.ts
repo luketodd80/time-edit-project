@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -8,6 +8,7 @@ import {
   AUTO_SIGNOFF_NOTE,
   applyConfirmations,
   parseQueueRequest,
+  parseStoredBatch,
   pendingBatches,
   queueEditFromPlanned,
   queueRequestForSubmit,
@@ -769,6 +770,63 @@ describe("auto sign-off", () => {
   });
 });
 
+describe("wiped queue seed", () => {
+  const GREENVILLE_13 = "d3d6ba97-3465-4626-8f25-7adcb9405c42";
+  const COLUMBUS_14 = "1232bc58-8545-44c4-9d66-67d8052719b9";
+  const COVINGTON_14 = "cc24695d-1625-4699-979b-b6f4f3f5dd4c";
+  const GREENVILLE_14 = "76e841aa-ec5f-4d08-8ec3-bd8d269473bd";
+
+  it("keeps the four October 15 batches that a deploy dropped", () => {
+    const queue = JSON.parse(readFileSync(join(process.cwd(), "data", "fullbay-edit-queue.seed.json"), "utf8")) as {
+      batches: FullbayEditBatch[];
+    };
+    const byId = new Map(queue.batches.map((batch) => [batch.id, batch]));
+    assert.equal(byId.size, queue.batches.length);
+
+    const greenville13 = byId.get(GREENVILLE_13);
+    assert.ok(greenville13);
+    assert.equal(greenville13.shopId, "greenville");
+    assert.deepEqual(greenville13.days, ["2026-10-13"]);
+    assert.equal(greenville13.submittedAt, "2026-10-15T09:50:51.551Z");
+    assert.equal(greenville13.edits.length, 3);
+    assert.equal(greenville13.decided?.length, 7);
+    assert.ok(greenville13.edits.every((edit) => edit.status === "applied" && edit.appliedAt === "2026-10-15T10:15:42.579Z"));
+    assert.match(greenville13.edits.find((edit) => edit.findingId.endsWith("cody-kester-02"))?.applyNote ?? "", /G-89820/);
+
+    const columbus = byId.get(COLUMBUS_14);
+    assert.ok(columbus);
+    assert.equal(columbus.shopId, "columbus");
+    assert.deepEqual(columbus.days, ["2026-10-14"]);
+    assert.equal(columbus.edits.length, 2);
+    assert.equal(columbus.decided?.length, 2);
+    assert.ok(columbus.edits.every((edit) => edit.status === "applied" && edit.appliedAt === "2026-10-15T11:05:17.955Z"));
+    assert.match(columbus.edits.find((edit) => edit.orderId === "CL-88894")?.applyNote ?? "", /CL-88894/);
+
+    const covington = byId.get(COVINGTON_14);
+    assert.ok(covington);
+    assert.equal(covington.shopId, "covington");
+    assert.deepEqual(covington.days, ["2026-10-14"]);
+    assert.equal(covington.submittedAt, "2026-10-15T11:05:45.596Z");
+    assert.equal(covington.edits.length, 6);
+    assert.equal(covington.decided?.length, 7);
+    assert.ok(covington.edits.every((edit) => edit.status === "pending" && edit.appliedAt == null));
+
+    const greenville14 = byId.get(GREENVILLE_14);
+    assert.ok(greenville14);
+    assert.equal(greenville14.shopId, "greenville");
+    assert.deepEqual(greenville14.days, ["2026-10-14"]);
+    assert.equal(greenville14.submittedAt, "2026-10-15T09:51:41.579Z");
+    assert.equal(greenville14.edits.length, 0);
+    assert.equal(greenville14.decided?.length, 2);
+
+    for (const id of [GREENVILLE_13, COLUMBUS_14, COVINGTON_14, GREENVILLE_14]) {
+      const parsed = parseStoredBatch(byId.get(id));
+      assert.equal(parsed.ok, true);
+      if (parsed.ok) assert.equal(parsed.value.id, id);
+    }
+  });
+});
+
 describe("fullbay edit queue file", { concurrency: false }, () => {
   it("stores a pending batch and confirms one edit", async () => {
     const directory = mkdtempSync(join(tmpdir(), "fullbay-edit-queue-"));
@@ -812,6 +870,121 @@ describe("fullbay edit queue file", { concurrency: false }, () => {
       else process.env.FULLBAY_EDIT_QUEUE_PATH = previous;
       if (previousSeed === undefined) delete process.env.FULLBAY_EDIT_QUEUE_SEED_PATH;
       else process.env.FULLBAY_EDIT_QUEUE_SEED_PATH = previousSeed;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("restores batches by id without calling the submit webhook", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "fullbay-restore-"));
+    const previousQueue = process.env.FULLBAY_EDIT_QUEUE_PATH;
+    const previousSeed = process.env.FULLBAY_EDIT_QUEUE_SEED_PATH;
+    const previousToken = process.env.FULLBAY_EDIT_QUEUE_TOKEN;
+    const previousWebhook = process.env.SUBMIT_WEBHOOK_URL;
+    const previousSignoff = process.env.SHOP_DAY_SIGNOFF_PATH;
+    process.env.FULLBAY_EDIT_QUEUE_PATH = join(directory, "queue.json");
+    process.env.FULLBAY_EDIT_QUEUE_SEED_PATH = join(directory, "empty-seed.json");
+    process.env.SHOP_DAY_SIGNOFF_PATH = join(directory, "signoffs.json");
+    process.env.SUBMIT_WEBHOOK_URL = "http://127.0.0.1:9/submit-webhook";
+    delete process.env.FULLBAY_EDIT_QUEUE_TOKEN;
+    const originalFetch = globalThis.fetch;
+    let webhookCalls = 0;
+    globalThis.fetch = (async () => {
+      webhookCalls += 1;
+      throw new Error("webhook should not be called");
+    }) as typeof fetch;
+    try {
+      const { POST } = await import("@/app/api/fullbay-edits/restore/route");
+      const batch = {
+        id: "restore-batch",
+        submittedAt: "2026-10-15T11:05:45.596Z",
+        shopId: "covington",
+        days: ["2026-10-14"],
+        edits: [
+          {
+            findingId: "cline-1",
+            day: "2026-10-14",
+            shopId: "covington",
+            techName: "Cline Wirick",
+            orderId: "C-89432",
+            work: "Install GPS",
+            decision: "accept",
+            newClockIn: "07:58",
+            newClockOut: "08:03",
+            minutes: 5,
+            status: "pending",
+            appliedAt: null,
+            applyNote: null,
+          },
+        ],
+        decided: [
+          { findingId: "cline-1", day: "2026-10-14", shopId: "covington" },
+          { findingId: "cline-reject", day: "2026-10-14", shopId: "covington" },
+        ],
+      };
+      const inserted = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits/restore", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ batches: [batch] }),
+        }),
+      );
+      assert.equal(inserted.status, 200);
+      const insertedBody = (await inserted.json()) as { upserted?: Array<{ id: string; action: string }> };
+      assert.deepEqual(insertedBody.upserted, [{ id: "restore-batch", action: "inserted" }]);
+      assert.equal(webhookCalls, 0);
+      assert.equal(existsSync(join(directory, "signoffs.json")), false);
+
+      const updated = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits/restore", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...batch,
+            edits: [{ ...batch.edits[0], status: "applied", appliedAt: "2026-10-15T12:00:00.000Z", applyNote: "Saved." }],
+          }),
+        }),
+      );
+      assert.equal(updated.status, 200);
+      const updatedBody = (await updated.json()) as { upserted?: Array<{ id: string; action: string }> };
+      assert.deepEqual(updatedBody.upserted, [{ id: "restore-batch", action: "updated" }]);
+      const stored = await readQueue();
+      assert.equal(stored.length, 1);
+      assert.equal(stored[0]?.id, "restore-batch");
+      assert.equal(stored[0]?.edits[0]?.status, "applied");
+      assert.equal(stored[0]?.edits[0]?.applyNote, "Saved.");
+      assert.equal(stored[0]?.decided?.length, 2);
+      assert.equal(webhookCalls, 0);
+
+      process.env.FULLBAY_EDIT_QUEUE_TOKEN = "queue-secret";
+      const denied = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits/restore", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ batches: [batch] }),
+        }),
+      );
+      assert.equal(denied.status, 401);
+      const allowed = await POST(
+        new Request("http://127.0.0.1/api/fullbay-edits/restore", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-fullbay-edit-token": "queue-secret" },
+          body: JSON.stringify({ batches: [] }),
+        }),
+      );
+      assert.equal(allowed.status, 400);
+      assert.equal((await readQueue()).length, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousQueue === undefined) delete process.env.FULLBAY_EDIT_QUEUE_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_PATH = previousQueue;
+      if (previousSeed === undefined) delete process.env.FULLBAY_EDIT_QUEUE_SEED_PATH;
+      else process.env.FULLBAY_EDIT_QUEUE_SEED_PATH = previousSeed;
+      if (previousToken === undefined) delete process.env.FULLBAY_EDIT_QUEUE_TOKEN;
+      else process.env.FULLBAY_EDIT_QUEUE_TOKEN = previousToken;
+      if (previousWebhook === undefined) delete process.env.SUBMIT_WEBHOOK_URL;
+      else process.env.SUBMIT_WEBHOOK_URL = previousWebhook;
+      if (previousSignoff === undefined) delete process.env.SHOP_DAY_SIGNOFF_PATH;
+      else process.env.SHOP_DAY_SIGNOFF_PATH = previousSignoff;
       rmSync(directory, { recursive: true, force: true });
     }
   });

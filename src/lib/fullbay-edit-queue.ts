@@ -104,6 +104,7 @@ export interface FullbayConfirmResult {
 }
 
 const CONFIRM_STATUSES = new Set<FullbayConfirmResult["status"]>(["applied", "failed", "already_done", "not_a_gap"]);
+const APPLY_STATUSES = new Set<FullbayApplyStatus>(["pending", "applied", "failed", "already_done", "not_a_gap", "rejected", "superseded"]);
 
 export function isConfirmStatus(value: unknown): value is FullbayConfirmResult["status"] {
   return typeof value === "string" && CONFIRM_STATUSES.has(value as FullbayConfirmResult["status"]);
@@ -236,6 +237,148 @@ export function parseQueueRequest(body: unknown): { ok: true; value: FullbayQueu
       decided: decided.value,
     },
   };
+}
+
+/**
+ * One stored batch, including id and the apply status already on each edit.
+ * Unlike a submit, this does not reset status to pending.
+ */
+export function parseStoredBatch(body: unknown): { ok: true; value: FullbayEditBatch } | { ok: false; error: string } {
+  if (!body || typeof body !== "object") return { ok: false, error: "Each batch must be an object." };
+  const record = body as Record<string, unknown>;
+  const id = requiredText(record.id, "id");
+  if (!id.ok) return id;
+  const parsed = parseQueueRequest(record);
+  if (!parsed.ok) return parsed;
+  if (!Array.isArray(record.edits)) return { ok: false, error: "edits must be an array." };
+  const edits: FullbayQueueEdit[] = [];
+  for (let index = 0; index < parsed.value.edits.length; index += 1) {
+    const raw = record.edits[index];
+    const base = parsed.value.edits[index];
+    if (!raw || typeof raw !== "object" || !base) return { ok: false, error: "Each edit must be an object." };
+    const stored = storedEditFields(raw as Record<string, unknown>, base);
+    if (!stored.ok) return stored;
+    edits.push(stored.value);
+  }
+  const audit = parseAudit(record.audit);
+  if (!audit.ok) return audit;
+  return {
+    ok: true,
+    value: {
+      id: id.value,
+      submittedAt: parsed.value.submittedAt,
+      shopId: parsed.value.shopId,
+      days: parsed.value.days,
+      edits,
+      decided: parsed.value.decided,
+      ...(audit.value ? { audit: audit.value } : {}),
+    },
+  };
+}
+
+/** `{ batches: [...] }`, one batch object, or a bare array. Ids in one body must be unique. */
+export function parseRestoreRequest(body: unknown): { ok: true; batches: FullbayEditBatch[] } | { ok: false; error: string } {
+  const list = restoreBatchList(body);
+  if (!list.ok) return list;
+  if (list.value.length === 0) return { ok: false, error: "batches must include at least one batch." };
+  const batches: FullbayEditBatch[] = [];
+  const seen = new Set<string>();
+  for (const item of list.value) {
+    const parsed = parseStoredBatch(item);
+    if (!parsed.ok) return parsed;
+    if (seen.has(parsed.value.id)) return { ok: false, error: `Duplicate batch ${parsed.value.id}.` };
+    seen.add(parsed.value.id);
+    batches.push(parsed.value);
+  }
+  return { ok: true, batches };
+}
+
+function restoreBatchList(body: unknown): { ok: true; value: unknown[] } | { ok: false; error: string } {
+  if (Array.isArray(body)) return { ok: true, value: body };
+  if (!body || typeof body !== "object") return { ok: false, error: "Expected a JSON object." };
+  const record = body as Record<string, unknown>;
+  if (Array.isArray(record.batches)) return { ok: true, value: record.batches };
+  if (typeof record.id === "string" && Array.isArray(record.edits)) return { ok: true, value: [body] };
+  return { ok: false, error: "Expected { batches } or one batch." };
+}
+
+function storedEditFields(
+  raw: Record<string, unknown>,
+  base: FullbayQueueEdit,
+): { ok: true; value: FullbayQueueEdit } | { ok: false; error: string } {
+  let status: FullbayApplyStatus = "pending";
+  if (raw.status != null) {
+    if (typeof raw.status !== "string" || !APPLY_STATUSES.has(raw.status as FullbayApplyStatus)) {
+      return { ok: false, error: "Each edit status must be pending, applied, failed, already_done, not_a_gap, rejected, or superseded." };
+    }
+    status = raw.status as FullbayApplyStatus;
+  }
+  const appliedAt = optionalTimestamp(raw.appliedAt, "appliedAt");
+  if (!appliedAt.ok) return appliedAt;
+  if (raw.applyNote != null && typeof raw.applyNote !== "string") return { ok: false, error: "applyNote must be a string." };
+  const edit: FullbayQueueEdit = {
+    ...base,
+    status,
+    appliedAt: appliedAt.value,
+    applyNote: typeof raw.applyNote === "string" ? raw.applyNote : null,
+  };
+  if ("currentClockIn" in raw || "currentClockOut" in raw) {
+    const clockIn = optionalStoredClock(raw.currentClockIn, "currentClockIn");
+    if (!clockIn.ok) return clockIn;
+    const clockOut = optionalStoredClock(raw.currentClockOut, "currentClockOut");
+    if (!clockOut.ok) return clockOut;
+    edit.currentClockIn = clockIn.value;
+    edit.currentClockOut = clockOut.value;
+  }
+  if ("failureRejectedAt" in raw || "failureRejectedBy" in raw) {
+    const rejectedAt = optionalTimestamp(raw.failureRejectedAt, "failureRejectedAt");
+    if (!rejectedAt.ok) return rejectedAt;
+    if (raw.failureRejectedBy != null && typeof raw.failureRejectedBy !== "string") {
+      return { ok: false, error: "failureRejectedBy must be a string." };
+    }
+    edit.failureRejectedAt = rejectedAt.value;
+    edit.failureRejectedBy = typeof raw.failureRejectedBy === "string" ? raw.failureRejectedBy : null;
+  }
+  return { ok: true, value: edit };
+}
+
+function optionalTimestamp(value: unknown, label: string): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (value == null || value === "") return { ok: true, value: null };
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) return { ok: false, error: `${label} must be an ISO timestamp.` };
+  return { ok: true, value };
+}
+
+function optionalStoredClock(value: unknown, label: string): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (value == null || value === "") return { ok: true, value: null };
+  if (typeof value !== "string" || !isClockTime(value)) return { ok: false, error: `${label} must be HH:MM.` };
+  return { ok: true, value };
+}
+
+function parseAudit(value: unknown): { ok: true; value: QueueAuditEvent[] | undefined } | { ok: false; error: string } {
+  if (value == null) return { ok: true, value: undefined };
+  if (!Array.isArray(value)) return { ok: false, error: "audit must be an array." };
+  const events: QueueAuditEvent[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return { ok: false, error: "Each audit event must be an object." };
+    const record = item as Record<string, unknown>;
+    if (typeof record.at !== "string" || Number.isNaN(Date.parse(record.at))) {
+      return { ok: false, error: "audit.at must be an ISO timestamp." };
+    }
+    const by = requiredText(record.by, "audit.by");
+    if (!by.ok) return by;
+    if (record.action !== "reject_failure") return { ok: false, error: "audit.action must be reject_failure." };
+    const findingId = requiredText(record.findingId, "audit.findingId");
+    if (!findingId.ok) return findingId;
+    if (record.note != null && typeof record.note !== "string") return { ok: false, error: "audit.note must be a string." };
+    events.push({
+      at: record.at,
+      by: by.value,
+      action: "reject_failure",
+      findingId: findingId.value,
+      note: typeof record.note === "string" ? record.note : null,
+    });
+  }
+  return { ok: true, value: events };
 }
 
 function parseDecided(value: unknown): { ok: true; value: DecidedFinding[] } | { ok: false; error: string } {

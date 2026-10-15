@@ -123,6 +123,31 @@ export async function confirmQueuedBatch(
   });
 }
 
+/**
+ * Insert a batch by id, or replace the batch that already has that id.
+ * Does not check sign-off, and the caller must not fire the submit webhook.
+ */
+export async function upsertQueuedBatches(
+  incoming: FullbayEditBatch[],
+): Promise<{ upserted: Array<{ id: string; action: "inserted" | "updated" }> }> {
+  return withQueueLock(async () => {
+    const batches = await readQueue();
+    const upserted: Array<{ id: string; action: "inserted" | "updated" }> = [];
+    for (const batch of incoming) {
+      const index = batches.findIndex((item) => item.id === batch.id);
+      if (index >= 0) {
+        batches[index] = batch;
+        upserted.push({ id: batch.id, action: "updated" });
+      } else {
+        batches.push(batch);
+        upserted.push({ id: batch.id, action: "inserted" });
+      }
+    }
+    await writeQueue(batches);
+    return { upserted };
+  });
+}
+
 async function withQueueLock<T>(work: () => Promise<T>): Promise<T> {
   const run = writeChain.then(work, work);
   writeChain = run.then(
