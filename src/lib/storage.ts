@@ -22,8 +22,16 @@ function isDecision(value: unknown): value is Decision {
   );
 }
 
+const CLOCK_MINUTE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 function cleanDecision(decision: Decision): Decision {
   const base: Decision = { kind: decision.kind, start: decision.start, end: decision.end };
+  if (typeof decision.shiftClockOut === "string" && (decision.shiftClockOut === "" || CLOCK_MINUTE.test(decision.shiftClockOut))) {
+    base.shiftClockOut = decision.shiftClockOut;
+  }
+  if (typeof decision.soClockOut === "string" && (decision.soClockOut === "" || CLOCK_MINUTE.test(decision.soClockOut))) {
+    base.soClockOut = decision.soClockOut;
+  }
   if (decision.nonProEditType == null) return base;
   if (!NON_PRO_TYPES.has(decision.nonProEditType)) return base;
   if (typeof decision.split === "string" && decision.split.length > 0) base.split = decision.split;

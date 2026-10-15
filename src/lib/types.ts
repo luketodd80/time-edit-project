@@ -44,6 +44,43 @@ export interface Technician {
 
 export type FindingKind = "gap" | "off_clock" | "flag" | "as_is";
 
+/**
+ * One tech-day whose shift clock-out or a service-order punch runs to 11:55 PM or later.
+ * Fullbay parks a forgotten punch near midnight. The 24-hour Inactive placeholder is not this.
+ */
+export interface ForgotClockSpan {
+  /** HH:MM on this shift. A next-day midnight clock-out is 23:59. */
+  clockIn: string;
+  clockOut: string;
+  /** Hours on the Fullbay row. These are the hours utilization leaves out until corrected. */
+  hours: number;
+  /** True when this end is 23:55 or later. A real earlier shift end is stored so it can be confirmed. */
+  late: boolean;
+}
+
+export interface ForgotClockOrder extends ForgotClockSpan {
+  orderId: string;
+  work: string;
+}
+
+export interface ForgotClockOut {
+  /** Last punch end that is not itself a midnight run, HH:MM. Empty when this day has no other end. */
+  suggestedEnd: string;
+  /** Shift punch that ran late, or the shift that contains a late service order. */
+  shift: ForgotClockSpan | null;
+  /** Service-order punch that ran late. Absent when only the shift clock-out did. */
+  order: ForgotClockOrder | null;
+}
+
+/** One Fullbay change inside a forgotten-clock-out decision. `so` is empty on the shift clock-out. */
+export interface ClockCorrection {
+  type: "clock_out" | "so_out";
+  tech: string;
+  so: string;
+  oldTime: string;
+  newTime: string;
+}
+
 export interface Recommendation {
   orderId: string;
   /** Specific work line. Can differ from the order title when one order has several lines. */
@@ -102,6 +139,11 @@ export interface Finding {
    * It can be decided and submitted on its own. It does not reopen the sign-off.
    */
   followUp?: boolean;
+  /**
+   * Set when this tech's shift clock-out or a service-order punch ends at 23:55 or later.
+   * The manager sets the real shift clock-out and the real SO end, or rejects the flag.
+   */
+  forgotClockOut?: ForgotClockOut;
   recommendation: Recommendation | null;
 }
 
@@ -228,6 +270,13 @@ export interface Decision {
    * An older saved decision for the same finding is dropped while those rows are open.
    */
   moveTime?: boolean;
+  /**
+   * Real shift clock-out for a forgotten-clock-out flag, HH:MM.
+   * Empty until the manager sets it. Reject leaves this blank.
+   */
+  shiftClockOut?: string;
+  /** Real service-order end for a forgotten-clock-out flag, HH:MM. */
+  soClockOut?: string;
 }
 
 export interface Signoff {
@@ -258,6 +307,13 @@ export interface PlannedEdit {
   nonProChange?: NonProChange;
   /** True when this line is a follow-up that can be submitted after the shop day is signed off. */
   followUp?: boolean;
+  /**
+   * Forgotten clock-out. One shift clock-out correction and one SO Out edit.
+   * `type` is `clock_out` or `so_out`. `so` is empty on the shift correction.
+   */
+  corrections?: ClockCorrection[];
+  /** True when this line is a forgotten clock-out, including a rejection that sends nothing. */
+  forgotClockOut?: boolean;
 }
 
 export interface SkippedOrder {

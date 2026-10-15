@@ -1,7 +1,8 @@
 import { addDays } from "@/lib/dates";
-import { latestEditsForShopDay, minutesPickedUp, type FullbayEditBatch } from "@/lib/fullbay-edit-queue";
+import { applyForgotHours, forgotTimeError, type ForgotHoursMode } from "@/lib/forgot-clock-out";
+import { latestEditsForShopDay, minutesPickedUp, type FullbayEditBatch, type FullbayQueueEdit } from "@/lib/fullbay-edit-queue";
 import { utilization } from "@/lib/review";
-import { SHOPS, type DayReport, type ShopId } from "@/lib/types";
+import { SHOPS, type DayReport, type ForgotClockOut, type ShopId } from "@/lib/types";
 
 /**
  * Compact per-day, per-shop, per-tech utilization.
@@ -103,7 +104,9 @@ function isFiniteNumber(value: unknown): value is number {
 export function snapshotFromReports(reports: DayReport[], batches: FullbayEditBatch[]): UtilShopDay[] {
   const rows: UtilShopDay[] = [];
   for (const report of reports) {
-    const edits = [...latestEditsForShopDay(batches, report.day, report.shopId).values()];
+    const latest = latestEditsForShopDay(batches, report.day, report.shopId);
+    const edits = [...latest.values()];
+    const decided = decidedFindingIds(batches, report.day, report.shopId);
     const added = new Map<string, number>();
     for (const edit of edits) {
       const minutes = minutesPickedUp(edit);
@@ -116,16 +119,49 @@ export function snapshotFromReports(reports: DayReport[], batches: FullbayEditBa
       day: report.day,
       shopId: report.shopId,
       queueCovered: edits.length > 0,
-      techs: report.technicians.map((tech) => ({
-        id: tech.id,
-        name: tech.name,
-        clockedHours: tech.clockedHours,
-        soHours: tech.soHours,
-        addedMinutes: added.get(tech.id) ?? 0,
-      })),
+      techs: report.technicians.map((tech) => {
+        const finding = report.findings.find((item) => item.techId === tech.id && item.forgotClockOut);
+        const hours = finding?.forgotClockOut
+          ? applyForgotHours(
+              tech.clockedHours,
+              tech.soHours,
+              finding.forgotClockOut,
+              forgotModeForSnapshot(finding.forgotClockOut, latest.get(finding.id), decided.has(finding.id)),
+            )
+          : { clockedHours: tech.clockedHours, soHours: tech.soHours };
+        return {
+          id: tech.id,
+          name: tech.name,
+          clockedHours: hours.clockedHours,
+          soHours: hours.soHours,
+          addedMinutes: added.get(tech.id) ?? 0,
+        };
+      }),
     });
   }
   return canonicalUtilizationHistory(rows);
+}
+
+function decidedFindingIds(batches: FullbayEditBatch[], day: string, shopId: ShopId): Set<string> {
+  const ids = new Set<string>();
+  for (const batch of batches) {
+    for (const item of batch.decided ?? []) {
+      if (item.day === day && item.shopId === shopId) ids.add(item.findingId);
+    }
+  }
+  return ids;
+}
+
+/** A queued correction replaces the midnight hours. A rejection keeps the recorded hours. Otherwise they stay pending. */
+function forgotModeForSnapshot(info: ForgotClockOut, edit: FullbayQueueEdit | undefined, rejected: boolean): ForgotHoursMode {
+  const corrections = edit?.corrections;
+  if (corrections && corrections.length > 0 && edit.status !== "rejected" && edit.status !== "superseded") {
+    const shiftOut = corrections.find((item) => item.type === "clock_out")?.newTime ?? "";
+    const soOut = corrections.find((item) => item.type === "so_out")?.newTime ?? shiftOut;
+    if (forgotTimeError(info, shiftOut, soOut) == null) return { shiftOut, soOut };
+  }
+  if (rejected) return "original";
+  return "pending";
 }
 
 function techIdForEdit(report: DayReport, edit: { findingId: string; techName: string }): string | null {

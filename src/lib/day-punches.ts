@@ -1,3 +1,4 @@
+import { forgotTimeError } from "@/lib/forgot-clock-out";
 import { latestQueueEdit, type FullbayEditBatch, type FullbayApplyStatus } from "@/lib/fullbay-edit-queue";
 import { buildNonProEdit } from "@/lib/nonpro";
 import { SHOPS } from "@/lib/types";
@@ -165,6 +166,28 @@ export function dayPunches(
       continue;
     }
     applyBoundary(punches, finding, recommendation.orderId, recommendation.work, kind, nextIn, nextOut, status, detail);
+  }
+
+  for (const finding of findings) {
+    const info = finding.forgotClockOut;
+    if (!info?.order) continue;
+    const decision = decisions[finding.id];
+    if (!decision || decision.kind === "reject") continue;
+    const shiftOut = decision.shiftClockOut ?? "";
+    const soOut = decision.soClockOut ?? "";
+    if (forgotTimeError(info, shiftOut, soOut)) continue;
+    const match = punches.find(
+      (punch) =>
+        punch.contextShop == null &&
+        punch.orderId === info.order?.orderId &&
+        punch.clockIn === info.order.clockIn &&
+        punch.clockOut === info.order.clockOut,
+    );
+    if (!match) continue;
+    const status = statusFor(decision, batches, finding.id);
+    match.editStatus = preferStatus(match.editStatus, status);
+    if (match.originalClockOut == null) match.originalClockOut = match.clockOut;
+    match.clockOut = soOut;
   }
 
   for (const finding of findings) {

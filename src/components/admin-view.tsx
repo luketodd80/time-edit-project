@@ -532,6 +532,7 @@ function Drawer({ cell, shopName, manager, onClose }: { cell: AdminCell; shopNam
                   <p className="text-sm font-medium">
                     {line.tech} · {line.order || "—"}
                     {line.nonPro ? <Pill tone="none">Non-Pro</Pill> : null}
+                    {line.forgotClockOut ? <Pill tone="pending">Forgot clock-out</Pill> : null}
                     {line.excluded ? <Pill tone="failed">not counted</Pill> : null}
                   </p>
                   <p className="text-xs text-muted-foreground">

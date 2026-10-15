@@ -1,5 +1,6 @@
+import { FORGOT_CLOCK_OUT_LABEL, isForgottenEnd } from "@/lib/forgot-clock-out";
 import { clockOfDay, nonProCoversSpan, pairNonProMove, parseClockOfDay } from "@/lib/move-time";
-import type { DayReport, Finding, NonProNeighbor, NonProOrderOption, NonProReview, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
+import type { DayReport, Finding, ForgotClockOut, NonProNeighbor, NonProOrderOption, NonProReview, Recommendation, ServiceOrder, ShopId, Technician } from "@/lib/types";
 import { SHOPS } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 import { FRIDAY_DETAILS_CSV } from "@/lib/friday-details-csv";
@@ -639,6 +640,72 @@ function isInactiveDayPlaceholder(row: FullbayTimesheetRow, shiftDate: string): 
   return start === 0 && (end === 0 || end === 86400);
 }
 
+function clockOfSeconds(totalSeconds: number): string {
+  return clockLabel(toMinute(totalSeconds));
+}
+
+/**
+ * One flag for the tech when the shift clock-out or any service-order punch ends at 23:55 or later.
+ * Inactive 24-hour placeholders never reach this list.
+ * The suggested end is the last punch that did not itself run out to midnight.
+ */
+function buildForgotClockOut(punches: Punch[], segments: Segment[]): ForgotClockOut | null {
+  const latePunches = punches.filter((punch) => punch.end != null && isForgottenEnd(punch.end));
+  const lateSegments = segments.filter((segment) => segment.end != null && isForgottenEnd(segment.end));
+  if (latePunches.length === 0 && lateSegments.length === 0) return null;
+
+  const shiftPunch = [...latePunches].sort((a, b) => b.start - a.start)[0] ?? null;
+  const orderSegment = [...lateSegments].sort((a, b) => b.start - a.start)[0] ?? null;
+  const anchor = shiftPunch?.start ?? orderSegment?.start ?? 0;
+  const enclosing = shiftPunch ?? [...punches].reverse().find((punch) => punch.start <= anchor && (punch.end == null || punch.end >= anchor)) ?? null;
+
+  const otherEnds: number[] = [];
+  for (const punch of punches) {
+    if (punch.end == null || isForgottenEnd(punch.end)) continue;
+    otherEnds.push(punch.end);
+  }
+  for (const segment of segments) {
+    if (segment.end == null || isForgottenEnd(segment.end)) continue;
+    otherEnds.push(segment.end);
+  }
+  const suggestedEnd = otherEnds.length === 0 ? "" : clockOfSeconds(Math.max(...otherEnds));
+
+  const shiftSource = shiftPunch ?? enclosing;
+  const shift = shiftSource
+    ? {
+        clockIn: clockOfSeconds(shiftSource.start),
+        clockOut: clockOfSeconds(shiftSource.end ?? shiftSource.start),
+        hours: round2(shiftSource.hours),
+        late: shiftSource.end != null && isForgottenEnd(shiftSource.end),
+      }
+    : null;
+  const order = orderSegment
+    ? {
+        orderId: orderSegment.orderId,
+        work: orderSegment.title,
+        clockIn: clockOfSeconds(orderSegment.start),
+        clockOut: clockOfSeconds(orderSegment.end ?? orderSegment.start),
+        hours: round2(orderSegment.hours),
+        late: true,
+      }
+    : null;
+  return { suggestedEnd, shift, order };
+}
+
+function forgotDetail(info: ForgotClockOut): string {
+  const parts = ["Likely forgot to clock out."];
+  if (info.shift?.late) {
+    parts.push(`The shift clocks out at ${formatClock(info.shift.clockOut)} (${info.shift.hours.toFixed(2)} h).`);
+  }
+  if (info.order) {
+    const work = info.order.work ? ` / ${info.order.work}` : "";
+    parts.push(`${info.order.orderId}${work} ends at ${formatClock(info.order.clockOut)} (${info.order.hours.toFixed(2)} h).`);
+  }
+  parts.push("Fullbay runs a forgotten punch out to about 11:59 PM.");
+  if (info.suggestedEnd) parts.push(`Last other punch ended at ${formatClock(info.suggestedEnd)}.`);
+  return parts.join(" ");
+}
+
 function buildTech(
   day: string,
   shopId: ShopId,
@@ -1056,6 +1123,22 @@ function buildTech(
   }
 
   for (const segment of orphans) pushSegment(segment);
+
+  const forgot = buildForgotClockOut(punches, segments);
+  if (forgot) {
+    const start = forgot.shift?.clockIn ?? forgot.order?.clockIn ?? "00:00";
+    const end = (forgot.shift?.late ? forgot.shift.clockOut : null) ?? forgot.order?.clockOut ?? forgot.shift?.clockOut ?? "23:59";
+    push({
+      kind: "flag",
+      start,
+      end: end < start ? start : end,
+      minutes: 0,
+      detail: forgotDetail(forgot),
+      suggested: FORGOT_CLOCK_OUT_LABEL,
+      forgotClockOut: forgot,
+      recommendation: null,
+    });
+  }
 
   const foreignSorted = [...foreignSegments].sort(
     (a, b) => a.start - b.start || a.orderId.localeCompare(b.orderId) || a.shopId.localeCompare(b.shopId),
