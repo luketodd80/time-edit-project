@@ -1,4 +1,5 @@
 import { addDays, defaultPendingDays, formatDay, formatDayShort, weekday } from "@/lib/dates";
+import { forgotPendingNote } from "@/lib/forgot-clock-out";
 import {
   editAddsNoJobTime,
   latestEditsForShopDay,
@@ -42,6 +43,8 @@ export interface AdminLine {
   window: string;
   minutes: number;
   nonPro: boolean;
+  /** A midnight punch this manager still has to correct or reject. */
+  forgotClockOut: boolean;
   decision: string;
   status: FullbayApplyStatus | null;
   note: string;
@@ -351,6 +354,9 @@ function buildCell(
   else tone = "open";
 
   const titleDetail = cellCopy(tone, day, dueDays, signoff, required.length, latest.size, counts.failed, touching.length > 0, lines);
+  if (lines.some((line) => line.forgotClockOut && line.excluded)) {
+    titleDetail.detail = titleDetail.detail ? `${titleDetail.detail} · forgot clock-out` : "forgot clock-out";
+  }
   return {
     day,
     shopId,
@@ -439,6 +445,7 @@ function buildLines(
       window: `${edit.newClockIn}–${edit.newClockOut}`,
       minutes: edit.minutes,
       nonPro: Boolean(edit.nonPro),
+      forgotClockOut: Boolean(edit.corrections?.some((correction) => correction.type === "clock_out" || correction.type === "so_out")),
       decision: edit.decision === "override" ? "Override" : "Accepted",
       status: edit.status,
       note: edit.applyNote ?? "",
@@ -468,10 +475,18 @@ function lineFromFinding(
   else if (hasDecided && decided.has(finding.id)) decision = "Rejected";
   else if (hasDecided || submits > 0) decision = "Undecided / not in submit";
   else decision = "Not submitted";
-  const order = queued?.orderId || recommendation?.orderId || (finding.nonPro ? "Non-Pro" : "");
-  const work = queued?.work || recommendation?.work || "";
-  const window = queued ? `${queued.newClockIn}–${queued.newClockOut}` : recommendation ? `${recommendation.start}–${recommendation.end}` : `${finding.start}–${finding.end}`;
+  const forgot = finding.forgotClockOut;
+  const corrected = Boolean(queued?.corrections && queued.corrections.length > 0 && queued.status !== "rejected");
+  const order = queued?.orderId || recommendation?.orderId || forgot?.order?.orderId || (finding.nonPro ? "Non-Pro" : "");
+  const work = queued?.work || recommendation?.work || (forgot ? "Likely forgot to clock out" : "");
+  const window = queued
+    ? `${queued.newClockIn}–${queued.newClockOut}`
+    : recommendation
+      ? `${recommendation.start}–${recommendation.end}`
+      : `${finding.start}–${finding.end}`;
   const minutes = queued?.minutes ?? recommendation?.minutes ?? finding.minutes;
+  const pendingForgot = Boolean(forgot) && !corrected && decision !== "Rejected";
+  const note = pendingForgot ? forgotPendingNote(forgot!) : (queued?.applyNote ?? "");
   return {
     findingId: finding.id,
     tech: tech?.name ?? finding.techId,
@@ -480,10 +495,11 @@ function lineFromFinding(
     window,
     minutes,
     nonPro: Boolean(finding.nonPro),
+    forgotClockOut: Boolean(forgot),
     decision,
     status: queued?.status ?? null,
-    note: queued?.applyNote ?? "",
-    excluded: queued ? editAddsNoJobTime(queued) : false,
+    note,
+    excluded: pendingForgot || (queued ? editAddsNoJobTime(queued) : false),
     submits,
   };
 }

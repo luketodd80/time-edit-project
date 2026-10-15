@@ -22,6 +22,8 @@ export interface SubmitWebhookEdit {
   minutes: number;
   nonPro?: FullbayEditBatch["edits"][number]["nonPro"];
   nonProChange?: FullbayEditBatch["edits"][number]["nonProChange"];
+  /** Forgotten clock-out: a clock-out correction and an SO Out edit, with type, tech, SO, and old/new times. */
+  corrections?: FullbayEditBatch["edits"][number]["corrections"];
 }
 
 export interface SubmitWebhookPayload {
@@ -80,6 +82,7 @@ export function submitWebhookPayload(batch: FullbayEditBatch): SubmitWebhookPayl
       minutes: edit.minutes,
       ...(edit.nonPro ? { nonPro: edit.nonPro } : {}),
       ...(edit.nonProChange ? { nonProChange: edit.nonProChange } : {}),
+      ...(edit.corrections ? { corrections: edit.corrections } : {}),
     })),
   };
 }

@@ -5,6 +5,7 @@ import { formatDayShort, formatTimestamp } from "@/lib/dates";
 import { alreadyDoneText, batchForSubmission, notAGapText, rejectedAfterFailureText, type FullbayEditBatch, type FullbayQueueEdit } from "@/lib/fullbay-edit-queue";
 import { shopName } from "@/lib/review";
 import type { PlannedEdit, SkippedOrder, Submission } from "@/lib/types";
+import { correctionSummary } from "@/lib/forgot-clock-out";
 import { describeNonProEdit } from "@/lib/nonpro";
 import { formatClock, formatDuration } from "@/lib/time";
 
@@ -66,9 +67,11 @@ export function ConfirmView({
         empty="No accepted or overridden edits in this confirmation."
         edits={submission.edits}
         render={(edit) =>
-          edit.nonPro
-            ? `${describeNonProEdit(edit.nonPro)} ${formatDuration(edit.minutes)} added to SO hours. ${applyStatusText(byId.get(edit.findingId))}`
-            : `${edit.decision === "accept" ? "Accepted as recommended" : "Override"} · ${formatClock(edit.start)}–${formatClock(edit.end)} · ${formatDuration(edit.minutes)} added to SO hours. ${applyStatusText(byId.get(edit.findingId))}`
+          edit.corrections && edit.corrections.length > 0
+            ? `${correctionSummary(edit.corrections)}. ${applyStatusText(byId.get(edit.findingId))}`
+            : edit.nonPro
+              ? `${describeNonProEdit(edit.nonPro)} ${formatDuration(edit.minutes)} added to SO hours. ${applyStatusText(byId.get(edit.findingId))}`
+              : `${edit.decision === "accept" ? "Accepted as recommended" : "Override"} · ${formatClock(edit.start)}–${formatClock(edit.end)} · ${formatDuration(edit.minutes)} added to SO hours. ${applyStatusText(byId.get(edit.findingId))}`
         }
       />
       <EditList
@@ -76,9 +79,11 @@ export function ConfirmView({
         empty="No rejected recommendations."
         edits={submission.rejected}
         render={(edit) =>
-          edit.nonPro?.editType === "keep"
-            ? "Kept as Non-Pro. No Fullbay change. Adds no SO hours."
-            : "Rejected. No reason recorded. Adds no SO hours."
+          edit.forgotClockOut
+            ? "Rejected. The midnight clock-out stays. Those hours stay in utilization."
+            : edit.nonPro?.editType === "keep"
+              ? "Kept as Non-Pro. No Fullbay change. Adds no SO hours."
+              : "Rejected. No reason recorded. Adds no SO hours."
         }
       />
       <section className="flex flex-col gap-3">

@@ -150,7 +150,14 @@ function TotalsTable({
   return (
     <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
       <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
-        <caption className="px-4 py-3 text-left font-medium">{caption}</caption>
+        <caption className="px-4 py-3 text-left font-medium">
+          {caption}
+          {sum.pendingClockedHours > 0 ? (
+            <span className="mt-1 block text-sm font-normal text-muted-foreground">
+              {sum.pendingClockedHours.toFixed(2)} clocked hours and {sum.pendingSoHours.toFixed(2)} SO hours are pending and not counted until a forgotten clock-out is corrected.
+            </span>
+          ) : null}
+        </caption>
         <thead className="border-y bg-muted/50 text-muted-foreground">
           <tr>
             <th className="px-4 py-2 font-medium">Technician</th>
@@ -176,7 +183,10 @@ function TotalsTable({
                     total.name
                   )}
                 </td>
-                <td className="px-4 py-2">{formatHours(total.clockedHours)}</td>
+                <td className="px-4 py-2">
+                  {formatHours(total.clockedHours)}
+                  {total.pendingClockedHours > 0 ? <span className="block text-xs text-muted-foreground">{total.pendingClockedHours.toFixed(2)} h pending</span> : null}
+                </td>
                 <td className="px-4 py-2">{formatHours(total.baselineSoHours)}</td>
                 <td className="px-4 py-2">{total.addedMinutes === 0 ? "—" : formatDuration(total.addedMinutes)}</td>
                 <td className="px-4 py-2">{formatHours(soHoursAfter(total))}</td>

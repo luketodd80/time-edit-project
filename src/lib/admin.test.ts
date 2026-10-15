@@ -240,8 +240,13 @@ describe("seed utilization history", () => {
       if (!snap) assert.fail(`missing snapshot for ${reportRow.day} ${reportRow.shopId}`);
       for (const tech of reportRow.technicians) {
         const saved: UtilTechSnapshot | undefined = snap.techs.find((item) => item.id === tech.id);
-        assert.equal(saved?.clockedHours, tech.clockedHours);
-        assert.equal(saved?.soHours, tech.soHours);
+        const forgot = reportRow.findings.find((finding) => finding.techId === tech.id && finding.forgotClockOut);
+        if (forgot?.forgotClockOut && (forgot.forgotClockOut.shift?.late || forgot.forgotClockOut.order?.late)) {
+          assert.ok((saved?.clockedHours ?? tech.clockedHours) < tech.clockedHours || (saved?.soHours ?? tech.soHours) < tech.soHours);
+        } else {
+          assert.equal(saved?.clockedHours, tech.clockedHours);
+          assert.equal(saved?.soHours, tech.soHours);
+        }
       }
       const rollup = rollupUtilization(snap.techs);
       assert.equal(rollup.before, utilization(rollup.soHours, rollup.clockedHours));

@@ -1,6 +1,7 @@
+import { applyForgotHours, buildClockCorrections, forgotModeFromDecision, forgotTimeError } from "@/lib/forgot-clock-out";
 import { isReopenedMoveTimeFinding, resolvedNonProChange } from "@/lib/move-time";
 import { buildNonProEdit, nonProEditType } from "@/lib/nonpro";
-import { SHOPS, type DayReport, type Decision, type Finding, type PlannedEdit, type ServiceOrder, type ShopFilter, type ShopId, type Signoff, type SkippedOrder, type Submission, type Technician } from "@/lib/types";
+import { SHOPS, type DayReport, type Decision, type Finding, type ForgotClockOut, type PlannedEdit, type ServiceOrder, type ShopFilter, type ShopId, type Signoff, type SkippedOrder, type Submission, type Technician } from "@/lib/types";
 import { appliedWindow } from "@/lib/time";
 
 export const UTILIZATION_GOAL = 0.98;
@@ -98,6 +99,7 @@ export function requiredDecisionFindingIds(reports: DayReport[], pair: { day: st
   return report.findings
     .filter((finding) => {
       if (techFor(report, finding.techId) == null) return false;
+      if (finding.forgotClockOut) return true;
       if (finding.nonPro) return true;
       return finding.recommendation != null && isEligible(report, finding);
     })
@@ -127,10 +129,16 @@ export interface TechOutlook {
   optionalMinutes: number;
   /** Minutes from Non-Pro choices that assign the span to a service order. Keep adds none. */
   choiceMinutes: number;
-  /** SO minutes still needed to reach 98%, from this shop's loaded baseline. */
+  /** SO minutes still needed to reach 98%, from hours that count. A pending midnight punch is left out. */
   minutesToGoal: number;
   ifRequired: number | null;
   ifAll: number | null;
+  /** Clocked and SO hours after a forgotten clock-out is excluded or corrected. */
+  countedClockedHours: number;
+  countedSoHours: number;
+  /** Midnight hours held out of utilization until the manager sets both end times. */
+  pendingClockedHours: number;
+  pendingSoHours: number;
 }
 
 /**
@@ -151,7 +159,8 @@ export function techOutlook(report: DayReport, tech: Technician, decisions: Reco
     if (finding.recommendation.optional) optionalMinutes += finding.recommendation.minutes;
     else requiredMinutes += finding.recommendation.minutes;
   }
-  const minutesToGoal = Math.max(0, Math.round((UTILIZATION_GOAL * tech.clockedHours - tech.soHours) * 60));
+  const counted = countedHoursForTech(report, tech, decisions);
+  const minutesToGoal = Math.max(0, Math.round((UTILIZATION_GOAL * counted.clockedHours - counted.soHours) * 60));
   const projected = requiredMinutes + optionalMinutes + choiceMinutes;
   return {
     recommendedMinutes: requiredMinutes + optionalMinutes,
@@ -159,9 +168,34 @@ export function techOutlook(report: DayReport, tech: Technician, decisions: Reco
     optionalMinutes,
     choiceMinutes,
     minutesToGoal,
-    ifRequired: utilization(tech.soHours + (requiredMinutes + choiceMinutes) / 60, tech.clockedHours),
-    ifAll: utilization(tech.soHours + projected / 60, tech.clockedHours),
+    ifRequired: utilization(counted.soHours + (requiredMinutes + choiceMinutes) / 60, counted.clockedHours),
+    ifAll: utilization(counted.soHours + projected / 60, counted.clockedHours),
+    countedClockedHours: counted.clockedHours,
+    countedSoHours: counted.soHours,
+    pendingClockedHours: counted.pendingClockedHours,
+    pendingSoHours: counted.pendingSoHours,
   };
+}
+
+/** Hours that count for utilization. A midnight punch stays out until both end times are set. */
+export function countedHoursForTech(
+  report: DayReport,
+  tech: Technician,
+  decisions: Record<string, Decision>,
+): { clockedHours: number; soHours: number; pendingClockedHours: number; pendingSoHours: number } {
+  let clockedHours = tech.clockedHours;
+  let soHours = tech.soHours;
+  let pendingClockedHours = 0;
+  let pendingSoHours = 0;
+  for (const finding of report.findings) {
+    if (finding.techId !== tech.id || !finding.forgotClockOut) continue;
+    const next = applyForgotHours(clockedHours, soHours, finding.forgotClockOut, forgotModeFromDecision(finding.forgotClockOut, decisions[finding.id]));
+    clockedHours = next.clockedHours;
+    soHours = next.soHours;
+    pendingClockedHours += next.pendingClockedHours;
+    pendingSoHours += next.pendingSoHours;
+  }
+  return { clockedHours, soHours, pendingClockedHours, pendingSoHours };
 }
 
 function nonProMinutes(finding: Finding, decision: Decision | undefined): number {
@@ -221,6 +255,9 @@ export interface TechTotal {
   clockedHours: number;
   baselineSoHours: number;
   addedMinutes: number;
+  /** Midnight clocked hours left out until a forgotten clock-out is corrected. */
+  pendingClockedHours: number;
+  pendingSoHours: number;
 }
 
 export function addedMinutes(report: DayReport, finding: Finding, decision: Decision | undefined): number {
@@ -244,9 +281,14 @@ export function techTotals(reports: DayReport[], decisions: Record<string, Decis
         clockedHours: 0,
         baselineSoHours: 0,
         addedMinutes: 0,
+        pendingClockedHours: 0,
+        pendingSoHours: 0,
       };
-      current.clockedHours += tech.clockedHours;
-      current.baselineSoHours += tech.soHours;
+      const counted = countedHoursForTech(report, tech, decisions);
+      current.clockedHours += counted.clockedHours;
+      current.baselineSoHours += counted.soHours;
+      current.pendingClockedHours += counted.pendingClockedHours;
+      current.pendingSoHours += counted.pendingSoHours;
       totals.set(key, current);
     }
     for (const finding of report.findings) {
@@ -279,14 +321,22 @@ export function dayUtilization(
   };
 }
 
-export function sumTotals(totals: TechTotal[]): { clockedHours: number; baselineSoHours: number; addedMinutes: number } {
+export function sumTotals(totals: TechTotal[]): {
+  clockedHours: number;
+  baselineSoHours: number;
+  addedMinutes: number;
+  pendingClockedHours: number;
+  pendingSoHours: number;
+} {
   return totals.reduce(
     (sum, total) => ({
       clockedHours: sum.clockedHours + total.clockedHours,
       baselineSoHours: sum.baselineSoHours + total.baselineSoHours,
       addedMinutes: sum.addedMinutes + total.addedMinutes,
+      pendingClockedHours: sum.pendingClockedHours + (total.pendingClockedHours ?? 0),
+      pendingSoHours: sum.pendingSoHours + (total.pendingSoHours ?? 0),
     }),
-    { clockedHours: 0, baselineSoHours: 0, addedMinutes: 0 },
+    { clockedHours: 0, baselineSoHours: 0, addedMinutes: 0, pendingClockedHours: 0, pendingSoHours: 0 },
   );
 }
 
@@ -295,6 +345,7 @@ function plannedEdit(
   finding: Finding,
   decision: Decision | undefined,
 ): PlannedEdit | null {
+  if (finding.forgotClockOut) return plannedForgotEdit(report, finding, finding.forgotClockOut, decision);
   if (finding.nonPro) return plannedNonProEdit(report, finding, decision);
   if (!finding.recommendation || !isEligible(report, finding)) return null;
   const moveDecision = decision?.nonProEditType ? undefined : decision;
@@ -340,6 +391,48 @@ function plannedEdit(
     minutes: moveDecision.kind === "reject" || !window.valid ? 0 : window.minutes,
     error: window.error,
     ...moveFields,
+  };
+}
+
+function plannedForgotEdit(
+  report: DayReport,
+  finding: Finding,
+  info: ForgotClockOut,
+  decision: Decision | undefined,
+): PlannedEdit | null {
+  const tech = techFor(report, finding.techId);
+  if (!tech) return null;
+  const orderId = info.order?.orderId ?? "Clock-out";
+  const work = info.order?.work || "Clock-out";
+  const order = orderFor(report, orderId);
+  const base = {
+    findingId: finding.id,
+    day: report.day,
+    shopId: report.shopId,
+    techName: tech.name,
+    orderId,
+    work,
+    orderStatus: order?.status ?? ("priorities" as const),
+    start: info.order?.clockIn ?? info.shift?.clockIn ?? finding.start,
+    end: info.order?.clockOut ?? info.shift?.clockOut ?? finding.end,
+    forgotClockOut: true as const,
+  };
+  if (!decision) return { ...base, decision: "undecided" as const, minutes: 0, error: null };
+  if (decision.kind === "reject") return { ...base, decision: "reject" as const, minutes: 0, error: null };
+
+  const shiftOut = decision.shiftClockOut ?? "";
+  const soOut = decision.soClockOut ?? "";
+  const error = forgotTimeError(info, shiftOut, soOut);
+  if (error) return { ...base, decision: "undecided" as const, minutes: 0, error };
+  const corrections = buildClockCorrections(info, tech.name, shiftOut, soOut);
+  const soCorrection = corrections.find((correction) => correction.type === "so_out");
+  return {
+    ...base,
+    decision: decision.kind === "accept" ? "accept" : "override",
+    end: soCorrection?.newTime ?? shiftOut,
+    minutes: 0,
+    error: null,
+    corrections,
   };
 }
 

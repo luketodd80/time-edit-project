@@ -1,6 +1,6 @@
 import { buildPlan, shopName, techsWithFindings } from "@/lib/review";
 import { CODY_KESTER_MOVE_TIME_ID, decisionsWithoutStaleMoveTime, isMoveTimeFollowUp, isReopenedMoveTimeFinding, moveTimeLeftoversApplied, STALE_CODY_BATCH_ID, withoutStaleMoveTimeEdits } from "@/lib/move-time";
-import { SHOPS, type DayReport, type Decision, type NonProChange, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
+import { SHOPS, type ClockCorrection, type DayReport, type Decision, type NonProChange, type NonProEditPayload, type NonProEditType, type PlannedEdit, type ShopFilter, type ShopId, type Submission } from "@/lib/types";
 import { formatClock } from "@/lib/time";
 
 export type FullbayApplyStatus = "pending" | "applied" | "failed" | "already_done" | "not_a_gap" | "rejected" | "superseded";
@@ -43,6 +43,11 @@ export interface FullbayQueueEdit {
    * Absent on older queue rows. `nonPro` remains the attendance-choice payload.
    */
   nonProChange?: NonProChange;
+  /**
+   * Forgotten clock-out. A shift clock-out correction plus an SO Out edit.
+   * Older queue rows omit this.
+   */
+  corrections?: ClockCorrection[];
 }
 
 /** A finding the manager accepted, overrode, or rejected. Undecided findings are omitted. */
@@ -166,6 +171,7 @@ export function queueEditFromPlanned(edit: PlannedEdit): FullbayQueueEdit {
   };
   if (edit.nonPro && edit.nonPro.editType !== "keep") queued.nonPro = edit.nonPro;
   if (edit.nonProChange) queued.nonProChange = edit.nonProChange;
+  if (edit.corrections && edit.corrections.length > 0) queued.corrections = edit.corrections;
   return queued;
 }
 
@@ -284,6 +290,8 @@ function parseQueueEdit(item: unknown): { ok: true; value: FullbayQueueEdit } | 
   if (!nonPro.ok) return nonPro;
   const nonProChange = parseNonProChange(edit.nonProChange);
   if (!nonProChange.ok) return nonProChange;
+  const corrections = parseCorrections(edit.corrections);
+  if (!corrections.ok) return corrections;
   return {
     ok: true,
     value: {
@@ -303,8 +311,45 @@ function parseQueueEdit(item: unknown): { ok: true; value: FullbayQueueEdit } | 
       applyNote: null,
       ...(nonPro.value ? { nonPro: nonPro.value } : {}),
       ...(nonProChange.value ? { nonProChange: nonProChange.value } : {}),
+      ...(corrections.value ? { corrections: corrections.value } : {}),
     },
   };
+}
+
+const CORRECTION_TYPES = new Set(["clock_out", "so_out"]);
+
+/** Optional. Older edits omit it. Each row names the type, the tech, the SO, and the old and new times. */
+function parseCorrections(value: unknown): { ok: true; value: ClockCorrection[] | undefined } | { ok: false; error: string } {
+  if (value == null) return { ok: true, value: undefined };
+  if (!Array.isArray(value) || value.length === 0) return { ok: false, error: "corrections must be a non-empty array." };
+  const corrections: ClockCorrection[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return { ok: false, error: "Each correction must be an object." };
+    const record = item as Record<string, unknown>;
+    if (typeof record.type !== "string" || !CORRECTION_TYPES.has(record.type)) {
+      return { ok: false, error: "corrections.type must be clock_out or so_out." };
+    }
+    const tech = requiredText(record.tech, "corrections.tech");
+    if (!tech.ok) return tech;
+    if (typeof record.so !== "string") return { ok: false, error: "corrections.so must be a string." };
+    if (record.type === "so_out" && record.so.trim().length === 0) {
+      return { ok: false, error: "An SO Out correction needs an SO number." };
+    }
+    if (typeof record.oldTime !== "string" || !CLOCK.test(record.oldTime)) {
+      return { ok: false, error: "corrections.oldTime must be HH:MM." };
+    }
+    if (typeof record.newTime !== "string" || !CLOCK.test(record.newTime)) {
+      return { ok: false, error: "corrections.newTime must be HH:MM." };
+    }
+    corrections.push({
+      type: record.type as ClockCorrection["type"],
+      tech: tech.value,
+      so: record.so,
+      oldTime: record.oldTime,
+      newTime: record.newTime,
+    });
+  }
+  return { ok: true, value: corrections };
 }
 
 const MOVE_CLOCK = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;

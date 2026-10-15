@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay } from "@/lib/dates";
+import { FORGOT_CLOCK_OUT_LABEL, forgotPrefill, forgotTimeError } from "@/lib/forgot-clock-out";
 import { latestQueueEdit, reviewApplyText, suggestionsNeedingDecision, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { moveTimeLines, shiftClockOutNote } from "@/lib/move-time";
 import { buildNonProEdit, clampSplitTime, defaultKeptWindow, defaultPartialChoice, describeNonProEdit, splitMidpoint } from "@/lib/nonpro";
@@ -191,7 +192,7 @@ function ShopDay({
           Only time inside a clocked window counts. Off-the-clock stretches are in the table so the day reads straight through, and they are not gaps. Times are Eastern. Yellow is missed time. Orange is billable work with no service order.
         </p>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-          These rows come from the Fullbay timesheet. A gap with no Clock In Comment is aimed at the nearest service order for that tech. A Clock In Comment that names a coworker, such as “Help Nick”, is aimed at that person’s overlapping service order on the same shop day. Time on another shop’s service order is covered: it is labeled with that shop, it is not a gap, and it is not an edit. A Non-Pro attendance row is marked Review. Keep it, keep part of it and give the rest to the service order before or after it, give the span to either neighbor, split it, or move it onto another service order. Each of those choices has editable times. Orders are marked open on priorities.
+          These rows come from the Fullbay timesheet. A gap with no Clock In Comment is aimed at the nearest service order for that tech. A Clock In Comment that names a coworker, such as “Help Nick”, is aimed at that person’s overlapping service order on the same shop day. Time on another shop’s service order is covered: it is labeled with that shop, it is not a gap, and it is not an edit. A Non-Pro attendance row is marked Review. Keep it, keep part of it and give the rest to the service order before or after it, give the span to either neighbor, split it, or move it onto another service order. Each of those choices has editable times. A shift or service order that runs to 11:55 PM or later is flagged as a likely forgotten clock-out. Set the real shift clock-out and the real SO end, or reject the flag. Orders are marked open on priorities.
         </p>
       </div>
 
@@ -254,6 +255,7 @@ function TechDay({
   highlightedFindingId: string | null;
 }) {
   const outlook = techOutlook(report, tech, decisions);
+  const forgot = report.findings.some((finding) => finding.techId === tech.id && finding.forgotClockOut);
   const findings = report.findings
     .filter((finding) => finding.techId === tech.id)
     .slice()
@@ -262,7 +264,14 @@ function TechDay({
   return (
     <article className="flex flex-col gap-3">
       <header>
-        <h3 className="text-lg font-medium leading-7">{outcomeHeading(tech, outlook)}</h3>
+        <h3 className="text-lg font-medium leading-7">
+          {outcomeHeading(tech, outlook)}
+          {forgot ? (
+            <Badge variant="outline" className="ml-2 align-middle">
+              {FORGOT_CLOCK_OUT_LABEL}
+            </Badge>
+          ) : null}
+        </h3>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{outcomeDetail(tech, outlook)}</p>
       </header>
       <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
@@ -333,10 +342,14 @@ function NoChangeTable({ technicians }: { technicians: Technician[] }) {
 
 function outcomeHeading(tech: Technician, outlook: TechOutlook): string {
   if (tech.sheetLine) return `${tech.name} — ${tech.sheetLine}`;
-  const ratio = utilization(tech.soHours, tech.clockedHours);
+  const ratio = utilization(outlook.countedSoHours, outlook.countedClockedHours);
   const now = ratio == null ? "No clocked hours" : formatPercent(ratio);
   const scope = tech.foreignCoveredHours ? " on this shop" : "";
-  const hours = `${tech.soHours.toFixed(2)} SO / ${tech.clockedHours.toFixed(2)} clocked${scope}`;
+  const pending =
+    outlook.pendingClockedHours > 0 || outlook.pendingSoHours > 0
+      ? ` ${tech.clockedHours.toFixed(2)} h clocked on the timesheet; ${outlook.pendingClockedHours.toFixed(2)} clocked h not counted yet`
+      : "";
+  const hours = `${outlook.countedSoHours.toFixed(2)} SO / ${outlook.countedClockedHours.toFixed(2)} clocked${scope}${pending}`;
   const choice = outlook.choiceMinutes > 0 ? ", including Non-Pro time assigned to a service order" : "";
   if (outlook.optionalMinutes > 0 && outlook.requiredMinutes > 0 && outlook.ifRequired != null && outlook.ifAll != null) {
     return `${tech.name} — ${now} now (${hours}). About ${formatPercent(outlook.ifRequired)} if the required edits are made${choice}; about ${formatPercent(outlook.ifAll)} if the optional ${formatDuration(outlook.optionalMinutes)} is closed too.`;
@@ -355,10 +368,15 @@ function outcomeDetail(tech: Technician, outlook: TechOutlook): string {
   const scope = tech.foreignCoveredHours
     ? ` ${tech.foreignCoveredHours.toFixed(2)} h on other shops’ service orders is outside this shop’s clocked time.`
     : "";
+  const pending =
+    outlook.pendingClockedHours > 0 || outlook.pendingSoHours > 0
+      ? ` Likely forgot to clock out. ${outlook.pendingClockedHours.toFixed(2)} clocked hours and ${outlook.pendingSoHours.toFixed(2)} SO hours run to midnight and stay out of this percentage until both end times are set.`
+      : "";
   if (outlook.minutesToGoal === 0) {
-    return scope.length > 0 ? `Already at the 98% goal on this shop’s hours.${scope}` : "Already at the 98% goal on the loaded hours.";
+    const base = scope.length > 0 ? `Already at the 98% goal on this shop’s hours.${scope}` : "Already at the 98% goal on the loaded hours.";
+    return `${base}${pending}`;
   }
-  return `Needs about ${formatDuration(outlook.minutesToGoal)} more SO time to reach 98%.${scope} Rejected edits add none. A row with no service order is not an edit until an order exists.`;
+  return `Needs about ${formatDuration(outlook.minutesToGoal)} more SO time to reach 98%.${scope} Rejected edits add none. A row with no service order is not an edit until an order exists.${pending}`;
 }
 
 function DayRows({
@@ -406,9 +424,11 @@ function DayRows({
       ? "bg-green-50"
       : openFailure
         ? "bg-red-50"
-        : finding.kind === "flag"
-          ? "bg-orange-200"
-          : finding.kind === "gap"
+        : finding.forgotClockOut
+          ? "bg-rose-100"
+          : finding.kind === "flag"
+            ? "bg-orange-200"
+            : finding.kind === "gap"
             ? "bg-yellow-100"
             : "bg-card";
 
@@ -468,6 +488,9 @@ function DayRows({
             </p>
           ) : null}
           {locked && recommendation && !queued ? <p className="mt-3 text-muted-foreground">Signed off. This decision is locked.</p> : null}
+          {finding.forgotClockOut ? (
+            <ForgotClockOutChoices finding={finding} decision={decision} canDecide={canDecide} onDecision={onDecision} />
+          ) : null}
           {finding.nonPro ? (
             <NonProChoices
               finding={finding}
@@ -608,10 +631,133 @@ function reportText(finding: Finding): string {
 }
 
 function missedText(finding: Finding): string {
+  if (finding.forgotClockOut) return "Forgot clock-out";
   if (finding.nonPro) return "Review";
   if (finding.kind === "off_clock" || finding.notAGap) return "Not a gap";
   if (finding.kind === "gap" || finding.kind === "flag") return formatDuration(finding.minutes);
   return "";
+}
+
+function ForgotClockOutChoices({
+  finding,
+  decision,
+  canDecide,
+  onDecision,
+}: {
+  finding: Finding;
+  decision: Decision | undefined;
+  canDecide: boolean;
+  onDecision: (findingId: string, decision: Decision | null) => void;
+}) {
+  const info = finding.forgotClockOut;
+  if (!info) return null;
+  const prefill = forgotPrefill(info);
+  const suggestionReady = forgotTimeError(info, prefill.shiftOut, prefill.soOut) == null;
+  const shiftValue = decision ? (decision.shiftClockOut ?? "") : prefill.shiftOut;
+  const soValue = decision ? (decision.soClockOut ?? "") : prefill.soOut;
+  const orderLabel = info.order ? `${info.order.orderId} end` : "SO end";
+  const liveError = decision && decision.kind !== "reject" ? forgotTimeError(info, shiftValue, soValue) : null;
+  const beforeStart =
+    !decision &&
+    info.suggestedEnd.length > 0 &&
+    ((info.shift && prefill.shiftOut <= info.shift.clockIn) || (info.order && prefill.soOut <= info.order.clockIn));
+
+  function commit(shiftOut: string, soOut: string) {
+    const matches = shiftOut === prefill.shiftOut && soOut === prefill.soOut;
+    onDecision(finding.id, {
+      kind: matches && suggestionReady ? "accept" : "override",
+      start: "",
+      end: "",
+      shiftClockOut: shiftOut,
+      soClockOut: soOut,
+    });
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-3">
+      <Badge variant="outline" className="w-fit">
+        {FORGOT_CLOCK_OUT_LABEL}
+      </Badge>
+      {canDecide ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`${finding.id}-shift-out`}>Shift clock-out</Label>
+              <Input
+                id={`${finding.id}-shift-out`}
+                type="time"
+                step={60}
+                value={shiftValue}
+                onChange={(event) => commit(event.target.value, soValue)}
+                className="h-10 bg-white text-base md:text-base"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`${finding.id}-so-out`}>{orderLabel}</Label>
+              <Input
+                id={`${finding.id}-so-out`}
+                type="time"
+                step={60}
+                value={soValue}
+                onChange={(event) => commit(shiftValue, event.target.value)}
+                className="h-10 bg-white text-base md:text-base"
+              />
+            </div>
+          </div>
+          <p className="text-muted-foreground">
+            {info.suggestedEnd
+              ? `Last other punch ended at ${formatClock(info.suggestedEnd)}.`
+              : "No other punch ended earlier on this day."}{" "}
+            {beforeStart
+              ? `That is before this punch started${info.shift ? ` at ${formatClock(info.shift.clockIn)}` : ""}. Enter the real end after the clock-in.`
+              : "Accept uses that time for both, or change either box."}
+          </p>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={`Forgotten clock-out for ${finding.id}`}>
+            {suggestionReady ? (
+              <Button
+                type="button"
+                size="sm"
+                variant={decision?.kind === "accept" ? "default" : "outline"}
+                aria-pressed={decision?.kind === "accept"}
+                onClick={() => commit(prefill.shiftOut, prefill.soOut)}
+              >
+                Accept {formatClock(prefill.shiftOut)}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant={decision?.kind === "reject" ? "destructive" : "outline"}
+              aria-pressed={decision?.kind === "reject"}
+              onClick={() => onDecision(finding.id, decision?.kind === "reject" ? null : { kind: "reject", start: "", end: "" })}
+            >
+              Reject
+            </Button>
+          </div>
+          {decision?.kind === "reject" ? <p>Rejected. The midnight times stay, and those hours stay in utilization.</p> : null}
+          {decision && decision.kind !== "reject" && !liveError ? (
+            <p>
+              {decision.kind === "accept" ? "Accepted." : "Override."} Shift clock-out {formatClock(shiftValue)}, {orderLabel.toLowerCase()}{" "}
+              {formatClock(soValue)}.
+            </p>
+          ) : null}
+          {liveError ? (
+            <p role="alert" className="text-destructive">
+              {liveError}
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="text-muted-foreground">
+          {decision?.kind === "reject"
+            ? "Rejected. The midnight times stay."
+            : decision?.shiftClockOut && decision.soClockOut
+              ? `Shift clock-out ${formatClock(decision.shiftClockOut)}, ${orderLabel.toLowerCase()} ${formatClock(decision.soClockOut)}.`
+              : "This clock-out still needs both end times, or a rejection."}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function NonProChoices({
