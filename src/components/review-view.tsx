@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { OrderStatusBadge } from "@/components/order-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay } from "@/lib/dates";
-import { FORGOT_CLOCK_OUT_LABEL, forgotPrefill, forgotTimeError } from "@/lib/forgot-clock-out";
+import { FORGOT_CLOCK_OUT_LABEL, forgotTimeError } from "@/lib/forgot-clock-out";
 import { latestQueueEdit, reviewApplyText, suggestionsNeedingDecision, type FullbayEditBatch, type RecordedSignoff } from "@/lib/fullbay-edit-queue";
 import { moveTimeLines, shiftClockOutNote } from "@/lib/move-time";
 import { buildNonProEdit, clampSplitTime, defaultKeptWindow, defaultPartialChoice, describeNonProEdit, splitMidpoint } from "@/lib/nonpro";
@@ -650,27 +650,35 @@ function ForgotClockOutChoices({
   onDecision: (findingId: string, decision: Decision | null) => void;
 }) {
   const info = finding.forgotClockOut;
+  const [shiftDraft, setShiftDraft] = useState("");
+  const [soDraft, setSoDraft] = useState("");
+  const [editing, setEditing] = useState(false);
   if (!info) return null;
-  const prefill = forgotPrefill(info);
-  const suggestionReady = forgotTimeError(info, prefill.shiftOut, prefill.soOut) == null;
-  const shiftValue = decision ? (decision.shiftClockOut ?? "") : prefill.shiftOut;
-  const soValue = decision ? (decision.soClockOut ?? "") : prefill.soOut;
-  const orderLabel = info.order ? `${info.order.orderId} end` : "SO end";
-  const liveError = decision && decision.kind !== "reject" ? forgotTimeError(info, shiftValue, soValue) : null;
-  const beforeStart =
-    !decision &&
-    info.suggestedEnd.length > 0 &&
-    ((info.shift && prefill.shiftOut <= info.shift.clockIn) || (info.order && prefill.soOut <= info.order.clockIn));
+  const clockOut = info;
+  const orderLabel = clockOut.order ? `${clockOut.order.orderId} end` : "SO end";
+  const savedShift = decision && decision.kind !== "reject" ? (decision.shiftClockOut ?? "") : "";
+  const savedSo = decision && decision.kind !== "reject" ? (decision.soClockOut ?? "") : "";
+  const savedReady = decision != null && decision.kind !== "reject" && forgotTimeError(clockOut, savedShift, savedSo) == null;
+  const reason = forgotTimeError(clockOut, shiftDraft, soDraft);
+  const reasonId = `${finding.id}-forgot-reason`;
 
-  function commit(shiftOut: string, soOut: string) {
-    const matches = shiftOut === prefill.shiftOut && soOut === prefill.soOut;
-    onDecision(finding.id, {
-      kind: matches && suggestionReady ? "accept" : "override",
-      start: "",
-      end: "",
-      shiftClockOut: shiftOut,
-      soClockOut: soOut,
-    });
+  function save(kind: "accept" | "override") {
+    if (forgotTimeError(clockOut, shiftDraft, soDraft)) return;
+    onDecision(finding.id, { kind, start: "", end: "", shiftClockOut: shiftDraft, soClockOut: soDraft });
+    setEditing(false);
+  }
+
+  function undo() {
+    onDecision(finding.id, null);
+    setShiftDraft("");
+    setSoDraft("");
+    setEditing(false);
+  }
+
+  function editTimes() {
+    setShiftDraft(savedShift);
+    setSoDraft(savedSo);
+    setEditing(true);
   }
 
   return (
@@ -679,80 +687,97 @@ function ForgotClockOutChoices({
         {FORGOT_CLOCK_OUT_LABEL}
       </Badge>
       {canDecide ? (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor={`${finding.id}-shift-out`}>Shift clock-out</Label>
-              <Input
-                id={`${finding.id}-shift-out`}
-                type="time"
-                step={60}
-                value={shiftValue}
-                onChange={(event) => commit(event.target.value, soValue)}
-                className="h-10 bg-white text-base md:text-base"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor={`${finding.id}-so-out`}>{orderLabel}</Label>
-              <Input
-                id={`${finding.id}-so-out`}
-                type="time"
-                step={60}
-                value={soValue}
-                onChange={(event) => commit(shiftValue, event.target.value)}
-                className="h-10 bg-white text-base md:text-base"
-              />
+        decision?.kind === "reject" ? (
+          <div className="flex flex-col items-start gap-2">
+            <p>Rejected. The midnight times stay, and those hours stay in utilization.</p>
+            <Button type="button" size="sm" variant="outline" onClick={undo}>
+              Undo
+            </Button>
+          </div>
+        ) : savedReady && !editing ? (
+          <div className="flex flex-col items-start gap-2 rounded-lg bg-green-50 px-3 py-2 text-green-950">
+            <p className="font-medium">
+              Set: clock-out {formatClock(savedShift)}, {orderLabel} {formatClock(savedSo)}.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={undo}>
+                Undo
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={editTimes}>
+                Edit
+              </Button>
             </div>
           </div>
-          <p className="text-muted-foreground">
-            {info.suggestedEnd
-              ? `Last other punch ended at ${formatClock(info.suggestedEnd)}.`
-              : "No other punch ended earlier on this day."}{" "}
-            {beforeStart
-              ? `That is before this punch started${info.shift ? ` at ${formatClock(info.shift.clockIn)}` : ""}. Enter the real end after the clock-in.`
-              : "Accept uses that time for both, or change either box."}
-          </p>
-          <div className="flex flex-wrap gap-2" role="group" aria-label={`Forgotten clock-out for ${finding.id}`}>
-            {suggestionReady ? (
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={`${finding.id}-shift-out`}>Shift clock-out</Label>
+                <Input
+                  id={`${finding.id}-shift-out`}
+                  type="time"
+                  step={60}
+                  value={shiftDraft}
+                  onChange={(event) => setShiftDraft(event.target.value)}
+                  className="h-10 bg-white text-base md:text-base"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={`${finding.id}-so-out`}>{orderLabel}</Label>
+                <Input
+                  id={`${finding.id}-so-out`}
+                  type="time"
+                  step={60}
+                  value={soDraft}
+                  onChange={(event) => setSoDraft(event.target.value)}
+                  className="h-10 bg-white text-base md:text-base"
+                />
+              </div>
+            </div>
+            <p className="text-muted-foreground">
+              {clockOut.suggestedEnd
+                ? `Last other punch ended at ${formatClock(clockOut.suggestedEnd)}.`
+                : "No other punch ended earlier on this day."}
+            </p>
+            {reason ? (
+              <p id={reasonId} role="alert" className={shiftDraft || soDraft ? "text-destructive" : "text-muted-foreground"}>
+                {reason}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-2" role="group" aria-label={`Forgotten clock-out for ${finding.id}`}>
               <Button
                 type="button"
                 size="sm"
-                variant={decision?.kind === "accept" ? "default" : "outline"}
-                aria-pressed={decision?.kind === "accept"}
-                onClick={() => commit(prefill.shiftOut, prefill.soOut)}
+                variant={decision?.kind === "accept" && !editing ? "default" : "outline"}
+                aria-pressed={decision?.kind === "accept" && savedReady}
+                aria-describedby={reason ? reasonId : undefined}
+                disabled={reason != null}
+                onClick={() => save("accept")}
               >
-                Accept {formatClock(prefill.shiftOut)}
+                Accept
               </Button>
-            ) : null}
-            <Button
-              type="button"
-              size="sm"
-              variant={decision?.kind === "reject" ? "destructive" : "outline"}
-              aria-pressed={decision?.kind === "reject"}
-              onClick={() => onDecision(finding.id, decision?.kind === "reject" ? null : { kind: "reject", start: "", end: "" })}
-            >
-              Reject
-            </Button>
-          </div>
-          {decision?.kind === "reject" ? <p>Rejected. The midnight times stay, and those hours stay in utilization.</p> : null}
-          {decision && decision.kind !== "reject" && !liveError ? (
-            <p>
-              {decision.kind === "accept" ? "Accepted." : "Override."} Shift clock-out {formatClock(shiftValue)}, {orderLabel.toLowerCase()}{" "}
-              {formatClock(soValue)}.
-            </p>
-          ) : null}
-          {liveError ? (
-            <p role="alert" className="text-destructive">
-              {liveError}
-            </p>
-          ) : null}
-        </>
+              <Button
+                type="button"
+                size="sm"
+                variant={decision?.kind === "override" && !editing ? "default" : "outline"}
+                aria-pressed={decision?.kind === "override" && savedReady}
+                disabled={reason != null}
+                onClick={() => save("override")}
+              >
+                Override
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => onDecision(finding.id, { kind: "reject", start: "", end: "" })}>
+                Reject
+              </Button>
+            </div>
+          </>
+        )
       ) : (
         <p className="text-muted-foreground">
           {decision?.kind === "reject"
             ? "Rejected. The midnight times stay."
-            : decision?.shiftClockOut && decision.soClockOut
-              ? `Shift clock-out ${formatClock(decision.shiftClockOut)}, ${orderLabel.toLowerCase()} ${formatClock(decision.soClockOut)}.`
+            : savedReady
+              ? `Set: clock-out ${formatClock(savedShift)}, ${orderLabel} ${formatClock(savedSo)}.`
               : "This clock-out still needs both end times, or a rejection."}
         </p>
       )}

@@ -28,16 +28,6 @@ export function spanHours(clockIn: string, clockOut: string): number {
   return round2((end - start) / 60);
 }
 
-/**
- * Both boxes start at the last other punch end.
- * A shift that did not itself run late keeps its recorded clock-out.
- */
-export function forgotPrefill(info: ForgotClockOut): { shiftOut: string; soOut: string } {
-  const shiftOut = info.shift && !info.shift.late ? info.shift.clockOut : info.suggestedEnd;
-  const soOut = info.suggestedEnd || info.order?.clockOut || info.shift?.clockOut || "";
-  return { shiftOut, soOut };
-}
-
 /** Why these two times cannot be sent. Null when both are a real correction. */
 export function forgotTimeError(info: ForgotClockOut, shiftOut: string, soOut: string): string | null {
   if (!isClockMinute(shiftOut) || !isClockMinute(soOut)) {
