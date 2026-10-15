@@ -131,6 +131,11 @@ describe("forgotten clock-out", () => {
       suggestionsNeedingDecision([report], { [finding.id]: corrected }, []).some((edit) => edit.findingId === finding.id),
       false,
     );
+    const accepted: Decision = { kind: "accept", start: "", end: "", shiftClockOut: "17:00", soClockOut: "17:00" };
+    assert.equal(
+      suggestionsNeedingDecision([report], { [finding.id]: accepted }, []).some((edit) => edit.findingId === finding.id),
+      false,
+    );
     const rejected: Decision = { kind: "reject", start: "", end: "" };
     assert.equal(
       suggestionsNeedingDecision([report], { [finding.id]: rejected }, []).some((edit) => edit.findingId === finding.id),
