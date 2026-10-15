@@ -57,6 +57,7 @@ describe("review days", () => {
     assert.deepEqual(defaultPendingDays("2026-10-12"), ["2026-10-09", "2026-10-10"]);
     assert.deepEqual(defaultPendingDays("2026-10-13"), ["2026-10-12"]);
     assert.deepEqual(defaultPendingDays("2026-10-14"), ["2026-10-13"]);
+    assert.deepEqual(defaultPendingDays("2026-10-15"), ["2026-10-14"]);
   });
 
   it("starts the trail on Friday October 2 and drops Sunday", () => {
@@ -65,6 +66,7 @@ describe("review days", () => {
     assert.deepEqual(reviewWindow("2026-10-11"), [friday, saturday, "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10"]);
     assert.deepEqual(reviewWindow("2026-10-13"), [friday, saturday, "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10", "2026-10-12"]);
     assert.deepEqual(reviewWindow("2026-10-14"), [friday, saturday, "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10", "2026-10-12", "2026-10-13"]);
+    assert.deepEqual(reviewWindow("2026-10-15"), [friday, saturday, "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10", "2026-10-12", "2026-10-13", "2026-10-14"]);
     assert.deepEqual(reviewWindow("2026-10-07"), [friday, saturday, "2026-10-05", "2026-10-06"]);
     assert.deepEqual(reviewWindow("2026-10-06"), [friday, saturday, "2026-10-05"]);
     const later = reviewWindow("2026-10-20", 30);
@@ -100,7 +102,7 @@ describe("review days", () => {
 });
 
 describe("shop scope", () => {
-  it("lists every shop and loads Friday October 2 through Tuesday October 13", () => {
+  it("lists every shop and loads Friday October 2 through Wednesday October 14", () => {
     assert.deepEqual(
       SHOPS.map((shop) => shop.name),
       ["Dayton", "Covington", "Greenville", "Springfield", "Mobile", "Columbus"],
@@ -117,6 +119,7 @@ describe("shop scope", () => {
     assert.ok(filterReports(SEED, "all", ["2026-10-10"]).length > 0);
     assert.ok(filterReports(SEED, "all", ["2026-10-12"]).length > 0);
     assert.ok(filterReports(SEED, "all", ["2026-10-13"]).length > 0);
+    assert.ok(filterReports(SEED, "all", ["2026-10-14"]).length > 0);
   });
 
   it("does not treat All shops and Dayton as the same Friday", () => {
