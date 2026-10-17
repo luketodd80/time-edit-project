@@ -1,0 +1,622 @@
+{
+ "seeded_at": "2026-10-10T15:05:00-04:00",
+ "tasks": {
+  "prep cot & send to sheldon|1st week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Prep COT & Send to Sheldon",
+   "due": "1st week",
+   "assigned": "Luke",
+   "last_row": 2,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "prepare tsc biz purchase payment|1st week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Prepare TSC Biz Purchase Payment",
+   "due": "1st week",
+   "assigned": "Luke",
+   "last_row": 3,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "run salespeople commissions|1st week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Run SalesPeople Commissions",
+   "due": "1st week",
+   "assigned": "Luke",
+   "last_row": 4,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "review tech bonuses (remind travis to load them first week too)|1st week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Review Tech Bonuses (Remind Travis to load them first week too)",
+   "due": "1st week",
+   "assigned": "Luke",
+   "last_row": 5,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "prep service meeting, load op manager supporting docs, get meeting scheduled|1st week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Prep Service Meeting, Load Op Manager Supporting Docs, Get meeting scheduled",
+   "due": "1st week",
+   "assigned": "Luke",
+   "last_row": 6,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "fill out marketing stats from previous month|1st week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Fill out Marketing Stats from previous month",
+   "due": "1st week",
+   "assigned": "Luke",
+   "last_row": 7,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "google ads|1st week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Google Ads",
+   "due": "1st week",
+   "assigned": "Luke",
+   "last_row": 8,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "check service leasing ar|1st week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Check Service Leasing AR",
+   "due": "1st week",
+   "assigned": "Luke",
+   "last_row": 9,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "fill out balances for owner sheet|1st week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Fill out balances for Owner Sheet",
+   "due": "1st week",
+   "assigned": "Luke",
+   "last_row": 10,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "create je for negotiated vendor discounts|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Create JE for Negotiated Vendor Discounts",
+   "due": "2nd Week",
+   "assigned": "Luke",
+   "last_row": 11,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "payroll report|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Payroll Report",
+   "due": "2nd Week",
+   "assigned": "Luke",
+   "last_row": 12,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "update perform shared resources spreadsheet|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Update Perform Shared Resources Spreadsheet",
+   "due": "2nd Week",
+   "assigned": "Luke",
+   "last_row": 13,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "create je for shared resources|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Create JE for Shared Resources",
+   "due": "2nd Week",
+   "assigned": "Luke",
+   "last_row": 14,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "create je for payroll departments|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Create JE for Payroll departments",
+   "due": "2nd Week",
+   "assigned": "Luke",
+   "last_row": 15,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "create je for ira and fica expense|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Create JE for IRA and Fica Expense",
+   "due": "2nd Week",
+   "assigned": "Luke",
+   "last_row": 16,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "check the service leasing tax sheet and make sure up to date|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Check the Service Leasing Tax Sheet and make sure up to date",
+   "due": "2nd Week",
+   "assigned": "Luke",
+   "last_row": 17,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "update employees with pay quarterly bonus tab remove/ add due to role changes|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Update Employees with Pay Quarterly Bonus Tab remove/ add due to role changes",
+   "due": "2nd Week",
+   "assigned": "Luke",
+   "last_row": 18,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "sl loan payments- per lt, have done by the10th|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "SL Loan Payments- Per LT, have done by the10th",
+   "due": "2nd Week",
+   "assigned": "Angie",
+   "last_row": 19,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "bill customers for all leases|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Bill Customers for all Leases",
+   "due": "2nd Week",
+   "assigned": "Zeb",
+   "last_row": 20,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "sl & tsc whirlpool journal entries|2nd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "SL & TSC Whirlpool journal entries",
+   "due": "2nd Week",
+   "assigned": "Luke",
+   "last_row": 21,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "truck sales- close out the truck sales customer account|3rd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Truck Sales- Close out the Truck Sales Customer account",
+   "due": "3rd Week",
+   "assigned": "Luke",
+   "last_row": 22,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "review lunch screen|3rd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Review Lunch Screen",
+   "due": "3rd Week",
+   "assigned": "Luke",
+   "last_row": 23,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "credit the training tsc account|3rd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Credit the Training TSC account",
+   "due": "3rd Week",
+   "assigned": "Luke",
+   "last_row": 24,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "make sure the service company (non pro) has no balance|3rd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Make sure The Service Company (non pro) has no balance",
+   "due": "3rd Week",
+   "assigned": "Luke",
+   "last_row": 25,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "make sure warranty & comebacks account has no balance|3rd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Make sure Warranty & Comebacks account has no balance",
+   "due": "3rd Week",
+   "assigned": "Luke",
+   "last_row": 26,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "check capacity customer account for any balances|3rd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Check Capacity customer account for any balances",
+   "due": "3rd Week",
+   "assigned": "Luke",
+   "last_row": 27,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "check office tab of every shop and make sure no capacity warranty jobs are lingering|3rd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Check Office tab of every shop and make sure no Capacity warranty jobs are lingering",
+   "due": "3rd Week",
+   "assigned": "Luke",
+   "last_row": 28,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "sl bill payments|3rd week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "SL Bill Payments",
+   "due": "3rd Week",
+   "assigned": "Luke",
+   "last_row": 29,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "vehicle lease expense alllocation (for previous month)|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Vehicle Lease Expense Alllocation (for previous month)",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 30,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "create je for freight, see notes|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Create JE for Freight, see notes",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 31,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "create je for coast fuel|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Create JE for Coast Fuel",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 32,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "payables are complete|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Payables are Complete",
+   "due": "4th Week",
+   "assigned": "Angie",
+   "last_row": 33,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "close out the prior month in qb|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Close out the prior Month in QB",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 34,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "update 20 group data|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Update 20 Group Data",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 35,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "lock the month|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Lock the Month",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 36,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "check warranty & variance 'lt- tabs'- needs your attention|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Check Warranty & Variance 'LT- Tabs'- needs your attention",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 37,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "gl 699- alter if needed (fb- accounting corrections (non- taxable)|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "GL 699- alter if needed (FB- accounting Corrections (Non- taxable)",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 38,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "review fb users for any that can be temporarily stopped|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Review FB users for any that can be temporarily stopped",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 39,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "check tool database for outstanding tools, get branches to fix|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Check tool database for outstanding tools, get branches to fix",
+   "due": "4th Week",
+   "assigned": "Luke",
+   "last_row": 40,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "reconcile 230a tax refunds|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Reconcile 230a Tax Refunds",
+   "due": "4th Week",
+   "assigned": "Angie",
+   "last_row": 41,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "pay sl sales tax & record|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Pay SL Sales Tax & Record",
+   "due": "4th Week",
+   "assigned": "Angie",
+   "last_row": 42,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "pay tsc sales tax & record|4th week": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Pay TSC Sales Tax & Record",
+   "due": "4th Week",
+   "assigned": "Angie",
+   "last_row": 43,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "close out machine shop purchases|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Close out Machine Shop Purchases",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 44,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "credit non-pro tsc ar account|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Credit Non-Pro TSC AR account",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 45,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "make sure warranty & comebacks has not collected any tax|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Make sure Warranty & Comebacks has not collected any tax",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 46,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "cot cost account corrections|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "COT Cost Account Corrections",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 47,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "cot cc vendor|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "COT CC Vendor",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 48,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "cash customer|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Cash Customer",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 49,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "transfer paypal funds to checking- 2k|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Transfer PayPal Funds to Checking- 2K",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 50,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "fb users|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "FB Users",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 51,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "qb rule- auto add|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "QB Rule- Auto Add",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 52,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "dext gl's|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Dext GL's",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 53,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "coast report|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Coast Report",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 54,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "crisp|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "CRISP",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 55,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "ebay|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "eBay",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 56,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "online customer|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Online Customer",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 57,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "phebe building maintenance|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Phebe Building Maintenance",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 58,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "qb rule review|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "QB Rule Review",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 59,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "balance the 905 freight account|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Balance the 905 Freight Account",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 60,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "sl checking balance|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "SL Checking Balance",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 61,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "sl loans (see sheet in case you want to pay off) >|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "SL Loans (see sheet in case you want to pay off) >",
+   "due": "End of Month",
+   "assigned": "Luke",
+   "last_row": 62,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "*reconcile savings: tsc tipp- pnb- 3667|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "*Reconcile Savings: TSC Tipp- PNB- 3667",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 63,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "*reconcile checking: tsc columbus- pnb- 7047|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "*Reconcile Checking: TSC Columbus- PNB- 7047",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 64,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "*reconcile checking: tsc columbus- chase- 9095|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "*Reconcile Checking: TSC Columbus- Chase- 9095",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 65,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "*reconcile checking: tsc- pnb- 3038|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "*Reconcile Checking: TSC- PNB- 3038",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 66,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "*reconcile 106a savings account- pnb- 2605|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "*Reconcile 106a Savings account- PNB- 2605",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 67,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "*reconcile checking: sl- pnb- 8553|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "*Reconcile Checking: SL- PNB- 8553",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 68,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "*reconcile checking: sl- cs&l- 1242|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "*Reconcile Checking: SL- CS&L- 1242",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 69,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "-apply loan payment: tsc columbus- pnb- 2195/ 9693|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "-Apply Loan Payment: TSC Columbus- PNB- 2195/ 9693",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 70,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "-reconcile credit card: sl visa- pnb- 8491|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "-Reconcile Credit Card: SL Visa- PNB- 8491",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 71,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "-apply loan payment: sl- pnb- 3848|end of month": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "-Apply Loan Payment: SL- PNB- 3848",
+   "due": "End of Month",
+   "assigned": "Angie",
+   "last_row": 72,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "new customer onboard- weekly- m t w|weekly": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "New Customer Onboard- Weekly- M T W",
+   "due": "Weekly",
+   "assigned": "Darla",
+   "last_row": 73,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "lot rent- monthly- 3rd week of the month|monthly": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Lot Rent- Monthly- 3rd week of the month",
+   "due": "Monthly",
+   "assigned": "Darla",
+   "last_row": 74,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "safe count - monthly- 3rd tuesday of the month|monthly": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Safe Count - Monthly- 3rd Tuesday of the month",
+   "due": "Monthly",
+   "assigned": "Darla",
+   "last_row": 75,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "trade references|yearly": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Trade references",
+   "due": "Yearly",
+   "assigned": "Angie",
+   "last_row": 76,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "holiday schedule|yearly": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "Holiday schedule",
+   "due": "Yearly",
+   "assigned": "Angie",
+   "last_row": 77,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  },
+  "w9 update|yearly": {
+   "first_seen": "2026-10-10T15:05:00-04:00",
+   "task": "W9 Update",
+   "due": "Yearly",
+   "assigned": "Darla",
+   "last_row": 78,
+   "last_seen": "2026-10-10T16:12:53-04:00"
+  }
+ },
+ "last_synced": "2026-10-10T16:12:53-04:00"
+}

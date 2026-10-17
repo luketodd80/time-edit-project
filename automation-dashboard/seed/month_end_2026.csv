@@ -1,0 +1,79 @@
+Due,Order,Category,Task,Notes/ Questions,Assigned To,January,February,March,April,May,June,July,August,September,October,November,December
+1st week,,City of Troy,Prep COT & Send to Sheldon,COT Prep,Luke,1/5,2/4,3/2,4/6,see note,LT ,7/1,8/1,9/1,10/6
+1st week,,Advanced Accounting,Prepare TSC Biz Purchase Payment,Luke does this,Luke,1/8,2/8,3/2,4/2,5/7,6/4,7/1,8/6,9/4,10/6
+1st week,,Commissions,Run SalesPeople Commissions,"Use Claude Project:  Parts/Labor Sales Reports (Monthly)-for Counter, Service, and Commissions Parts Reporting",Luke,1/12,2/8,3/6,4/4,5/11,6/8,7/7,8/6,9/10,10/8
+1st week,,Commissions,Review Tech Bonuses (Remind Travis to load them first week too),,Luke,1/9,2/12,3/12,4/14,5/11,6/5,7/10,8/10,9/4
+1st week,,Advanced Accounting,"Prep Service Meeting, Load Op Manager Supporting Docs, Get meeting scheduled",,Luke,1/8,2/10,3/5,4/3,5/7,6/5,7/8,8/10,9/3,10/6
+1st week,,Marketing,Fill out Marketing Stats from previous month,New Customer Onboard,Luke,1/8,2/2,2/27,4/2,5/7,6/8,7/10,8/6,9/3
+1st week,,Marketing,Google Ads,"Analyze Keywords, add negatives to sitewide Negative Keywords",Luke,1/8,2/12,3/4,4/2,6/4,6/5,7/7,8/7,9/3
+1st week,,Accounting Maintenance,Check Service Leasing AR,"Run AR report, collect or wrote off overdue accounts",Luke,n/a,n/a,n/a,n/a,n/a,n/a,7/10,8/6,9/3,10/10
+1st week,,Advanced Accounting,Fill out balances for Owner Sheet,Owner Sheet,Luke,1/6,2/7,3/2,4/2,5/11,6/4,7/7,8/1,9/3,10/4
+2nd Week,,Advanced Accounting,Create JE for Negotiated Vendor Discounts,Now in 2.0 Dashboard (see note for details),Luke,na,na,na,n/a,530,6/29,7/10,8/19,9/8,10/8
+2nd Week,1,Accounting Maintenance,Payroll Report  ,"Run Bamboo report, edit & save to reports folder. (See NOTE)",Luke,1/9,2/1,3/12,see note,5/12,6/4,7/10,8/19,9/8,10/10
+2nd Week,2,Accounting Maintenance,Update Perform Shared Resources Spreadsheet,See note  (Grokbot can do this.   Load payroll report and ask),Luke,1/9,2/1,3/12,4/6,5/12,6/4,7/10,8/19,9/8,10/10
+2nd Week,3,Accounting Maintenance,Create JE for Shared Resources,"Shared Resources (manual, not claude)",Luke,1/9,2/1,3/12,4/9,5/12,6/4,7/10,8/19,9/8,10/10
+2nd Week,4,Accounting Maintenance,Create JE for Payroll departments,Use Claude Project: Payroll Department JE (month end),Luke,1/9,2/1,3/12,4/6,5/12,6/4,7/10,8/19,9/8,10/10
+2nd Week,,Accounting Maintenance,Create JE for IRA and Fica Expense,Use Claude Project:  IRA Fica Monthly Adjustment,Luke,done,2/26,3/12,4/6,5/12,6/4,7/10,8/19,9/8
+2nd Week,,Service Leasing,Check the Service Leasing Tax Sheet and make sure up to date,Service Leasing Tax,Luke,1/29,2/12,3/31,4/15,5/12,6/17,7/10,8/19,9/8
+2nd Week,,Accounting Maintenance,"Update Employees with Pay Quarterly Bonus Tab remove/ add due
+to role changes",Employees with Pay,Luke,1/12,2/12,3/16,4/6,5/12,6/5,7/10,8/19,9/8
+2nd Week,1,Service Leasing,"SL Loan Payments- Per LT, have done by the10th",Loan Payments,Angie,1/5,2/4,2/27,4/6,5/1,6/5,7/6,8/8,9/4,9/30
+2nd Week,2,Service Leasing,Bill Customers for all Leases,Service Leasing Monthly Billing Instructions,Zeb,zeb,2/6,zeb,done,5/11,6/5,done,8/1,done
+2nd Week,3,Service Leasing,SL & TSC Whirlpool journal entries,Whirlpool,Luke,1/9,2/8,3/9,4/14,5/11,DONE,7/10,8/19,9/8
+3rd Week,,Accounting Maintenance,Truck Sales- Close out the Truck Sales Customer account,Truck Sales Customer Close Out  (Claude Project-Month End Account Balance Check),Luke,1/20,2/12,3/17,4/30,5/22,6/15,7/15,8/19,9/16
+3rd Week,,Maintenance,Review Lunch Screen ,Lunch Screen,Luke,x,3/10,4/30,4/30,5/1,7/4,8/1,9/20,9/20
+3rd Week,,Accounting Maintenance,Credit the Training TSC account,Claude Project-Month End Account Balance Check,Luke,1/20,2/23,3/17,4/30,5/22,6/15,7/15,8/19,9/16
+3rd Week,5,Accounting Maintenance,Make sure The Service Company (non pro) has no balance,Claude Project-Month End Account Balance Check,Luke,1/20,2/23,3/17,4/1,5/22,6/15,7/15,8/19,9/16
+3rd Week,6,Accounting Maintenance,Make sure Warranty & Comebacks account has no balance,Claude Project-Month End Account Balance Check,Luke,1/20,2/23,3/18,done,5/22,6/15,7/15,8/27,9/16
+3rd Week,,Accounting Maintenance,Check Capacity customer account for any balances,"If balance found, verify warranty has been submitted (ask Zeb)",Luke,na,na,na,na,na,7/6,7/6,8/19,9/16
+3rd Week,,Accounting Maintenance,Check Office tab of every shop and make sure no Capacity warranty jobs are lingering,"If so, push them to a conclusion and get filed. ",Luke,na,na,na,na,na,7/6,7/6,8/19,9/16
+3rd Week,4,Service Leasing,SL Bill Payments,,Luke,done,2/8,3/18,4/20,5/21,6/15,7/20,8/19,9/16
+4th Week,,Accounting Maintenance,Vehicle Lease Expense Alllocation (for previous month),Use Claude Artifact (also project available if needed),Luke,n/a,n/a,n/a,n/a,n/a,6/15,7/15,8/19,9/16
+4th Week,,Accounting Maintenance,"Create JE for Freight, see notes","Use Claude, see note",Luke,4/15,4/15,4/15,4/15,5/3,6/15,7/15,8/19,9/24
+4th Week,,Accounting Maintenance,Create JE for Coast Fuel,Use Claude,Luke,na,2/23,3/12,4/14,5/3,6/5,7/15,8/19,10/6
+4th Week,7,Accounting Maintenance,Payables are Complete,Ready for LT to finalize JE's and lock the month,Angie,NA,NA,NA,NA,5/22,6/23,7/29,8/31,9/25
+4th Week,8,Accounting Maintenance,Close out the prior Month in QB,Use Claude (Project name:  Month End All Location Cleanup),Luke,1/6,2/25,done,done,6/5,7/15,8/1,9/1,10/10
+4th Week,9,Accounting Maintenance,Update 20 Group Data,Update 20 Group Data,Luke,1/9,4/20,4/20,4/20,7/15,7/15,8/1,9/20,9/20
+4th Week,10,Accounting Maintenance,Lock the Month,,Luke,1/20,2/25,done,done,6/5,7/15,8/1,9/1,10/10
+4th Week,,Maintenance,Check Warranty & Variance 'LT- Tabs'- needs your attention,Warranty & Variance,Luke,1/20,2/28,3/31,4/30,5/22,7/20,7/20,?,No longer used,No longer used,No longer used,No longer used
+4th Week,,Accounting Maintenance,GL 699- alter if needed (FB- accounting Corrections  (Non- taxable),,Luke,1/20,2/28,3/31,4/30,5/22,7/20,7820,8/19,9/20
+4th Week,,Maintenance,Review FB users for any that can be temporarily stopped,,Luke,NA,NA,NA,4/30,5/28,done,done,8/31,See note
+4th Week,,Maintenance,"Check tool database for outstanding tools, get branches to fix",https://app.truckserviceco.com/tools/transfers,Luke,n/a,n/a,3/10,done,5/28,7/20,7/20,8/26,10/6
+4th Week,,Accounting,Reconcile 230a Tax Refunds,"Use ""Sales Tax Adjustment"" recurring transaction",Angie,1/6,2/18,3/16,4/17,5/6,6/5,7/3,8/7,9/4,10/1
+4th Week,,Maintenance,Pay SL Sales Tax & Record,Tax Schedule,Angie,1/6,2/18,3/16,4/15,5/5,6/11,7/7,8/9,9/4
+4th Week,,Maintenance,Pay TSC Sales Tax & Record,Tax Schedule,Angie,1/9,2/19,3/16,4/17,5/6,6/11,7/16,8/9,9/4
+End of Month,,Accounting Maintenance,Close out Machine Shop Purchases,Machine Shop,Angie,1/12,2/23,3/20,4/23,5/14,6/19,7/3,8/7,9/4,10/5
+End of Month,,Accounting Maintenance,Credit Non-Pro TSC AR account ,Credit Non-Pro,Angie,1/12,2/5,3/20,4/1,5/14,6/19,7/3,8/7,9/4,10/5
+End of Month,,Accounting Maintenance,Make sure Warranty & Comebacks has not collected any tax,Warranty & Comeback Tax,Angie,1/12,2/23,3/20,4/20,5/14,6/19,7/3,8/7,9/4,10/5
+End of Month,,Accounting Maintenance,COT Cost Account Corrections,COT Cost Account Corrections,Angie,1/12,2/23,3/20,04/23,5/14,6/19,7/3,8/7,9/4,10/5
+End of Month,,Accounting Maintenance,COT CC Vendor,COT CC Vendor,Angie,1/12,2/23,3/20,4/17,5/14,6/19,7/3,8/7,9/4,10/5
+End of Month,,Accounting Maintenance,Cash Customer,,Angie,1/6,2/23,3/17,4/7,5/14,6/19,7/6,8/7,9/5,10/1
+End of Month,,Accounting Maintenance,Transfer PayPal Funds to Checking- 2K,,Angie,1/9,2/6,3/17,4/7,5/12,6/19,7/6,8/7,9/5,10/1
+End of Month,,Maintenance,FB Users,,Angie,1/6,2/23,3/17,4/20,5/12,6/19,7/6,8/7,9/5,10/5
+End of Month,,Maintenance,QB Rule- Auto Add,,Angie,1/6,2/23,3/17,4/7,5/14,6/19,7/6,8/7,9/5,10/1
+End of Month,,Maintenance,Dext GL's,,Angie,1/6,2/4,3/17,4/17,5/12,6/22,7/6,8/7,9/5,10/1
+End of Month,,Maintenance,Coast Report,,Angie,NA,NA,NA,4/20,5/13,6/22,7/6,8/7,9/5,10/1
+End of Month,,Maintenance,CRISP,,Angie,NA,NA,NA,NA,5/22,7/1,7/30,8/7,9/5
+End of Month,,Accounting Maintenance,eBay,904 Clearing,Angie,1/9,2/23,3/18,4/17,5/15,6/18,7/6,8/7,9/5
+End of Month,,Accounting Maintenance,Online Customer,903 Clearing,Angie,1/24,2/23,3/24,4/24,5/15,6/22,7/17,8/15,9/5
+End of Month,,Accounting Maintenance,Phebe Building Maintenance,,Angie,1/29,2/23,4/7,4/23,5/22,6/26,7/7,8/15,9/5
+End of Month,,Maintenance,QB Rule Review,,Angie,NA,NA,NA,4/17,5/14,6/19,7/17,8/7,9/5,10/1
+End of Month,,Accounting Maintenance,Balance the 905 Freight Account,,Angie,1/26,2/23,3/24,4/23,5/22,6/22,7/17,8/28,9/4,10/1
+End of Month,,Banking,SL Checking Balance ,,Angie,NA,NA,NA,NA,NA,NA,NA,NA,NA,38K
+End of Month,,Banking,SL Loans (see sheet in case you want to pay off)   >,SL Loans,Luke,NA,NA,NA,NA,NA,NA,NA,NA,NA
+End of Month,,Banking,*Reconcile Savings: TSC Tipp- PNB- 3667,,Angie,1/6,2/16,3/5,4/10,5/15,6/8,7/7,8/15,9/4
+End of Month,,Banking,*Reconcile Checking: TSC Columbus- PNB- 7047,,Angie,1/5,2/16,3/5,4/10,5/15,6/8,7/7,8/15,9/4
+End of Month,,Banking,*Reconcile Checking: TSC Columbus- Chase- 9095,,Angie,1/6,2/17,3/20,4/14,5/15,6/22,7/6,8/15,9/4
+End of Month,,Banking,*Reconcile Checking: TSC-  PNB- 3038,,Angie,1/24,2/19,4/8,4/20,6/2,6/26,7/17,8/15,9/5
+End of Month,,Banking,*Reconcile 106a Savings account- PNB- 2605,,Angie,NA,2/17,3/24,4/17,5/15,6/22,7/7,8/15,9/4
+End of Month,,Banking,*Reconcile Checking: SL- PNB- 8553,,Angie,1/5,2/17,3/24,4/13,5/15,6/22,7/7,8/15,9/4
+End of Month,,Banking,*Reconcile Checking: SL- CS&L- 1242,,Angie,1/5,2/16,3/16,4/10,5/12,6/8,7/7,8/15,9/10
+End of Month,,Banking,-Apply Loan Payment: TSC Columbus- PNB- 2195/ 9693,,Angie,1/5,2/7,3/2,4/3,4/30,6/2,7/1,8/7,9/10
+End of Month,,Banking,-Reconcile Credit Card: SL Visa- PNB- 8491,,Angie,1/1,1/29,3/5,4/30,5/24,6/26,7/29,8/29,9/22
+End of Month,,Banking,-Apply Loan Payment: SL- PNB- 3848,,Angie,2/4,2/23,3/24,4/24,6/1,6/26,7/27,8/27,9/30
+Weekly,,Accounting Maintenance,New Customer Onboard- Weekly- M T W,New Customer Onboard,Darla,"1/8/,1/14,1/21,1/27","2/2,2/9,2/16,3/6","3/9,3/17,3/23,3/31","4/7,4/17,4/19,4/27","5/5,5/15,5/18,5/19","6/12,6/15,6/22","7/2, 7/8, 7/15, 7/20, 7/28","8/5, 8/12,8/19,8/26 ","9/2, 9/17, 9/18, 9/21, 9/29"
+Monthly,,Accounting Maintenance,Lot Rent- Monthly- 3rd week of the month,Lot Rent,Darla,1/29,2/20/26,3/31,4/29,5/28,6/30,"7/30,7/31",8/28,9/30
+Monthly,,Accounting Maintenance,Safe Count - Monthly- 3rd Tuesday of the month,Safe/ Cash Spreadsheet,Darla,1/20,2/17/26,3/17,4/21,5/19,6/16,7/21,8/18,9/15
+Yearly,,Accounting Maintenance,Trade references,,Angie,NA,NA,NA,4/13,NA,NA,NA,NA,NA,NA,NA,NA
+Yearly,,Accounting Maintenance,Holiday schedule,,Angie,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA
+Yearly,,Accounting Maintenance,W9 Update,W9 Instructions,Darla,1/20,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA
