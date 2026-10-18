@@ -809,7 +809,7 @@ describe("wiped queue seed", () => {
     assert.equal(covington.submittedAt, "2026-10-15T11:05:45.596Z");
     assert.equal(covington.edits.length, 6);
     assert.equal(covington.decided?.length, 7);
-    assert.ok(covington.edits.every((edit) => edit.status === "pending" && edit.appliedAt == null));
+    assert.ok(covington.edits.every((edit) => edit.status === "applied" && edit.appliedAt === "2026-10-16T10:56:45.003Z"));
 
     const greenville14 = byId.get(GREENVILLE_14);
     assert.ok(greenville14);
