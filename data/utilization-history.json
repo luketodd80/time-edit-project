@@ -2747,7 +2747,7 @@
     {
       "day": "2026-10-19",
       "shopId": "columbus",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "derek-roby",
@@ -2775,63 +2775,63 @@
           "name": "Stephen Hill",
           "clockedHours": 9.25,
           "soHours": 8.93,
-          "addedMinutes": 0
+          "addedMinutes": 5
         }
       ]
     },
     {
       "day": "2026-10-19",
       "shopId": "covington",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "anthony-montgomery",
           "name": "Anthony Montgomery",
           "clockedHours": 9.04,
           "soHours": 8.98,
-          "addedMinutes": 0
+          "addedMinutes": 4
         },
         {
           "id": "dane-shelton",
           "name": "Dane Shelton",
           "clockedHours": 8.99,
           "soHours": 8.69,
-          "addedMinutes": 0
+          "addedMinutes": 17
         },
         {
           "id": "joe-hueber",
           "name": "Joe Hueber",
           "clockedHours": 9.01,
           "soHours": 8.65,
-          "addedMinutes": 0
+          "addedMinutes": 20
         },
         {
           "id": "oliver-todd",
           "name": "Oliver Todd",
           "clockedHours": 9.14,
           "soHours": 8.96,
-          "addedMinutes": 0
+          "addedMinutes": 9
         }
       ]
     },
     {
       "day": "2026-10-19",
       "shopId": "dayton",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "brayden-mapp",
           "name": "Brayden Mapp",
           "clockedHours": 9.03,
           "soHours": 8.94,
-          "addedMinutes": 0
+          "addedMinutes": 4
         },
         {
           "id": "chris-clark",
           "name": "Chris Clark",
           "clockedHours": 9.7,
           "soHours": 6.68,
-          "addedMinutes": 0
+          "addedMinutes": 118
         },
         {
           "id": "colby-purvis",
@@ -2845,20 +2845,20 @@
           "name": "Cole Lozan",
           "clockedHours": 9.05,
           "soHours": 8.51,
-          "addedMinutes": 0
+          "addedMinutes": 11
         },
         {
           "id": "jeff-haney",
           "name": "Jeff Haney",
           "clockedHours": 8.4,
           "soHours": 7.67,
-          "addedMinutes": 0
+          "addedMinutes": 45
         },
         {
           "id": "nick-sontag",
           "name": "Nick Sontag",
-          "clockedHours": 4.6,
-          "soHours": 4.59,
+          "clockedHours": 8.93,
+          "soHours": 8.92,
           "addedMinutes": 0
         },
         {
@@ -2880,7 +2880,7 @@
     {
       "day": "2026-10-19",
       "shopId": "greenville",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "cody-kester",
@@ -2894,14 +2894,14 @@
           "name": "Gage Wills",
           "clockedHours": 8.94,
           "soHours": 8.59,
-          "addedMinutes": 0
+          "addedMinutes": 18
         },
         {
           "id": "jack-eversole",
           "name": "Jack Eversole",
           "clockedHours": 9.08,
           "soHours": 8.74,
-          "addedMinutes": 0
+          "addedMinutes": 20
         },
         {
           "id": "kyle-hickman",
@@ -2915,41 +2915,265 @@
           "name": "Paul Henry",
           "clockedHours": 6.6,
           "soHours": 6.53,
-          "addedMinutes": 0
+          "addedMinutes": 2
         }
       ]
     },
     {
       "day": "2026-10-19",
       "shopId": "springfield",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "chris-queary",
           "name": "Chris Queary",
           "clockedHours": 9.57,
           "soHours": 9.39,
-          "addedMinutes": 0
+          "addedMinutes": 9
         },
         {
           "id": "gary-evans",
           "name": "Gary Evans",
           "clockedHours": 9.22,
           "soHours": 8.99,
-          "addedMinutes": 0
+          "addedMinutes": 12
         },
         {
           "id": "john-spichty",
           "name": "John Spichty",
           "clockedHours": 9.23,
           "soHours": 8.86,
-          "addedMinutes": 0
+          "addedMinutes": 22
         },
         {
           "id": "mike-wooten",
           "name": "Mike Wooten",
           "clockedHours": 9.42,
           "soHours": 6.73,
+          "addedMinutes": 158
+        }
+      ]
+    },
+    {
+      "day": "2026-10-20",
+      "shopId": "columbus",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "derek-roby",
+          "name": "Derek Roby",
+          "clockedHours": 9.11,
+          "soHours": 9.09,
+          "addedMinutes": 0
+        },
+        {
+          "id": "griffin-davis",
+          "name": "Griffin Davis",
+          "clockedHours": 9.01,
+          "soHours": 9,
+          "addedMinutes": 0
+        },
+        {
+          "id": "justin-winner",
+          "name": "Justin Winner",
+          "clockedHours": 4.85,
+          "soHours": 4.82,
+          "addedMinutes": 0
+        },
+        {
+          "id": "stephen-hill",
+          "name": "Stephen Hill",
+          "clockedHours": 9.06,
+          "soHours": 9.02,
+          "addedMinutes": 0
+        }
+      ]
+    },
+    {
+      "day": "2026-10-20",
+      "shopId": "covington",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "anthony-montgomery",
+          "name": "Anthony Montgomery",
+          "clockedHours": 9.17,
+          "soHours": 9.08,
+          "addedMinutes": 0
+        },
+        {
+          "id": "dane-shelton",
+          "name": "Dane Shelton",
+          "clockedHours": 9,
+          "soHours": 8.49,
+          "addedMinutes": 0
+        },
+        {
+          "id": "joe-hueber",
+          "name": "Joe Hueber",
+          "clockedHours": 9.02,
+          "soHours": 8.82,
+          "addedMinutes": 0
+        },
+        {
+          "id": "kody-peters",
+          "name": "Kody Peters",
+          "clockedHours": 5.79,
+          "soHours": 5.75,
+          "addedMinutes": 0
+        },
+        {
+          "id": "oliver-todd",
+          "name": "Oliver Todd",
+          "clockedHours": 7.85,
+          "soHours": 7.8,
+          "addedMinutes": 0
+        }
+      ]
+    },
+    {
+      "day": "2026-10-20",
+      "shopId": "dayton",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "brayden-mapp",
+          "name": "Brayden Mapp",
+          "clockedHours": 8.91,
+          "soHours": 8.88,
+          "addedMinutes": 0
+        },
+        {
+          "id": "chris-clark",
+          "name": "Chris Clark",
+          "clockedHours": 10.71,
+          "soHours": 9.88,
+          "addedMinutes": 0
+        },
+        {
+          "id": "colby-purvis",
+          "name": "Colby Purvis",
+          "clockedHours": 9.16,
+          "soHours": 9.15,
+          "addedMinutes": 0
+        },
+        {
+          "id": "cole-lozan",
+          "name": "Cole Lozan",
+          "clockedHours": 9.15,
+          "soHours": 9.13,
+          "addedMinutes": 0
+        },
+        {
+          "id": "jeff-haney",
+          "name": "Jeff Haney",
+          "clockedHours": 9.95,
+          "soHours": 8.48,
+          "addedMinutes": 0
+        },
+        {
+          "id": "nick-sontag",
+          "name": "Nick Sontag",
+          "clockedHours": 8.92,
+          "soHours": 8.42,
+          "addedMinutes": 0
+        },
+        {
+          "id": "tanveer-dhaliwal",
+          "name": "Tanveer Dhaliwal",
+          "clockedHours": 9.14,
+          "soHours": 7.96,
+          "addedMinutes": 0
+        },
+        {
+          "id": "zach-spencer",
+          "name": "Zach Spencer",
+          "clockedHours": 9,
+          "soHours": 8.92,
+          "addedMinutes": 0
+        }
+      ]
+    },
+    {
+      "day": "2026-10-20",
+      "shopId": "greenville",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "cody-kester",
+          "name": "Cody Kester",
+          "clockedHours": 8.69,
+          "soHours": 8.67,
+          "addedMinutes": 0
+        },
+        {
+          "id": "david-johnson",
+          "name": "David Johnson",
+          "clockedHours": 9.33,
+          "soHours": 9.16,
+          "addedMinutes": 0
+        },
+        {
+          "id": "gage-wills",
+          "name": "Gage Wills",
+          "clockedHours": 9.01,
+          "soHours": 8.98,
+          "addedMinutes": 0
+        },
+        {
+          "id": "jack-eversole",
+          "name": "Jack Eversole",
+          "clockedHours": 8.46,
+          "soHours": 8.26,
+          "addedMinutes": 0
+        },
+        {
+          "id": "kyle-hickman",
+          "name": "Kyle Hickman",
+          "clockedHours": 7.19,
+          "soHours": 7.16,
+          "addedMinutes": 0
+        },
+        {
+          "id": "paul-henry",
+          "name": "Paul Henry",
+          "clockedHours": 6.11,
+          "soHours": 5.44,
+          "addedMinutes": 0
+        }
+      ]
+    },
+    {
+      "day": "2026-10-20",
+      "shopId": "springfield",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "chris-queary",
+          "name": "Chris Queary",
+          "clockedHours": 8.62,
+          "soHours": 7.51,
+          "addedMinutes": 0
+        },
+        {
+          "id": "gary-evans",
+          "name": "Gary Evans",
+          "clockedHours": 9.21,
+          "soHours": 7.97,
+          "addedMinutes": 0
+        },
+        {
+          "id": "john-spichty",
+          "name": "John Spichty",
+          "clockedHours": 9.83,
+          "soHours": 9.67,
+          "addedMinutes": 0
+        },
+        {
+          "id": "mike-wooten",
+          "name": "Mike Wooten",
+          "clockedHours": 9.05,
+          "soHours": 5.91,
           "addedMinutes": 0
         }
       ]
