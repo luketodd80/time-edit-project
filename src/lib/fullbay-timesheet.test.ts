@@ -17,6 +17,7 @@ import { FRIDAY_OCTOBER_16_DETAILS_CSV } from "@/lib/friday-october-16-details-c
 import { SATURDAY_OCTOBER_17_DETAILS_CSV } from "@/lib/saturday-october-17-details-csv";
 import { MONDAY_OCTOBER_19_DETAILS_CSV } from "@/lib/monday-october-19-details-csv";
 import { TUESDAY_OCTOBER_20_DETAILS_CSV } from "@/lib/tuesday-october-20-details-csv";
+import { WEDNESDAY_OCTOBER_21_DETAILS_CSV } from "@/lib/wednesday-october-21-details-csv";
 import {
   FOREMEN,
   OCTOBER_2_REPORTS,
@@ -35,6 +36,7 @@ import {
   OCTOBER_17_REPORTS,
   OCTOBER_19_REPORTS,
   OCTOBER_20_REPORTS,
+  OCTOBER_21_REPORTS,
   OPEN_PUNCH_NOTE,
   isForeman,
   parseDetailsListCsv,
@@ -62,6 +64,7 @@ const fridayOctober16 = "2026-10-16";
 const saturdayOctober17 = "2026-10-17";
 const mondayOctober19 = "2026-10-19";
 const tuesdayOctober20 = "2026-10-20";
+const wednesdayOctober21 = "2026-10-21";
 
 function row(overrides: Partial<FullbayTimesheetRow> & Pick<FullbayTimesheetRow, "employee">): FullbayTimesheetRow {
   return {
@@ -2321,6 +2324,194 @@ describe("October 20 download", () => {
     );
     const training = springfield?.findings.find((finding) => finding.techId === "chris-queary" && finding.nonPro);
     assert.equal(training?.start, "16:16");
+    assert.equal(training?.end, "17:00");
+    assert.equal(training?.recommendation, null);
+  });
+});
+
+describe("October 21 download", () => {
+  it("keeps the Wednesday October 21 Details List download, including Travis Hess’s 24-hour placeholder", () => {
+    const csv = readFileSync("data/fullbay-timesheets/timesheets-download-2026-10-21.csv", "utf8");
+    assert.equal(csv, WEDNESDAY_OCTOBER_21_DETAILS_CSV);
+    const file = parseDetailsListCsv(csv, wednesdayOctober21);
+    assert.equal(file.date, wednesdayOctober21);
+    assert.equal(file.rows.length, 302);
+    const byShop = new Map<string, number>();
+    for (const record of file.rows) byShop.set(record.shop, (byShop.get(record.shop) ?? 0) + 1);
+    assert.equal(byShop.get("The Service Company - Dayton (D)"), 86);
+    assert.equal(byShop.get("The Service Company - Greenville (G)"), 86);
+    assert.equal(byShop.get("The Service Company - Springfield (S)"), 48);
+    assert.equal(byShop.get("The Service Company - Covington (C)"), 43);
+    assert.equal(byShop.get("The Service Company - Columbus (CL)"), 29);
+    assert.equal(byShop.get("The Service Company-Mobile Units (M)"), 10);
+    const travis = file.rows.filter((record) => record.employee === "Travis Hess");
+    assert.equal(travis.length, 1);
+    assert.equal(travis[0]?.clock_in, "12:00:00AM 10/21/2026");
+    assert.equal(travis[0]?.clock_out, "12:00:00AM 10/22/2026");
+    assert.equal(travis[0]?.hours, 24);
+    assert.equal(travis[0]?.clock_in_activity, "Inactive");
+    assert.equal(travis[0]?.so_complaint, "");
+    const overnight = file.rows.filter((record) => record.clock_out.includes("10/22/2026"));
+    assert.deepEqual(
+      overnight.map((record) => record.employee),
+      ["Travis Hess"],
+    );
+    const kevin = file.rows.filter((record) => record.employee === "Kevin Neal");
+    assert.equal(kevin.length, 1);
+    assert.equal(kevin[0]?.so_complaint, "");
+    assert.equal(kevin[0]?.hours, 10.52);
+    const flora = file.rows.filter((record) => record.employee === "Thomas Flora" && record.so_complaint.trim());
+    assert.ok(flora.length > 0);
+    const mobile = file.rows.filter((record) => record.shop === "The Service Company-Mobile Units (M)");
+    assert.equal(mobile.length, 10);
+    assert.ok(mobile.some((record) => record.employee === "Jeff Haney" && record.clock_in_activity === "Shop Meeting" && record.so_complaint === ""));
+    assert.ok(mobile.some((record) => record.so_complaint.startsWith("M-90671")));
+  });
+
+  it("adds Wednesday October 21 without replacing the earlier loaded days", () => {
+    assert.equal(SEED.filter((report) => report.day === "2026-10-02").length, OCTOBER_2_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === "2026-10-03").length, OCTOBER_3_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === monday).length, OCTOBER_5_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === tuesday).length, OCTOBER_6_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === wednesday).length, OCTOBER_7_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === thursday).length, OCTOBER_8_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === fridayOctober9).length, OCTOBER_9_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === saturdayOctober10).length, OCTOBER_10_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === mondayOctober12).length, OCTOBER_12_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === tuesdayOctober13).length, OCTOBER_13_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === wednesdayOctober14).length, OCTOBER_14_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === thursdayOctober15).length, OCTOBER_15_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === fridayOctober16).length, OCTOBER_16_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === saturdayOctober17).length, OCTOBER_17_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === mondayOctober19).length, OCTOBER_19_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === tuesdayOctober20).length, OCTOBER_20_REPORTS.length);
+    assert.equal(SEED.filter((report) => report.day === wednesdayOctober21).length, OCTOBER_21_REPORTS.length);
+    assert.equal(SEED.some((report) => report.day === "2026-10-11"), false);
+    assert.equal(SEED.some((report) => report.day === "2026-10-18"), false);
+  });
+
+  it("builds Wednesday October 21 for the shops with service-order time, without foremen, the placeholder, or zero-SO techs", () => {
+    assert.deepEqual(
+      OCTOBER_21_REPORTS.map((report) => report.shopId),
+      ["dayton", "covington", "greenville", "springfield", "mobile", "columbus"],
+    );
+    assert.ok(OCTOBER_21_REPORTS.every((report) => report.day === wednesdayOctober21));
+    assert.deepEqual(namesOn(OCTOBER_21_REPORTS, "dayton"), [
+      "Brayden Mapp",
+      "Chris Clark",
+      "Colby Purvis",
+      "Cole Lozan",
+      "Jeff Haney",
+      "Nick Sontag",
+      "Tanveer Dhaliwal",
+      "Zach Spencer",
+    ]);
+    assert.deepEqual(namesOn(OCTOBER_21_REPORTS, "covington"), ["Anthony Montgomery", "Dane Shelton", "Kody Peters", "Oliver Todd"]);
+    assert.deepEqual(namesOn(OCTOBER_21_REPORTS, "greenville"), ["Cody Kester", "David Johnson", "Gage Wills", "Jack Eversole", "Kyle Hickman", "Paul Henry"]);
+    assert.deepEqual(namesOn(OCTOBER_21_REPORTS, "springfield"), ["Chris Queary", "Gary Evans", "John Spichty", "Mike Wooten"]);
+    assert.deepEqual(namesOn(OCTOBER_21_REPORTS, "mobile"), ["Chris Clark", "Jeff Haney"]);
+    assert.deepEqual(namesOn(OCTOBER_21_REPORTS, "columbus"), ["Derek Roby", "Griffin Davis", "Justin Winner", "Stephen Hill"]);
+    const techs = OCTOBER_21_REPORTS.flatMap((report) => report.technicians);
+    assert.equal(techs.length, 28);
+    const dropped = ["Thomas Flora", "James Benedict", "Isaac Stockslager", "Kevin Neal", "Travis Hess"];
+    assert.equal(
+      techs.some((tech) => dropped.includes(tech.name)),
+      false,
+    );
+    assert.deepEqual(
+      techs.filter((tech) => tech.clockedHours >= 14).map((tech) => tech.id),
+      [],
+    );
+    assert.deepEqual(
+      Object.fromEntries(
+        OCTOBER_21_REPORTS.map((report) => [
+          report.shopId,
+          {
+            techs: report.technicians.length,
+            findings: report.findings.length,
+            suggestions: requiredDecisionFindingIds(OCTOBER_21_REPORTS, { day: report.day, shopId: report.shopId }).length,
+          },
+        ]),
+      ),
+      {
+        dayton: { techs: 8, findings: 83, suggestions: 2 },
+        covington: { techs: 4, findings: 42, suggestions: 5 },
+        greenville: { techs: 6, findings: 78, suggestions: 7 },
+        springfield: { techs: 4, findings: 62, suggestions: 21 },
+        mobile: { techs: 2, findings: 31, suggestions: 9 },
+        columbus: { techs: 4, findings: 26, suggestions: 1 },
+      },
+    );
+    assert.equal(
+      OCTOBER_21_REPORTS.some((report) => report.findings.some((finding) => finding.minutes >= 24 * 60)),
+      false,
+    );
+    assert.equal(
+      OCTOBER_21_REPORTS.flatMap((report) => report.findings).filter((finding) => finding.forgotClockOut).length,
+      0,
+    );
+    assertReportShape(OCTOBER_21_REPORTS);
+  });
+
+  it("lists Chris Clark and Jeff Haney on Dayton and Mobile and keeps covered Non-Pro off the suggestion list", () => {
+    assert.equal(
+      OCTOBER_21_REPORTS.some((report) => report.technicians.some((tech) => tech.id === "travis-hess")),
+      false,
+    );
+    const dayton = OCTOBER_21_REPORTS.find((report) => report.shopId === "dayton");
+    const mobile = OCTOBER_21_REPORTS.find((report) => report.shopId === "mobile");
+    const daytonClark = dayton?.technicians.find((tech) => tech.id === "chris-clark");
+    const mobileClark = mobile?.technicians.find((tech) => tech.id === "chris-clark");
+    assert.equal(daytonClark?.soHours, 4.69);
+    assert.equal(daytonClark?.clockedHours, 5.51);
+    assert.equal(mobileClark?.soHours, 2.5);
+    assert.equal(mobileClark?.clockedHours, 3.19);
+    assert.equal(mobileClark?.foreignCoveredHours, 4.7);
+    const daytonHaney = dayton?.technicians.find((tech) => tech.id === "jeff-haney");
+    const mobileHaney = mobile?.technicians.find((tech) => tech.id === "jeff-haney");
+    assert.equal(daytonHaney?.soHours, 7.99);
+    assert.equal(daytonHaney?.clockedHours, 8.81);
+    assert.equal(mobileHaney?.soHours, 0.01);
+    assert.equal(mobileHaney?.clockedHours, 0.89);
+    const clarkMeeting = dayton?.findings.find((finding) => finding.techId === "chris-clark" && finding.start === "07:06");
+    assert.ok(clarkMeeting?.nonPro);
+    assert.equal(clarkMeeting?.recommendation, null);
+    const haneyMeeting = dayton?.findings.find((finding) => finding.techId === "jeff-haney" && finding.start === "07:58");
+    assert.ok(haneyMeeting?.nonPro);
+    assert.equal(haneyMeeting?.recommendation, null);
+    const coveredAfternoon = dayton?.findings.find((finding) => finding.techId === "jeff-haney" && finding.start === "13:23");
+    assert.equal(coveredAfternoon?.notAGap, true);
+    assert.equal(coveredAfternoon?.recommendation, null);
+    assert.equal(coveredAfternoon?.suggested, "Covered by Non-Pro. No edit.");
+    const mobileMeeting = mobile?.findings.find((finding) => finding.techId === "jeff-haney" && finding.start === "07:05");
+    assert.ok(mobileMeeting?.nonPro);
+    assert.equal(mobileMeeting?.recommendation, null);
+    const coveredOnMobile = dayton?.findings.find((finding) => finding.techId === "chris-clark" && finding.start === "07:55");
+    assert.equal(coveredOnMobile?.notAGap, true);
+    assert.equal(coveredOnMobile?.suggested, "No edit. Covered on the Mobile shop.");
+    const greenville = OCTOBER_21_REPORTS.find((report) => report.shopId === "greenville");
+    const waitingForJob = greenville?.findings.find((finding) => finding.techId === "gage-wills" && finding.start === "15:17");
+    assert.equal(waitingForJob?.notAGap, true);
+    assert.equal(waitingForJob?.recommendation, null);
+    const gladHand = greenville?.findings.find((finding) => finding.techId === "cody-kester" && finding.start === "13:43");
+    assert.equal(gladHand?.notAGap, true);
+    assert.equal(gladHand?.recommendation, null);
+    const waitingOnJob = greenville?.findings.find((finding) => finding.techId === "paul-henry" && finding.start === "15:54");
+    assert.equal(waitingOnJob?.recommendation, null);
+    assert.equal(waitingOnJob?.nonPro, undefined);
+    assert.equal(waitingOnJob?.suggested, "Non-Pro “Waiting on job”. That stretch stays off billable service-order time.");
+    const typo = greenville?.findings.find((finding) => finding.techId === "paul-henry" && finding.nonPro);
+    assert.equal(typo?.start, "16:44");
+    assert.equal(typo?.end, "16:45");
+    assert.equal(typo?.recommendation, null);
+    assert.match(typo?.detail ?? "", /Waitib\\ng on job/);
+    const springfield = OCTOBER_21_REPORTS.find((report) => report.shopId === "springfield");
+    const cleaning = springfield?.findings.find((finding) => finding.techId === "john-spichty" && finding.nonPro);
+    assert.equal(cleaning?.start, "09:08");
+    assert.equal(cleaning?.end, "10:45");
+    assert.equal(cleaning?.recommendation, null);
+    const training = springfield?.findings.find((finding) => finding.techId === "chris-queary" && finding.nonPro);
+    assert.equal(training?.start, "16:19");
     assert.equal(training?.end, "17:00");
     assert.equal(training?.recommendation, null);
   });
