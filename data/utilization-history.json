@@ -3849,6 +3849,41 @@
           "addedMinutes": 0
         }
       ]
+    },
+    {
+      "day": "2026-10-24",
+      "shopId": "covington",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "dane-shelton",
+          "name": "Dane Shelton",
+          "clockedHours": 4.48,
+          "soHours": 4.2,
+          "addedMinutes": 0
+        },
+        {
+          "id": "kody-peters",
+          "name": "Kody Peters",
+          "clockedHours": 4.93,
+          "soHours": 4.91,
+          "addedMinutes": 0
+        }
+      ]
+    },
+    {
+      "day": "2026-10-24",
+      "shopId": "greenville",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "paul-henry",
+          "name": "Paul Henry",
+          "clockedHours": 4.11,
+          "soHours": 4.08,
+          "addedMinutes": 0
+        }
+      ]
     }
   ]
 }
