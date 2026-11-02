@@ -483,16 +483,16 @@ async function deleteAttachment(id){if(!confirm('Delete this file?'))return;
  if(r.error){alert(r.error);return}if(r.monthend)OD=r.monthend;renderOd()}
 function histHtml(t){const H=t.history||[];const groups=t.attachments||{};const used={};
  const li=(h,i)=>{const extra=h.month_iso&&groups[h.month_iso]&&!used[h.month_iso]?(used[h.month_iso]=1,attStrip(groups[h.month_iso])):'';
-  return `<li class=hclick title="Open this run in the side panel" onclick="openRun(event,'${t.id}',${i})"><b>${esc(h.when)}</b> · ${esc(h.state)} · ${esc(h.result)}${h.files?`<br><span class=muted2>Files: ${esc(h.files)}</span>`:''}${h.run_note?`<br><span class=rnote>Run note: ${esc(h.run_note)}</span>`:''}${h.standing?`<br><span class=muted2>Standing notes used: ${esc(h.standing)}</span>`:''}${extra}</li>`};
+  return `<li class=hclick title="Open this run in the side panel" onclick="openPanelRun(event,'${t.id}',${i})"><b>${esc(h.when)}</b> · ${esc(h.state)} · ${esc(h.result)}${h.files?`<br><span class=muted2>Files: ${esc(h.files)}</span>`:''}${h.run_note?`<br><span class=rnote>Run note: ${esc(h.run_note)}</span>`:''}${h.standing?`<br><span class=muted2>Standing notes used: ${esc(h.standing)}</span>`:''}${extra}</li>`};
  const rows=H.map(li);
  Object.keys(groups).sort().forEach(iso=>{if(used[iso]||!(groups[iso]||[]).length)return;
-  rows.push(`<li class=hclick onclick="openRun(event,'${t.id}','m:${iso}')"><b>${esc(monthLabel(iso))}</b> · files${attStrip(groups[iso])}</li>`)});
+  rows.push(`<li class=hclick onclick="openPanelRun(event,'${t.id}','m:${iso}')"><b>${esc(monthLabel(iso))}</b> · files${attStrip(groups[iso])}</li>`)});
  return rows.length?'<ul class=hist>'+rows.join('')+'</ul>':'<span class=muted2>No runs yet.</span>'}
 
 let odSel=null,odRun=null,descEdit=false,VL=null;
 function selTask(ev,id){if(ev&&ev.target.closest('button,select,input,textarea,a,label,.linkbox,.cmpform,.thumbs'))return;
  if(odSel!==id){odRun=null;descEdit=false}odSel=id;renderOd()}
-function openRun(ev,id,ref){if(ev){ev.stopPropagation();if(ev.target.closest('button,a,img'))return}odSel=id;odRun=ref;descEdit=false;renderOd()}
+function openPanelRun(ev,id,ref){if(ev){ev.stopPropagation();if(ev.target.closest('button,a,img'))return}odSel=id;odRun=ref;descEdit=false;renderOd()}
 function closePanel(){odSel=null;odRun=null;renderOd()}
 function selTaskObj(){return OD&&(OD.tasks||[]).find(t=>t.id===odSel)}
 function buildSummary(t){const a=autoOf(t);const bits=[`${t.task}.`];
@@ -503,8 +503,8 @@ function buildSummary(t){const a=autoOf(t);const bits=[`${t.task}.`];
 function pRow(k,v){return v?`<dt>${esc(k)}</dt><dd>${v}</dd>`:''}
 function pdText(v){return esc(v).replace(/\n/g,'<br>')}
 function runList(t){const R=t.run_details||[];const H=t.history||[];let out='';
- R.forEach(r=>{out+=`<button type=button class=prun onclick="openRun(null,'${t.id}','r:${esc(r.run_id)}')"><b>${esc(monthLabel(r.month))}</b>${r.when?' · '+esc(r.when):''}${r.status?' · '+esc(r.status):''}<br><span class=muted2>${esc((r.summary||'').slice(0,140))}${(r.summary||'').length>140?'…':''}</span></button>`});
- H.forEach((h,i)=>{if(R.some(r=>r.month===h.month_iso))return;out+=`<button type=button class=prun onclick="openRun(null,'${t.id}',${i})"><b>${esc(h.when)}</b> · ${esc(h.state)}<br><span class=muted2>${esc(h.result)}</span></button>`});
+ R.forEach(r=>{out+=`<button type=button class=prun onclick="openPanelRun(null,'${t.id}','r:${esc(r.run_id)}')"><b>${esc(monthLabel(r.month))}</b>${r.when?' · '+esc(r.when):''}${r.status?' · '+esc(r.status):''}<br><span class=muted2>${esc((r.summary||'').slice(0,140))}${(r.summary||'').length>140?'…':''}</span></button>`});
+ H.forEach((h,i)=>{if(R.some(r=>r.month===h.month_iso))return;out+=`<button type=button class=prun onclick="openPanelRun(null,'${t.id}',${i})"><b>${esc(h.when)}</b> · ${esc(h.state)}<br><span class=muted2>${esc(h.result)}</span></button>`});
  return out||'<span class=muted2>No runs recorded yet.</span>'}
 function monthTable(t){return '<table>'+MONTHS.map((m,i)=>{const c=compOf(t,m);const mv=(t.months||{})[m];const cell=mv&&mv.text?mv.text:'';
  if(c.status==='not_started'&&!cell)return '';return `<tr><td>${m.slice(0,3)}</td><td>${c.status==='done'?'&#10003; ':''}${esc(c.text)}${c.note?'<br><span class=muted2>'+esc(c.note)+'</span>':''}</td><td class=muted2>${[c.source&&c.source!=='sheet'?esc(c.source):'',cell?'sheet '+esc(t.cols[i]+t.row)+'='+esc(cell):''].filter(Boolean).join(' · ')}</td></tr>`}).join('')+'</table>'}
