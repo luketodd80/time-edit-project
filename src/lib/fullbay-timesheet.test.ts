@@ -4585,13 +4585,13 @@ describe("November 2 download", () => {
     assert.equal(csv, MONDAY_NOVEMBER_2_DETAILS_CSV);
     const file = parseDetailsListCsv(csv, mondayNovember2);
     assert.equal(file.date, mondayNovember2);
-    assert.equal(file.rows.length, 314);
+    assert.equal(file.rows.length, 335);
     const byShop = new Map<string, number>();
     for (const record of file.rows) byShop.set(record.shop, (byShop.get(record.shop) ?? 0) + 1);
     assert.equal(byShop.get("The Service Company - Dayton (D)"), 98);
     assert.equal(byShop.get("The Service Company - Greenville (G)"), 71);
     assert.equal(byShop.get("The Service Company - Springfield (S)"), 53);
-    assert.equal(byShop.get("The Service Company - Covington (C)"), 52);
+    assert.equal(byShop.get("The Service Company - Covington (C)"), 73);
     assert.equal(byShop.get("The Service Company - Columbus (CL)"), 39);
     assert.equal(byShop.get("The Service Company-Mobile Units (M)"), 1);
     const travis = file.rows.filter((record) => record.employee === "Travis Hess");
@@ -4636,6 +4636,9 @@ describe("November 2 download", () => {
     );
     assert.equal(file.rows.filter((record) => record.employee === "Kevin Neal").length, 0);
     assert.equal(file.rows.filter((record) => record.employee === "Isaac Stockslager").length, 0);
+    assert.equal(file.rows.filter((record) => record.employee === "Nate Graf").length, 21);
+    assert.equal(file.rows.filter((record) => record.employee === "Jimmy Shinkle").length, 0);
+    assert.equal(file.rows.filter((record) => record.employee === "Jacob Griffith").length, 0);
     const haneyMobile = file.rows.filter((record) => record.employee === "Jeff Haney" && record.shop.includes("Mobile"));
     assert.equal(haneyMobile.length, 1);
     assert.equal(haneyMobile[0]?.clock_in, "6:57:14AM 11/2/2026");
@@ -4696,13 +4699,13 @@ describe("November 2 download", () => {
       "Tanveer Dhaliwal",
       "Zach Spencer",
     ]);
-    assert.deepEqual(namesOn(NOVEMBER_2_REPORTS, "covington"), ["Anthony Montgomery", "Cline Wirick", "Dane Shelton", "Joe Hueber", "Oliver Todd"]);
+    assert.deepEqual(namesOn(NOVEMBER_2_REPORTS, "covington"), ["Anthony Montgomery", "Cline Wirick", "Dane Shelton", "Joe Hueber", "Nate Graf", "Oliver Todd"]);
     assert.deepEqual(namesOn(NOVEMBER_2_REPORTS, "greenville"), ["Cody Kester", "David Johnson", "Gage Wills", "Jack Eversole", "Paul Henry"]);
     assert.deepEqual(namesOn(NOVEMBER_2_REPORTS, "springfield"), ["Chris Queary", "Gary Evans", "John Spichty", "Mike Wooten"]);
     assert.deepEqual(namesOn(NOVEMBER_2_REPORTS, "columbus"), ["Derek Roby", "Griffin Davis", "Stephen Hill"]);
     assert.equal(namesOn(NOVEMBER_2_REPORTS, "mobile").length, 0);
     const techs = NOVEMBER_2_REPORTS.flatMap((report) => report.technicians);
-    assert.equal(techs.length, 24);
+    assert.equal(techs.length, 25);
     const dropped = ["Thomas Flora", "James Benedict", "Isaac Stockslager", "Kevin Neal", "Travis Hess"];
     assert.equal(
       techs.some((tech) => dropped.includes(tech.name)),
@@ -4725,7 +4728,7 @@ describe("November 2 download", () => {
       ),
       {
         dayton: { techs: 7, findings: 90, suggestions: 9 },
-        covington: { techs: 5, findings: 48, suggestions: 2 },
+        covington: { techs: 6, findings: 71, suggestions: 5 },
         greenville: { techs: 5, findings: 66, suggestions: 7 },
         springfield: { techs: 4, findings: 64, suggestions: 19 },
         columbus: { techs: 3, findings: 34, suggestions: 2 },
@@ -4744,6 +4747,10 @@ describe("November 2 download", () => {
     assert.equal(haney?.shopId, "dayton");
     assert.equal(haney?.clockedHours, 9.68);
     assert.equal(haney?.soHours, 9.15);
+    const nate = techs.find((tech) => tech.id === "nate-graf");
+    assert.equal(nate?.shopId, "covington");
+    assert.equal(nate?.clockedHours, 10.06);
+    assert.equal(nate?.soHours, 6.4);
     assert.equal(haney?.foreignCoveredHours, undefined);
     assert.equal(
       NOVEMBER_2_REPORTS.some((report) => report.findings.some((finding) => finding.minutes >= 24 * 60)),
@@ -4847,9 +4854,22 @@ describe("November 2 download", () => {
     assert.equal(springfieldSuggestions.includes(warehouse?.id ?? ""), true);
     assert.equal(springfieldSuggestions.includes(floor?.id ?? ""), true);
     assert.equal(springfieldSuggestions.includes(cleanup?.id ?? ""), true);
+    const covington = NOVEMBER_2_REPORTS.find((report) => report.shopId === "covington");
+    const nateMorning = covington?.findings.find((finding) => finding.id === "2026-11-02-covington-nate-graf-01");
+    assert.equal(nateMorning?.techId, "nate-graf");
+    assert.equal(nateMorning?.start, "07:00");
+    assert.equal(nateMorning?.end, "09:30");
+    assert.equal(nateMorning?.minutes, 150);
+    assert.equal(nateMorning?.recommendation?.orderId, "C-90860");
     assert.deepEqual(
       requiredDecisionFindingIds(NOVEMBER_2_REPORTS, { day: mondayNovember2, shopId: "covington" }),
-      ["2026-11-02-covington-cline-wirick-01", "2026-11-02-covington-anthony-montgomery-05"],
+      [
+        "2026-11-02-covington-cline-wirick-01",
+        "2026-11-02-covington-nate-graf-01",
+        "2026-11-02-covington-nate-graf-05",
+        "2026-11-02-covington-nate-graf-23",
+        "2026-11-02-covington-anthony-montgomery-05",
+      ],
     );
     assert.deepEqual(
       requiredDecisionFindingIds(NOVEMBER_2_REPORTS, { day: mondayNovember2, shopId: "columbus" }),
