@@ -4777,14 +4777,14 @@
     {
       "day": "2026-10-30",
       "shopId": "columbus",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "derek-roby",
           "name": "Derek Roby",
           "clockedHours": 8.72,
           "soHours": 8.67,
-          "addedMinutes": 0
+          "addedMinutes": 1
         },
         {
           "id": "griffin-davis",
@@ -4812,21 +4812,21 @@
     {
       "day": "2026-10-30",
       "shopId": "covington",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "anthony-montgomery",
           "name": "Anthony Montgomery",
           "clockedHours": 9.13,
           "soHours": 9.02,
-          "addedMinutes": 0
+          "addedMinutes": 4
         },
         {
           "id": "cline-wirick",
           "name": "Cline Wirick",
           "clockedHours": 9.04,
           "soHours": 8.87,
-          "addedMinutes": 0
+          "addedMinutes": 4
         },
         {
           "id": "dane-shelton",
@@ -4847,7 +4847,7 @@
           "name": "Kody Peters",
           "clockedHours": 9.02,
           "soHours": 8.89,
-          "addedMinutes": 0
+          "addedMinutes": 1
         },
         {
           "id": "oliver-todd",
@@ -4959,7 +4959,7 @@
     {
       "day": "2026-10-30",
       "shopId": "springfield",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "gary-evans",
@@ -4987,7 +4987,7 @@
     {
       "day": "2026-10-31",
       "shopId": "greenville",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "gage-wills",
@@ -5001,7 +5001,7 @@
           "name": "Jack Eversole",
           "clockedHours": 2.7,
           "soHours": 2.39,
-          "addedMinutes": 0
+          "addedMinutes": 18
         }
       ]
     },
@@ -5064,6 +5064,13 @@
           "name": "Joe Hueber",
           "clockedHours": 9.05,
           "soHours": 9.03,
+          "addedMinutes": 0
+        },
+        {
+          "id": "nate-graf",
+          "name": "Nate Graf",
+          "clockedHours": 10.06,
+          "soHours": 6.4,
           "addedMinutes": 0
         },
         {
