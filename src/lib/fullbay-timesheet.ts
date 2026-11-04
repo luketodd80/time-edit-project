@@ -30,6 +30,7 @@ import { THURSDAY_OCTOBER_29_DETAILS_CSV } from "@/lib/thursday-october-29-detai
 import { FRIDAY_OCTOBER_30_DETAILS_CSV } from "@/lib/friday-october-30-details-csv";
 import { SATURDAY_OCTOBER_31_DETAILS_CSV } from "@/lib/saturday-october-31-details-csv";
 import { MONDAY_NOVEMBER_2_DETAILS_CSV } from "@/lib/monday-november-2-details-csv";
+import { TUESDAY_NOVEMBER_3_DETAILS_CSV } from "@/lib/tuesday-november-3-details-csv";
 
 /**
  * Shop foremen. They are left out of time-gap review and utilization entirely.
@@ -1302,7 +1303,7 @@ export function timesheetToDayReports(file: FullbayTimesheetFile): DayReport[] {
   return reports;
 }
 
-/** October 2 through November 2 use the Details List download (Clock In Comment). Sundays October 18, October 25, and November 1 are closed. */
+/** October 2 through November 3 use the Details List download (Clock In Comment). Sundays October 18, October 25, and November 1 are closed. */
 export const OCTOBER_2_REPORTS = timesheetToDayReports(parseDetailsListCsv(FRIDAY_DETAILS_CSV, "2026-10-02"));
 export const OCTOBER_3_REPORTS = timesheetToDayReports(parseDetailsListCsv(SATURDAY_DETAILS_CSV, "2026-10-03"));
 export const OCTOBER_5_REPORTS = timesheetToDayReports(parseDetailsListCsv(MONDAY_DETAILS_CSV, "2026-10-05"));
@@ -1330,3 +1331,4 @@ export const OCTOBER_29_REPORTS = timesheetToDayReports(parseDetailsListCsv(THUR
 export const OCTOBER_30_REPORTS = timesheetToDayReports(parseDetailsListCsv(FRIDAY_OCTOBER_30_DETAILS_CSV, "2026-10-30"));
 export const OCTOBER_31_REPORTS = timesheetToDayReports(parseDetailsListCsv(SATURDAY_OCTOBER_31_DETAILS_CSV, "2026-10-31"));
 export const NOVEMBER_2_REPORTS = timesheetToDayReports(parseDetailsListCsv(MONDAY_NOVEMBER_2_DETAILS_CSV, "2026-11-02"));
+export const NOVEMBER_3_REPORTS = timesheetToDayReports(parseDetailsListCsv(TUESDAY_NOVEMBER_3_DETAILS_CSV, "2026-11-03"));
