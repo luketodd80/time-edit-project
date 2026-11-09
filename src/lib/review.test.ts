@@ -81,6 +81,7 @@ describe("review days", () => {
     assert.deepEqual(defaultPendingDays("2026-11-05"), ["2026-11-04"]);
     assert.deepEqual(defaultPendingDays("2026-11-06"), ["2026-11-05"]);
     assert.deepEqual(defaultPendingDays("2026-11-07"), ["2026-11-06"]);
+    assert.deepEqual(defaultPendingDays("2026-11-08"), ["2026-11-07"]);
   });
 
   it("starts the trail on Friday October 2 and drops Sunday", () => {
@@ -113,6 +114,7 @@ describe("review days", () => {
     assert.deepEqual(reviewWindow("2026-11-05"), ["2026-10-22", "2026-10-23", "2026-10-24", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-02", "2026-11-03", "2026-11-04"]);
     assert.deepEqual(reviewWindow("2026-11-06"), ["2026-10-23", "2026-10-24", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"]);
     assert.deepEqual(reviewWindow("2026-11-07"), ["2026-10-24", "2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"]);
+    assert.deepEqual(reviewWindow("2026-11-08"), ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07"]);
     assert.deepEqual(reviewWindow("2026-10-07"), [friday, saturday, "2026-10-05", "2026-10-06"]);
     assert.deepEqual(reviewWindow("2026-10-06"), [friday, saturday, "2026-10-05"]);
     const later = reviewWindow("2026-10-20", 30);
@@ -143,6 +145,8 @@ describe("review days", () => {
     assert.equal(reviewWindow("2026-11-06", 30).includes("2026-11-01"), false);
     assert.ok(reviewWindow("2026-11-07", 30).includes("2026-11-06"));
     assert.equal(reviewWindow("2026-11-07", 30).includes("2026-11-01"), false);
+    assert.ok(reviewWindow("2026-11-08", 30).includes("2026-11-07"));
+    assert.equal(reviewWindow("2026-11-08", 30).includes("2026-11-01"), false);
     assert.equal(later.some((day) => new Date(`${day}T12:00:00Z`).getUTCDay() === 0), false);
   });
 
@@ -171,7 +175,7 @@ describe("review days", () => {
 });
 
 describe("shop scope", () => {
-  it("lists every shop and loads Friday October 2 through Friday November 6", () => {
+  it("lists every shop and loads Friday October 2 through Saturday November 7", () => {
     assert.deepEqual(
       SHOPS.map((shop) => shop.name),
       ["Dayton", "Covington", "Greenville", "Springfield", "Mobile", "Columbus"],
@@ -263,6 +267,13 @@ describe("shop scope", () => {
     assert.equal(filterReports(SEED, "greenville", ["2026-11-06"]).length, 1);
     assert.equal(filterReports(SEED, "springfield", ["2026-11-06"]).length, 1);
     assert.equal(filterReports(SEED, "columbus", ["2026-11-06"]).length, 1);
+    assert.ok(filterReports(SEED, "all", ["2026-11-07"]).length > 0);
+    assert.equal(filterReports(SEED, "covington", ["2026-11-07"]).length, 1);
+    assert.equal(filterReports(SEED, "greenville", ["2026-11-07"]).length, 1);
+    assert.equal(filterReports(SEED, "dayton", ["2026-11-07"]).length, 0);
+    assert.equal(filterReports(SEED, "springfield", ["2026-11-07"]).length, 0);
+    assert.equal(filterReports(SEED, "columbus", ["2026-11-07"]).length, 0);
+    assert.equal(filterReports(SEED, "mobile", ["2026-11-07"]).length, 0);
   });
 
   it("does not treat All shops and Dayton as the same Friday", () => {
