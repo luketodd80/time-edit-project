@@ -242,7 +242,17 @@ describe("seed utilization history", () => {
         const saved: UtilTechSnapshot | undefined = snap.techs.find((item) => item.id === tech.id);
         const forgot = reportRow.findings.find((finding) => finding.techId === tech.id && finding.forgotClockOut);
         if (forgot?.forgotClockOut && (forgot.forgotClockOut.shift?.late || forgot.forgotClockOut.order?.late)) {
-          assert.ok((saved?.clockedHours ?? tech.clockedHours) < tech.clockedHours || (saved?.soHours ?? tech.soHours) < tech.soHours);
+          const rejected = queue.batches.some((batch) =>
+            (batch.decided ?? []).some((item) => item.findingId === forgot.id && item.day === reportRow.day && item.shopId === reportRow.shopId),
+          );
+          const edit = latestEditsForShopDay(queue.batches, reportRow.day, reportRow.shopId).get(forgot.id);
+          const keptRecorded = rejected && !(edit?.corrections && edit.corrections.length > 0 && edit.status !== "rejected" && edit.status !== "superseded");
+          if (keptRecorded) {
+            assert.equal(saved?.clockedHours, tech.clockedHours);
+            assert.equal(saved?.soHours, tech.soHours);
+          } else {
+            assert.ok((saved?.clockedHours ?? tech.clockedHours) < tech.clockedHours || (saved?.soHours ?? tech.soHours) < tech.soHours);
+          }
         } else {
           assert.equal(saved?.clockedHours, tech.clockedHours);
           assert.equal(saved?.soHours, tech.soHours);
