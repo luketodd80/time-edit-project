@@ -1,0 +1,464 @@
+{
+ "prep cot & send to sheldon|1st week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "COT prep steps aren't documented in the sheet"
+ },
+ "prepare tsc biz purchase payment|1st week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Payment; notes say Luke does this"
+ },
+ "run salespeople commissions|1st week": {
+  "badge": "claude",
+  "bot": "Grok Bot",
+  "qbo_write": false,
+  "why": "Sales/commission report runs in a Claude project today"
+ },
+ "review tech bonuses (remind travis to load them first week too)|1st week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Bonus review is a judgment call"
+ },
+ "prep service meeting, load op manager supporting docs, get meeting scheduled|1st week": {
+  "badge": "run",
+  "bot": "Grok Bot",
+  "qbo_write": false,
+  "why": "Service meeting prep: gather Op Manager docs, schedule"
+ },
+ "fill out marketing stats from previous month|1st week": {
+  "badge": "run",
+  "bot": "Grok Bot",
+  "qbo_write": false,
+  "why": "Sheet fill from last month's numbers"
+ },
+ "google ads|1st week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "No Google Ads connection"
+ },
+ "check service leasing ar|1st week": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "AR report is a read; write-offs are QBO writes"
+ },
+ "fill out balances for owner sheet|1st week": {
+  "badge": "run",
+  "bot": "Grok Bot",
+  "qbo_write": false,
+  "why": "Owner Sheet balances (sheet update)"
+ },
+ "create je for negotiated vendor discounts|2nd week": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Journal entry in QBO; source data in 2.0 Dashboard"
+ },
+ "payroll report|2nd week": {
+  "badge": "run",
+  "bot": "Amber",
+  "qbo_write": false,
+  "why": "BambooHR payroll report"
+ },
+ "update perform shared resources spreadsheet|2nd week": {
+  "badge": "run",
+  "bot": "Amber",
+  "qbo_write": false,
+  "why": "Notes say Grokbot can do this from the payroll report"
+ },
+ "create je for shared resources|2nd week": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Journal entry in QBO"
+ },
+ "create je for payroll departments|2nd week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude project today; writes a QBO JE"
+ },
+ "create je for ira and fica expense|2nd week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude project today; writes a QBO JE"
+ },
+ "check the service leasing tax sheet and make sure up to date|2nd week": {
+  "badge": "run",
+  "bot": "Grok Bot",
+  "qbo_write": false,
+  "why": "Sheet check"
+ },
+ "update employees with pay quarterly bonus tab remove/ add due to role changes|2nd week": {
+  "badge": "run",
+  "bot": "Amber",
+  "qbo_write": false,
+  "why": "Role changes come from BambooHR"
+ },
+ "sl loan payments- per lt, have done by the10th|2nd week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Loan payments"
+ },
+ "bill customers for all leases|2nd week": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Lease invoices are QBO writes"
+ },
+ "sl & tsc whirlpool journal entries|2nd week": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Journal entries in QBO"
+ },
+ "truck sales- close out the truck sales customer account|3rd week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude balance-check project today; close-out writes to QBO"
+ },
+ "review lunch screen|3rd week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Visual review"
+ },
+ "credit the training tsc account|3rd week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude balance-check project today; credit writes to QBO"
+ },
+ "make sure the service company (non pro) has no balance|3rd week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude balance-check project today; any fix writes to QBO"
+ },
+ "make sure warranty & comebacks account has no balance|3rd week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude balance-check project today; any fix writes to QBO"
+ },
+ "check capacity customer account for any balances|3rd week": {
+  "badge": "run",
+  "bot": "Don",
+  "qbo_write": false,
+  "why": "QBO balance check (read); follow-up with Zeb"
+ },
+ "check office tab of every shop and make sure no capacity warranty jobs are lingering|3rd week": {
+  "badge": "run",
+  "bot": "Chris",
+  "qbo_write": false,
+  "why": "Capacity warranty jobs in Fullbay office tabs"
+ },
+ "sl bill payments|3rd week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Bill payments"
+ },
+ "vehicle lease expense alllocation (for previous month)|4th week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude artifact today; allocation JE in QBO"
+ },
+ "create je for freight, see notes|4th week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude today; writes a QBO JE"
+ },
+ "create je for coast fuel|4th week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude today; writes a QBO JE"
+ },
+ "payables are complete|4th week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Angie's sign-off"
+ },
+ "close out the prior month in qb|4th week": {
+  "badge": "claude",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Claude cleanup project today; QBO writes"
+ },
+ "update 20 group data|4th week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "External 20 Group submission"
+ },
+ "lock the month|4th week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Luke locks the month"
+ },
+ "check warranty & variance 'lt- tabs'- needs your attention|4th week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Marked 'No longer used' in the sheet"
+ },
+ "gl 699- alter if needed (fb- accounting corrections (non- taxable)|4th week": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "GL adjustment in QBO"
+ },
+ "review fb users for any that can be temporarily stopped|4th week": {
+  "badge": "run",
+  "bot": "Chris",
+  "qbo_write": false,
+  "why": "Fullbay users review"
+ },
+ "check tool database for outstanding tools, get branches to fix|4th week": {
+  "badge": "run",
+  "bot": "Grok Bot",
+  "qbo_write": false,
+  "why": "Tool-transfer report from app.truckserviceco.com"
+ },
+ "reconcile 230a tax refunds|4th week": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Recurring transaction entry in QBO"
+ },
+ "pay sl sales tax & record|4th week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Tax payment"
+ },
+ "pay tsc sales tax & record|4th week": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Tax payment"
+ },
+ "close out machine shop purchases|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Close-out entry in QBO"
+ },
+ "credit non-pro tsc ar account|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Credit entry in QBO"
+ },
+ "make sure warranty & comebacks has not collected any tax|end of month": {
+  "badge": "run",
+  "bot": "Warranty",
+  "qbo_write": false,
+  "why": "Warranty & Comebacks tax check (read)"
+ },
+ "cot cost account corrections|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Account corrections in QBO"
+ },
+ "cot cc vendor|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Vendor clean-up in QBO"
+ },
+ "cash customer|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Cash Customer clean-up in QBO"
+ },
+ "transfer paypal funds to checking- 2k|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Money movement"
+ },
+ "fb users|end of month": {
+  "badge": "run",
+  "bot": "Chris",
+  "qbo_write": false,
+  "why": "Fullbay users"
+ },
+ "qb rule- auto add|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "QBO bank-rule settings"
+ },
+ "dext gl's|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "No Dext connection"
+ },
+ "coast report|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Process not documented in the sheet"
+ },
+ "crisp|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Process not documented in the sheet"
+ },
+ "ebay|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "904 Clearing entries in QBO"
+ },
+ "online customer|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "903 Clearing entries in QBO"
+ },
+ "phebe building maintenance|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Process not documented in the sheet"
+ },
+ "qb rule review|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "QBO bank-rule settings"
+ },
+ "balance the 905 freight account|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Balancing entries in QBO"
+ },
+ "sl checking balance|end of month": {
+  "badge": "run",
+  "bot": "Don",
+  "qbo_write": false,
+  "why": "QBO balance check (read)"
+ },
+ "sl loans (see sheet in case you want to pay off) >|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Payoff decision"
+ },
+ "*reconcile savings: tsc tipp- pnb- 3667|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Bank reconciliation needs statements"
+ },
+ "*reconcile checking: tsc columbus- pnb- 7047|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Bank reconciliation needs statements"
+ },
+ "*reconcile checking: tsc columbus- chase- 9095|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Bank reconciliation needs statements"
+ },
+ "*reconcile checking: tsc- pnb- 3038|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Bank reconciliation needs statements"
+ },
+ "*reconcile 106a savings account- pnb- 2605|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Bank reconciliation needs statements"
+ },
+ "*reconcile checking: sl- pnb- 8553|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Bank reconciliation needs statements"
+ },
+ "*reconcile checking: sl- cs&l- 1242|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Bank reconciliation needs statements"
+ },
+ "-apply loan payment: tsc columbus- pnb- 2195/ 9693|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Loan payment entry in QBO"
+ },
+ "-reconcile credit card: sl visa- pnb- 8491|end of month": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Card reconciliation needs statements"
+ },
+ "-apply loan payment: sl- pnb- 3848|end of month": {
+  "badge": "prep",
+  "bot": "Don",
+  "qbo_write": true,
+  "why": "Loan payment entry in QBO"
+ },
+ "new customer onboard- weekly- m t w|weekly": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Customer onboarding"
+ },
+ "lot rent- monthly- 3rd week of the month|monthly": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Rent collection"
+ },
+ "safe count - monthly- 3rd tuesday of the month|monthly": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Physical count"
+ },
+ "trade references|yearly": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Yearly, by hand"
+ },
+ "holiday schedule|yearly": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Yearly, by hand"
+ },
+ "w9 update|yearly": {
+  "badge": "manual",
+  "bot": null,
+  "qbo_write": false,
+  "why": "Yearly, by hand"
+ }
+}
