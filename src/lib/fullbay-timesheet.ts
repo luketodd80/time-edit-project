@@ -38,6 +38,7 @@ import { SATURDAY_NOVEMBER_7_DETAILS_CSV } from "@/lib/saturday-november-7-detai
 import { MONDAY_NOVEMBER_9_DETAILS_CSV } from "@/lib/monday-november-9-details-csv";
 import { TUESDAY_NOVEMBER_10_DETAILS_CSV } from "@/lib/tuesday-november-10-details-csv";
 import { WEDNESDAY_NOVEMBER_11_DETAILS_CSV } from "@/lib/wednesday-november-11-details-csv";
+import { THURSDAY_NOVEMBER_12_DETAILS_CSV } from "@/lib/thursday-november-12-details-csv";
 
 /**
  * Shop foremen. They are left out of time-gap review and utilization entirely.
@@ -1346,3 +1347,4 @@ export const NOVEMBER_7_REPORTS = timesheetToDayReports(parseDetailsListCsv(SATU
 export const NOVEMBER_9_REPORTS = timesheetToDayReports(parseDetailsListCsv(MONDAY_NOVEMBER_9_DETAILS_CSV, "2026-11-09"));
 export const NOVEMBER_10_REPORTS = timesheetToDayReports(parseDetailsListCsv(TUESDAY_NOVEMBER_10_DETAILS_CSV, "2026-11-10"));
 export const NOVEMBER_11_REPORTS = timesheetToDayReports(parseDetailsListCsv(WEDNESDAY_NOVEMBER_11_DETAILS_CSV, "2026-11-11"));
+export const NOVEMBER_12_REPORTS = timesheetToDayReports(parseDetailsListCsv(THURSDAY_NOVEMBER_12_DETAILS_CSV, "2026-11-12"));
