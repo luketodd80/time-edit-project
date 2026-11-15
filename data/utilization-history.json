@@ -7097,6 +7097,34 @@
           "addedMinutes": 0
         }
       ]
+    },
+    {
+      "day": "2026-11-14",
+      "shopId": "covington",
+      "queueCovered": false,
+      "techs": [
+        {
+          "id": "joe-hueber",
+          "name": "Joe Hueber",
+          "clockedHours": 2.74,
+          "soHours": 2.74,
+          "addedMinutes": 0
+        },
+        {
+          "id": "kody-peters",
+          "name": "Kody Peters",
+          "clockedHours": 4.98,
+          "soHours": 4.92,
+          "addedMinutes": 0
+        },
+        {
+          "id": "oliver-todd",
+          "name": "Oliver Todd",
+          "clockedHours": 3.61,
+          "soHours": 3.5,
+          "addedMinutes": 0
+        }
+      ]
     }
   ]
 }
