@@ -6688,14 +6688,14 @@
     {
       "day": "2026-11-12",
       "shopId": "covington",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "anthony-montgomery",
           "name": "Anthony Montgomery",
           "clockedHours": 9.06,
           "soHours": 9.03,
-          "addedMinutes": 0
+          "addedMinutes": 1
         },
         {
           "id": "cline-wirick",
@@ -6716,14 +6716,14 @@
           "name": "Joe Hueber",
           "clockedHours": 9.08,
           "soHours": 9.01,
-          "addedMinutes": 0
+          "addedMinutes": 3
         },
         {
           "id": "kody-peters",
           "name": "Kody Peters",
           "clockedHours": 9.82,
           "soHours": 9.74,
-          "addedMinutes": 0
+          "addedMinutes": 4
         },
         {
           "id": "nate-graf",
@@ -6737,7 +6737,7 @@
           "name": "Oliver Todd",
           "clockedHours": 8.44,
           "soHours": 8.19,
-          "addedMinutes": 0
+          "addedMinutes": 14
         }
       ]
     },
@@ -6884,14 +6884,14 @@
     {
       "day": "2026-11-13",
       "shopId": "columbus",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "derek-roby",
           "name": "Derek Roby",
           "clockedHours": 9.31,
           "soHours": 9.27,
-          "addedMinutes": 0
+          "addedMinutes": 2
         },
         {
           "id": "griffin-davis",
@@ -6905,21 +6905,21 @@
           "name": "Stephen Hill",
           "clockedHours": 8.61,
           "soHours": 8.55,
-          "addedMinutes": 0
+          "addedMinutes": 3
         }
       ]
     },
     {
       "day": "2026-11-13",
       "shopId": "covington",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "anthony-montgomery",
           "name": "Anthony Montgomery",
           "clockedHours": 8.95,
           "soHours": 8.89,
-          "addedMinutes": 0
+          "addedMinutes": 2
         },
         {
           "id": "cline-wirick",
@@ -6940,7 +6940,7 @@
           "name": "Joe Hueber",
           "clockedHours": 9.05,
           "soHours": 8.8,
-          "addedMinutes": 0
+          "addedMinutes": 4
         },
         {
           "id": "kody-peters",
@@ -6961,28 +6961,28 @@
           "name": "Oliver Todd",
           "clockedHours": 9.12,
           "soHours": 8.77,
-          "addedMinutes": 0
+          "addedMinutes": 3
         }
       ]
     },
     {
       "day": "2026-11-13",
       "shopId": "dayton",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "brayden-mapp",
           "name": "Brayden Mapp",
           "clockedHours": 9.18,
           "soHours": 9.1,
-          "addedMinutes": 0
+          "addedMinutes": 4
         },
         {
           "id": "chris-clark",
           "name": "Chris Clark",
           "clockedHours": 9.16,
           "soHours": 7.9,
-          "addedMinutes": 0
+          "addedMinutes": 71
         },
         {
           "id": "colby-purvis",
@@ -7003,7 +7003,7 @@
           "name": "Jimmy Shinkle",
           "clockedHours": 8.81,
           "soHours": 1.12,
-          "addedMinutes": 0
+          "addedMinutes": 66
         },
         {
           "id": "tanveer-dhaliwal",
@@ -7017,14 +7017,14 @@
           "name": "Zach Spencer",
           "clockedHours": 8.95,
           "soHours": 8.84,
-          "addedMinutes": 0
+          "addedMinutes": 6
         }
       ]
     },
     {
       "day": "2026-11-13",
       "shopId": "greenville",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "cody-kester",
@@ -7052,7 +7052,7 @@
           "name": "Jack Eversole",
           "clockedHours": 9.24,
           "soHours": 8.45,
-          "addedMinutes": 0
+          "addedMinutes": 46
         },
         {
           "id": "kyle-hickman",
@@ -7101,7 +7101,7 @@
     {
       "day": "2026-11-14",
       "shopId": "covington",
-      "queueCovered": false,
+      "queueCovered": true,
       "techs": [
         {
           "id": "joe-hueber",
@@ -7115,14 +7115,14 @@
           "name": "Kody Peters",
           "clockedHours": 4.98,
           "soHours": 4.92,
-          "addedMinutes": 0
+          "addedMinutes": 2
         },
         {
           "id": "oliver-todd",
           "name": "Oliver Todd",
           "clockedHours": 3.61,
           "soHours": 3.5,
-          "addedMinutes": 0
+          "addedMinutes": 6
         }
       ]
     },
