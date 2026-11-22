@@ -1,0 +1,205 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Vehicle Lease · The Service Company</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#f4f6f9;color:#1d2433}
+header{background:#1f2a44;color:#fff;padding:16px 28px;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:20px}header a,header button.link{color:#9cc3ff;font-weight:600;background:none;border:0;font-size:13px;cursor:pointer}
+.tabs{display:flex;gap:4px;background:#1f2a44;padding:0 20px;flex-wrap:wrap}
+.tabs button{background:none;border:0;color:#c9d2e6;padding:10px 14px;font-size:14px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent}
+.tabs button.on{color:#fff;border-bottom-color:#5b9cff}
+.wrap{padding:20px 28px 40px;max-width:1180px}
+.note{background:#e8f1ff;border:1px solid #b7c9e8;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:14px;color:#243a5e}
+.hidden{display:none}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.stat{background:#fff;border-radius:10px;padding:12px 16px;box-shadow:0 1px 3px #0001;min-width:140px}
+.stat b{display:block;font-size:22px;color:#1f2a44}.stat small{color:#667}
+.card{background:#fff;border-radius:10px;box-shadow:0 1px 3px #0001;padding:14px 16px;margin-bottom:14px}
+.card h2{margin:0 0 10px;font-size:15px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#556;font-weight:650}
+input,select,textarea{font:13px/1.3 inherit;padding:6px 8px;border:1px solid #ccd;border-radius:6px;color:#1d2433;background:#fff}
+button{border:1px solid #ccd;background:#fff;border-radius:6px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:13px}
+button.ok{background:#1f2a44;color:#fff;border-color:#1f2a44}
+button.danger{color:#b42318;border-color:#f1b5ae}
+table{width:100%;border-collapse:collapse;background:#fff;font-size:13px}
+th,td{padding:7px 8px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+th{background:#eef1f6;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#556}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.scroll{max-height:420px;overflow:auto;border-radius:8px}
+.msg{font-size:13px;color:#1b7a3a;font-weight:650}
+.err{color:#b42318}
+a.dl{color:#2456a6;font-weight:700;margin-right:8px}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+.okb{background:#e3f6e8;color:#1b7a3a}.bad{background:#fff0e6;color:#8a4b12}
+.split{display:grid;grid-template-columns:repeat(3,minmax(140px,1fr));gap:8px}
+</style>
+</head><body>
+<header><h1>Vehicle Lease</h1><span><a href="/?tab=od">Month-End</a> · <button class=link type=button onclick="logout()">Log out</button></span></header>
+<nav class="tabs">
+<button id="b-run" class=on onclick="show('run')">Run month</button>
+<button id="b-fleet" onclick="show('fleet')">Fleet registry</button>
+<button id="b-ignored" onclick="show('ignored')">Ignored units</button>
+<button id="b-settings" onclick="show('settings')">Settings</button>
+<button id="b-history" onclick="show('history')">History</button>
+</nav>
+<div class="wrap">
+<p class="note" id="taskline">Internal vehicle lease allocation. Opened from the Month-End tab. The GL account is used for the branch debits and the Truck Sales credit. Nothing here posts to QuickBooks.</p>
+
+<section id="run">
+<div class="card">
+<h2>Generate a month</h2>
+<div class="row">
+<label class=f>Month <input id="month" type="month"></label>
+<label class=f>Fleet check CSV <input id="fleetFile" type="file" accept=".csv,text/csv"></label>
+<button class=ok type=button onclick="generate()">Generate</button>
+<span id="runMsg" class=msg></span>
+</div>
+<p class="note" style="margin-top:12px">Optional CSV is the CustomerUnits export (Servco 2.0 → Fullbay Files → Customer Data). Without it, the fleet check counts active registry units.</p>
+</div>
+<div id="runOut"></div>
+</section>
+
+<section id="fleet" class=hidden>
+<div class="card">
+<h2 id="fleetTitle">Add a vehicle</h2>
+<div class="row">
+<label class=f>Unit <input id="v-unit"></label>
+<label class=f>Nickname <input id="v-nick"></label>
+<label class=f>Branch <select id="v-branch"></select></label>
+<label class=f>Value <input id="v-value" type="number" min="0" step="0.01"></label>
+<label class=f>Start <input id="v-start" type="date"></label>
+<label class=f>Term <input id="v-term" type="number" min="1" max="120"></label>
+<label class=f>Rate % <input id="v-rate" type="number" min="0" max="30" step="0.1"></label>
+<label class=f>Service % <input id="v-svc" type="number" min="0" max="100" step="1"></label>
+<label class=f>Note <input id="v-note" maxlength="500" placeholder="Optional"></label>
+<button class=ok type=button onclick="saveVehicle()">Save</button>
+<button type=button onclick="clearVehicle()">Clear</button>
+<span id="fleetMsg" class=msg></span>
+</div>
+</div>
+<div class="scroll"><table><thead><tr><th>Unit</th><th>Nickname</th><th>Branch</th><th class=n>Value</th><th>Start</th><th class=n>Term</th><th class=n>Rate</th><th class=n>Service</th><th>Note</th><th></th></tr></thead><tbody id="fleetBody"></tbody></table></div>
+</section>
+
+<section id="ignored" class=hidden>
+<div class="card">
+<h2>Ignored units <span id="igCount"></span></h2>
+<div class="row">
+<label class=f>Unit <input id="igAdd" placeholder="Unit number"></label>
+<button class=ok type=button onclick="addIgnored()">Add</button>
+<span id="igMsg" class=msg></span>
+</div>
+</div>
+<div class="scroll" id="igList"></div>
+</section>
+
+<section id="settings" class=hidden>
+<div class="card">
+<h2>Journal settings</h2>
+<div class="row">
+<label class=f>GL account (debits and the credit) <input id="s-gl" size="42"></label>
+<label class=f>Credit location <input id="s-loc"></label>
+<label class=f>Default rate % <input id="s-rate" type="number" step="0.1"></label>
+<label class=f>Default term <input id="s-term" type="number"></label>
+</div>
+<h2 style="margin-top:16px">All Locations split</h2>
+<div class="split" id="split"></div>
+<p id="splitTotal"></p>
+<button class=ok type=button onclick="saveSettings()">Save settings</button>
+<span id="setMsg" class=msg></span>
+</div>
+</section>
+
+<section id="history" class=hidden>
+<div class="scroll"><table><thead><tr><th>Month</th><th class=n>Total</th><th class=n>Units</th><th>Fleet check</th><th>QBO JE #</th><th>Files</th></tr></thead><tbody id="histBody"></tbody></table></div>
+</section>
+</div>
+<script>
+let S=null, editId=null;
+const $ = id => document.getElementById(id);
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function money(n){return '$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+async function logout(){await fetch('/logout',{method:'POST'});location.href='/login'}
+function show(name){['run','fleet','ignored','settings','history'].forEach(id=>{$(id).classList.toggle('hidden',id!==name);$('b-'+id).classList.toggle('on',id===name)})}
+function vehicleBody(){return {unit:$('v-unit').value,nickname:$('v-nick').value,branch:$('v-branch').value,value:$('v-value').value,start_date:$('v-start').value,term:$('v-term').value,rate:$('v-rate').value,service_pct:$('v-svc').value,note:$('v-note').value}}
+function clearVehicle(){editId=null;$('fleetTitle').textContent='Add a vehicle';['v-unit','v-nick','v-value','v-start','v-note'].forEach(id=>$(id).value='');$('v-term').value=S.settings.default_term;$('v-rate').value=S.settings.default_rate;$('v-svc').value=50}
+function fillVehicle(v){editId=v.id;$('fleetTitle').textContent='Edit '+v.unit;$('v-unit').value=v.unit;$('v-nick').value=v.nickname;$('v-branch').value=v.branch;$('v-value').value=v.value;$('v-start').value=v.start_date;$('v-term').value=v.term;$('v-rate').value=v.rate;$('v-svc').value=v.service_pct;$('v-note').value=v.note||'';show('fleet')}
+async function api(path, opts){const res=await fetch(path,opts);const body=await res.json().catch(()=>({}));if(!res.ok)throw new Error(body.error||('HTTP '+res.status));return body}
+function render(){
+  $('month').value = $('month').value || S.default_month;
+  $('v-branch').innerHTML = S.branch_choices.map(b=>`<option>${esc(b)}</option>`).join('');
+  if(!$('v-term').value)$('v-term').value=S.settings.default_term;
+  if(!$('v-rate').value)$('v-rate').value=S.settings.default_rate;
+  if(!$('v-svc').value)$('v-svc').value=50;
+  $('fleetBody').innerHTML = S.vehicles.map(v=>`<tr>
+    <td><b>${esc(v.unit)}</b></td><td>${esc(v.nickname)}</td><td>${esc(v.branch)}</td>
+    <td class=n>${money(v.value)}</td><td>${esc(v.start_date)}</td><td class=n>${esc(v.term)}</td>
+    <td class=n>${esc(v.rate)}%</td><td class=n>${esc(v.service_pct)}%</td><td>${esc(v.note||'')}</td>
+    <td><button type=button onclick="edit('${v.id}')">Edit</button> <button type=button class=danger onclick="removeVehicle('${v.id}')">Delete</button></td>
+  </tr>`).join('') || '<tr><td colspan=10>No vehicles yet.</td></tr>';
+  $('igCount').textContent = '('+S.ignored.length+')';
+  $('igList').innerHTML = '<table><tbody>'+S.ignored.map(u=>`<tr><td>${esc(u)}</td><td><button type=button onclick="removeIgnored('${esc(u).replace(/'/g,"\\'")}')">Remove</button></td></tr>`).join('')+'</tbody></table>';
+  $('s-gl').value=S.settings.gl_account;$('s-loc').value=S.settings.credit_location;$('s-rate').value=S.settings.default_rate;$('s-term').value=S.settings.default_term;
+  $('split').innerHTML = S.branches.map(b=>`<label class=f>${esc(b)} <input id="pct-${esc(b)}" type=number min=0 max=100 step=0.1 value="${S.settings.alloc[b]}" oninput="splitTotal()"></label>`).join('');
+  splitTotal();
+  $('histBody').innerHTML = S.runs.map(r=>{const fc=r.fleet_check||{};return `<tr>
+    <td><b>${esc(r.label)}</b></td><td class=n>${money(r.total)}</td><td class=n>${esc(r.active_units)}</td>
+    <td><span class="badge ${fc.status==='ok'?'okb':'bad'}">${esc(fc.status||'')}</span> ${esc(fc.text||'')}</td>
+    <td><input id="qbo-${r.month}" value="${esc(r.qbo_je)}" size="12" placeholder="JE #"> <button type=button onclick="saveQbo('${r.month}')">Save</button></td>
+    <td><a class=dl href="${r.je_url}">JE CSV</a><a class=dl href="${r.pdf_url}">PDF</a><a class=dl href="${r.detail_url}">Detail CSV</a></td>
+  </tr>`}).join('') || '<tr><td colspan=6>No months generated yet.</td></tr>';
+}
+function edit(id){const v=S.vehicles.find(x=>x.id===id);if(v)fillVehicle(v)}
+function splitTotal(){const t=S.branches.reduce((s,b)=>s+(parseFloat($('pct-'+b).value)||0),0);const ok=Math.abs(t-100)<0.01;$('splitTotal').textContent='Total: '+t.toFixed(1)+'%'+(ok?'':' — must equal 100%');$('splitTotal').style.color=ok?'#1b7a3a':'#8a4b12'}
+async function load(){
+  S = await api('/api/vehicle-lease');
+  try{
+    const month = await api('/api/monthend');
+    const task = (month.tasks||[]).find(t=>t.me_id==='ME-030'||/vehicle lease/i.test(t.task||'')) || (month.tasks||[]).find(t=>/vehicle lease/i.test(t.task||''));
+    if(task)$('taskline').textContent = task.me_id+' · '+task.task+'. Opened from the Month-End tab. The GL account is used for the branch debits and the Truck Sales credit. Don records the QBO JE # after he posts it.';
+  }catch(e){}
+  render();
+}
+async function generate(){
+  $('runMsg').textContent='';$('runMsg').className='msg';
+  try{
+    const file=$('fleetFile').files[0];
+    let body;
+    if(file){body=new FormData();body.append('month',$('month').value);body.append('fleet',file)}
+    else body=JSON.stringify({month:$('month').value});
+    const opts=file?{method:'POST',body}:{method:'POST',headers:{'Content-Type':'application/json'},body};
+    const res=await api('/api/vehicle-lease/runs',opts);
+    S=res.vehicle_lease;
+    const r=res.run;
+    const rows=S.branches.map(b=>`<tr><td>${esc(b)}</td><td class=n>${money(r.branches[b]||0)}</td></tr>`).join('');
+    $('runOut').innerHTML=`<div class=stats><div class=stat><b>${money(r.total)}</b><small>Total for ${esc(r.label)}</small></div><div class=stat><b>${esc(r.active_units)}</b><small>Active units</small></div><div class=stat><b>${esc((r.fleet_check||{}).status||'')}</b><small>${esc((r.fleet_check||{}).text||'')}</small></div></div>
+      <div class=card><h2>Branch debits</h2><table><tbody>${rows}<tr><td><b>Credit · ${esc(S.settings.credit_location)}</b></td><td class=n><b>${money(r.total)}</b></td></tr></tbody></table>
+      <p><a class=dl href="${r.je_url}">Download JE CSV</a><a class=dl href="${r.pdf_url}">Download PDF</a><a class=dl href="${r.detail_url}">Download detail CSV</a></p></div>`;
+    render();
+    $('runMsg').textContent='Saved to history.';
+  }catch(e){$('runMsg').textContent=e.message;$('runMsg').className='msg err'}
+}
+async function saveVehicle(){
+  $('fleetMsg').textContent='';
+  try{
+    const path=editId?'/api/vehicle-lease/vehicles/'+editId:'/api/vehicle-lease/vehicles';
+    const res=await api(path,{method:editId?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(vehicleBody())});
+    S=res.vehicle_lease;clearVehicle();render();$('fleetMsg').textContent='Saved.';
+  }catch(e){$('fleetMsg').textContent=e.message;$('fleetMsg').className='msg err'}
+}
+async function removeVehicle(id){if(!confirm('Remove this vehicle?'))return;const res=await api('/api/vehicle-lease/vehicles/'+id,{method:'DELETE'});S=res.vehicle_lease;render()}
+async function addIgnored(){
+  const unit=$('igAdd').value.trim();if(!unit)return;
+  try{const ignored=S.ignored.concat([unit]);const res=await api('/api/vehicle-lease/ignored',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ignored})});S.ignored=res.ignored;$('igAdd').value='';render();$('igMsg').textContent='Added.';$('igMsg').className='msg'}
+  catch(e){$('igMsg').textContent=e.message;$('igMsg').className='msg err'}
+}
+async function removeIgnored(unit){const ignored=S.ignored.filter(u=>u!==unit);const res=await api('/api/vehicle-lease/ignored',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ignored})});S.ignored=res.ignored;render()}
+async function saveSettings(){
+  const alloc={};S.branches.forEach(b=>alloc[b]=parseFloat($('pct-'+b).value)||0);
+  try{
+    const res=await api('/api/vehicle-lease/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({gl_account:$('s-gl').value,credit_location:$('s-loc').value,default_rate:$('s-rate').value,default_term:$('s-term').value,alloc})});
+    S.settings=res.settings;render();$('setMsg').textContent='Saved.';$('setMsg').className='msg';
+  }catch(e){$('setMsg').textContent=e.message;$('setMsg').className='msg err'}
+}
+async function saveQbo(month){const res=await api('/api/vehicle-lease/runs/'+month,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({qbo_je:$('qbo-'+month).value})});const i=S.runs.findIndex(r=>r.month===month);if(i>=0)S.runs[i]=res.run;render()}
+load();
+</script>
+</body></html>

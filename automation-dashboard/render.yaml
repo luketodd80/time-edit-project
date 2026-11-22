@@ -1,0 +1,30 @@
+# Reference blueprint for the automation dashboard ONLY.
+# Do not copy this file to the repository root. The time-edit app is already
+# a separate live Render service; a root render.yaml would not describe it
+# and must not replace its settings. Add this as its own Render web service
+# with Root Directory = automation-dashboard (see README.md).
+services:
+  - type: web
+    name: automation-dashboard
+    runtime: python
+    rootDir: automation-dashboard
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --access-logfile - wsgi:app
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.3"
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: INGEST_TOKEN
+        sync: false
+      - key: DATA_DIR
+        value: /var/data
+      - key: DEMO_SEED
+        value: "0"
+    disk:
+      name: automation-data
+      mountPath: /var/data
+      sizeGB: 1
